@@ -143,6 +143,7 @@ try {
     const endIx = (signer) => ix("end_hand", [r(signer.publicKey, true), r(config), w(runtime)]);
     check("reveal", "stranger cannot end the hand", true, await rejected(tee, [endIx(stranger)], [stranger]));
     await send(tee, [endIx(authority)], [authority], { skipPreflight: true });
+    check("integrity", "closing a salt account before the reveal rejected", true, await rejected(tee, [ix("close_salt", t.perKeys(saltAccs[0]), u8(0))], [authority]));
     await send(tee, [revealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless once complete
     check("reveal", "second reveal rejected", true, await rejected(tee, [revealIx(authority)], [authority]));
     const noToken = teeConn(null);

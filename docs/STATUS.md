@@ -36,6 +36,10 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — Security fix: ephemeral accounts stay frozen until the hand is
+  revealed (HAND_COMPLETE added to in-progress), so a hand can't be made
+  unverifiable by closing salts before the reveal. Test deck uses POC_DONE.
+  Devnet: hand flow 52/52, privacy 231/231, six-player pass.
 - 2026-11-18 — Security fix: reveal only after the hand is complete
   (`HAND_COMPLETE`, set by interim authority-only `end_hand`; P5 replaces it
   with showdown). Hands/salts/dealer can't be closed during play. Devnet:

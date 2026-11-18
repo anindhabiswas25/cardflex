@@ -961,9 +961,9 @@ pub mod card_flex {
             }
         }
         runtime.dealt = true;
-        // The test-deck hand isn't played, so it is complete at once and the
-        // POC scripts may clean up afterwards.
-        runtime.phase = phase::HAND_COMPLETE;
+        // The test-deck hand isn't played or revealed; its own terminal phase
+        // lets the POC scripts clean up.
+        runtime.phase = phase::POC_DONE;
         Ok(())
     }
 

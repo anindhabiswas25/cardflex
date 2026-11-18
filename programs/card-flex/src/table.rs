@@ -67,6 +67,9 @@ pub mod phase {
     pub const HAND_COMPLETE: u8 = 6;
     /// Seed inputs published in `HandLog` (spec §9, CF-012).
     pub const REVEALED: u8 = 7;
+    /// P1 test-deck hand finished (feature `poc-test-deck` only). Not a real
+    /// hand, so there is nothing to reveal and cleanup is allowed.
+    pub const POC_DONE: u8 = 8;
 }
 
 pub const SEAT_HAND_TAG: &[u8; 8] = b"CFSEATHD";
@@ -180,9 +183,11 @@ pub struct TableRuntime {
 }
 
 impl TableRuntime {
-    /// True while a hand is between `start_hand` and the deal. The
+    /// True from `start_hand` until the hand is revealed (or cancelled). The
     /// ephemeral accounts that hold its salts, deck and hands must not be
-    /// opened or closed then (security review: it would change the seed).
+    /// opened or closed then (security review: before the deal it would
+    /// change the seed; after it, closing salts before the reveal would make
+    /// the hand impossible to verify).
     pub fn hand_in_progress(&self) -> bool {
         matches!(
             self.phase,
@@ -191,6 +196,7 @@ impl TableRuntime {
                 | phase::VRF_PENDING
                 | phase::SEEDED
                 | phase::DEALT
+                | phase::HAND_COMPLETE
         )
     }
 

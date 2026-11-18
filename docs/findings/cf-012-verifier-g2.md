@@ -90,6 +90,17 @@ rejected, closing a hand during play rejected, and a stranger unable to end
 the hand. The privacy suite still passes 231/231; the six-player test
 passes.
 
+## Second follow-up: cleanup only after the reveal (fixed)
+
+The next review found that once a hand reached `HAND_COMPLETE`, the salt
+accounts could be closed **before** `reveal_hand`. That would make the hand
+permanently unverifiable, so the audit could be suppressed. Now
+`HAND_COMPLETE` also counts as in progress: hands, salts and the dealer
+state can be closed only after `REVEALED`, or in `IDLE` after a cancel. The
+unplayed test-deck hand uses its own terminal phase, `POC_DONE`. Devnet: the
+hand flow passes 52/52, including "closing a salt account before the reveal
+rejected"; the privacy suite passes 231/231; the six-player test passes.
+
 ## Not covered yet (later phases)
 
 - Showdown, ranking and payouts aren't in the record yet (P4/P5). The

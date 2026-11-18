@@ -340,6 +340,7 @@ fn ephemeral_accounts_frozen_while_a_hand_is_in_progress() {
         phase::VRF_PENDING,
         phase::SEEDED,
         phase::DEALT,
+        phase::HAND_COMPLETE,
     ] {
         set_phase(&mut t, p, 0);
         let rt = TableRuntime::try_deserialize(

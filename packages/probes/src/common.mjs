@@ -127,7 +127,7 @@ export const RT = {
   hand_ctx: 470, roster_hash: 502, salts_in: 534, dealing_order: 535, dealing_count: 541, salt_commitments: 542,
   vrf_caller_seed: 734, merkle_root: 766, vrf_request_slot: 798, cancelled_hands: 806,
 };
-export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4, DEALT: 5, HAND_COMPLETE: 6, REVEALED: 7 };
+export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4, DEALT: 5, HAND_COMPLETE: 6, REVEALED: 7, POC_DONE: 8 };
 // SeatHand byte offsets (table.rs HAND_*).
 export const HAND = { cards: 49, positions: 52, leaf_salts: 55, proofs: 151, len: 727 };
 // Spec §7: leaf, parent and proof check.
