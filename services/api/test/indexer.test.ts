@@ -106,6 +106,16 @@ test("indexes, verifies and settles real Devnet hands; the API serves them", asy
   assert.equal(r.status, 200);
   assert.equal(r.headers.get("access-control-allow-origin"), "*");
   assert.equal(((await r.json()) as any).config, rec.table);
+  // A malformed request or a failing handler never takes the server down.
+  const net = await import("node:net");
+  await new Promise<void>((ok) => {
+    const sock = net.connect(port, "127.0.0.1", () => sock.end("GET //[ HTTP/1.1\r\nHost: x\r\n\r\n"));
+    sock.on("data", (d) => { assert.match(String(d), /^HTTP\/1.1 (400|404)/); sock.destroy(); ok(); });
+  });
+  store.db.exec("UPDATE tables SET seats_json = 'not json'");
+  const broken = await fetch(`http://127.0.0.1:${port}/tables`);
+  assert.equal(broken.status, 500);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200, "still serving after errors");
   server.close();
   void decode; void PROGRAM_ID;
 });

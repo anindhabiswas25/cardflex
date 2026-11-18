@@ -52,7 +52,23 @@ export function apiHandler(store: Store) {
 export function startServer(store: Store, port: number, host = "127.0.0.1"): Promise<Server> {
   const handle = apiHandler(store);
   const server = createServer((req, res) => {
-    const { status, body } = handle(req.method ?? "GET", new URL(req.url ?? "/", "http://localhost"));
+    // Never let one request crash the process (security review of CF-018):
+    // a malformed URL is a 400, any handler error a 500.
+    let status = 500, body: Json = { error: "internal error" };
+    let url: URL | null = null;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      status = 400;
+      body = { error: "bad request" };
+    }
+    if (url) {
+      try {
+        ({ status, body } = handle(req.method ?? "GET", url));
+      } catch (e) {
+        console.error("request failed:", req.method, req.url, String((e as Error).message ?? e));
+      }
+    }
     res.writeHead(status, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" });
     res.end(JSON.stringify(body));
   });
