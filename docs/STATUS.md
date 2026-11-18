@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P4 (rules engine).** G3 signed off as GO (conditional) by the user on 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P5 (game program).** P4 done; rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -20,8 +20,14 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-011 | Shuffle, deal and Merkle root in-program from the seed; compute units; remove test deck from the real path | Done: Devnet 39/39 ×2, all cards verified vs public root; 56–86k CU; salt-substitution + stuck-VRF fixes | `deal_hand`/`cancel_hand`, `tests/test_deal.rs`, `docs/findings/cf-011-deal.md` |
 | CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Done: Devnet hand revealed, read with no token, `cf-verify` VALID (PER and base-layer copies); 10,000 random hands VALID + tampers caught. **G2 passed** (one location) | `crates/fairness-verifier`, `reveal_hand`, `docs/findings/cf-012-verifier-g2.md` |
 | CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Done: Devnet outage drill 20/20 (pull-based refunds, validator pinned); local restart drill: state survives and hand continues; local commits blocked by an Agave 3.1 vs MagicBlock 4.0 tx-format mismatch. **G3 recommended GO (conditional), awaiting PM sign-off** | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery`, `scripts/restart-drill.sh` |
-| CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | **Waiting on PM**: checklist in `docs/spec/teen-patti-rules-v1.md` §7 (⚑ rows) | PM decision |
-| CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done (pending sign-off of ⚑ choices): 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
+| CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | Done: signed off by the PM 2026-11-19 (all ⚑ choices confirmed) | `docs/spec/teen-patti-rules-v1.md` |
+| CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done: 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
+| CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Next | |
+| CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Planned | |
+| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Planned | |
+| CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Planned | |
+| CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Planned | |
+| CF-025 | P5: six-player full game on Devnet, verified end to end | Planned | |
 
 ## Blockers and asks for the team
 
@@ -33,13 +39,14 @@ starts, finishes or gets blocked. Newest entries first in the log.
   `devnet-deployer.json` (fee payer + current upgrade authority).
 - Ask MagicBlock about the write-latency tail on Devnet (CF-004) and missed
   `accountSubscribe` updates for ephemeral accounts (CF-006).
-- Sign off rules v1 (PRD §11.3; CF-014).
 - Ask MagicBlock which local base-layer (solana-test-validator) version their
   validator 1.1.1 expects for commits (local commits fail with 3.1.10 and 4.0.3).
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
 
 ## Log
 
+- 2026-11-19 — PM signed off rules v1 (CF-014). P4 complete. P5 planned as
+  CF-020…CF-025.
 - 2026-11-18 — Agave 4.0.3 installed separately for the local stack (pins
   untouched). Local commits still fail with the same deserialize error, so
   the earlier "3.1 vs 4.0 mismatch" explanation was wrong; cause unknown.

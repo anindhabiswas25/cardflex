@@ -1,7 +1,8 @@
 # Teen Patti rules v1 — specification
 
-- **Status:** Implemented in `crates/teen-patti-core` (CF-015). **Awaiting PM
-  sign-off (CF-014).** Rows marked ⚑ are choices to confirm.
+- **Status:** **Signed off by the PM on 2026-11-19 (CF-014).** Implemented in
+  `crates/teen-patti-core` (CF-015). Rows marked ⚑ were the choices
+  confirmed at sign-off; changing any of them now means `rules_version = 2`.
 - **Version:** `rules_version = 1`, bound into every hand context
   (CF-Fairness v2 §2).
 - **Normative code:** `crates/teen-patti-core/src/rank.rs` (ranking) and
@@ -88,15 +89,15 @@ Amounts are lamports. "Stake" is the current bet in **blind terms**.
 | Top-up | None during a hand |
 | Table close | Idle 10 minutes or all seats empty |
 
-## 7. Sign-off checklist (CF-014)
+## 7. Sign-off checklist (CF-014) — all confirmed 2026-11-19
 
-- [ ] A-2-3 is the second-highest sequence
-- [ ] 4 blind turns, then See
-- [ ] Chaal limit 128 × boot; pot limit 1,024 × boot (forced show)
-- [ ] No all-in
-- [ ] Blind can't force Show on seen; Show tie splits the pot
-- [ ] Side Show target = the previous active player, who must be seen;
+- [x] A-2-3 is the second-highest sequence
+- [x] 4 blind turns, then See
+- [x] Chaal limit 128 × boot; pot limit 1,024 × boot (forced show)
+- [x] No all-in
+- [x] Blind can't force Show on seen; Show tie splits the pot
+- [x] Side Show target = the previous active player, who must be seen;
       requester packs on a tie
-- [ ] 25 s turn timer; timeout = pack
-- [ ] Buy-in 40–200 × boot
-- [ ] Rake rate and cap per table (values to be set by the business)
+- [x] 25 s turn timer; timeout = pack
+- [x] Buy-in 40–200 × boot
+- [x] Rake rate and cap per table (values to be set by the business)
