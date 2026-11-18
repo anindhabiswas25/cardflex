@@ -59,6 +59,7 @@ pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (nee
 pnpm handflow -- --region <label>   # salts -> VRF -> deal -> Side Show -> timeout -> reveal -> cf-verify (67 checks)
 pnpm game -- --region <label> [--hands N]   # CF-025 full six-player multi-hand game, every hand verified
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
+pnpm check:rules         # rules v1 vectors, independent Python
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
 pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, refund + claims (~3 min)
 bash scripts/restart-drill.sh   # local validator restart mid-hand (stop mb-stack first)
@@ -148,6 +149,10 @@ Planned crates and apps are listed in PRD §7.
   `set_hand_readers` is revoke-only. `start_hand` refuses while `grants != 0`. Session keys can
   never be the authority, a wallet, another session or a table address. Never add an instruction path that lets the authority, backend
   or a wallet become a reader; the privacy suite checks this.
+- Rules v1 are frozen too: any change to `crates/teen-patti-core` ranking,
+  betting or settlement output fails `cargo test` (vectors) and
+  `pnpm check:rules` (independent Python from spec §8). Only change them
+  with `rules_version = 2`, a regenerated vectors file and PM sign-off.
 - Fairness bytes are frozen: any change to `crates/fairness-core` output
   fails `cargo test` (vectors) and `pnpm check:fairness` (independent
   Python). Only change them with a protocol version bump + new ADR.

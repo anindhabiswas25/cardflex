@@ -21,7 +21,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Done: Devnet hand revealed, read with no token, `cf-verify` VALID (PER and base-layer copies); 10,000 random hands VALID + tampers caught. **G2 passed** (one location) | `crates/fairness-verifier`, `reveal_hand`, `docs/findings/cf-012-verifier-g2.md` |
 | CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Done: Devnet outage drill 20/20 (pull-based refunds, validator pinned); local restart drill: state survives and hand continues; local commits blocked by an Agave 3.1 vs MagicBlock 4.0 tx-format mismatch. **G3 recommended GO (conditional), awaiting PM sign-off** | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery`, `scripts/restart-drill.sh` |
 | CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | Done: signed off by the PM 2026-11-19 (all ⚑ choices confirmed) | `docs/spec/teen-patti-rules-v1.md` |
-| CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done: 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
+| CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done: 16 tests incl. all 22,100 hands and 20,000 random hands; rules vectors frozen (222 ranked hands, 128 games incl. every ending and all 13 error kinds) and checked by an independent Python implementation | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md`, `docs/spec/vectors/teen-patti-rules-v1.json`, `pnpm check:rules` |
 | CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Done (Devnet verified in CF-025): `act`; differential test vs host engine over random hands; ≤ 49k CU per action; `poc_join` removed (seats only via `buy_in`) | `programs/card-flex/tests/test_game.rs` |
 | CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Done (Devnet verified in CF-025): `end_hand` removed; public action log in `HandLog`; `cf-verify` replays the game (`cf-hand-record/2`) | `docs/spec/teen-patti-rules-v1.md` §7 |
 | CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Done (Devnet verified in CF-025): `side_show_view`; `set_hand_readers` revoke-only; fix: `start_hand` refuses a live grant | `programs/card-flex/tests/test_game.rs`, `pnpm handflow` |
@@ -45,6 +45,14 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — P4 exit met: rules v1 vectors frozen
+  (`docs/spec/vectors/teen-patti-rules-v1.json`, generated and pinned by
+  `cargo test -p teen-patti-core --test vectors`). 222 ranked hands, the
+  category counts, 128 game logs (all three endings, split pots incl. an odd
+  lamport, 13 error kinds). `scripts/check_rules_vectors.py` re-implements
+  the rules from spec §8 (new: comparison key, check order, error names)
+  with the standard library only and matches all of them; tampering is
+  caught. Added to `pnpm verify` as `pnpm check:rules`.
 - 2026-11-19 — CF-025: P5 exit met. Program redeployed to Devnet; full
   six-player games (3 and 5 hands) pass end to end with every hand verified
   by `cf-verify` (deck + game result), conservation, commit + sync to the

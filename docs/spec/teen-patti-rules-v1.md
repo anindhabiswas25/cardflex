@@ -106,7 +106,74 @@ result (end reason, winners, payouts, rake). `cf-verify` (record format
 `cf-hand-record/2`) replays the log with `teen-patti-core` on the rebuilt
 deck and must reach exactly that result.
 
-## 8. Sign-off checklist (CF-014) — all confirmed 2026-11-19
+## 8. Normative details for independent implementations
+
+These make the rules exact enough to re-implement without our code. The
+frozen vectors (`docs/spec/vectors/teen-patti-rules-v1.json`) are checked by
+`cargo test -p teen-patti-core --test vectors` and independently by
+`pnpm check:rules` (`scripts/check_rules_vectors.py`, standard library only).
+
+**Cards.** id = suit × 13 + (rank − 2), suits clubs 0, diamonds 1, hearts 2,
+spades 3; rank 2..14 (14 = ace).
+
+**Comparison key** (u32; higher wins, equal = exact tie) =
+`category << 24 | a << 16 | b << 8 | c`, ranks sorted high to low (r0 ≥ r1 ≥ r2):
+
+| Category (value) | a, b, c |
+| --- | --- |
+| Trail (6) | r0, 0, 0 |
+| Pure sequence (5) / Sequence (4) | strength, 0, 0 (A-K-Q = 15, A-2-3 = 14, else r0) |
+| Color (3) | r0, r1, r2 |
+| Pair (2) | pair rank, kicker, 0 |
+| High card (1) | r0, r1, r2 |
+
+**State.** Per seat: dealt, active, seen, blind_turns, stack, contributed.
+Table: order (dealing order), turn (index into order), stake, pot, phase
+(betting / Side Show pending (requester, target) / over). Start: each seat in
+order pays the boot (setup fails, `BadSetup`, with < 2 or > 6 seats, a
+repeated seat, boot 0 or a stack below the boot); stake = boot; turn = 0.
+`next active after i` searches order[i+1], order[i+2], … cyclically
+(including i itself last); `previous active before i` searches order[i−1], …
+cyclically, excluding i.
+
+**Applying an action by seat s** — checks in this order; the first failure
+is the error and nothing changes:
+
+1. Hand over → `HandOver`. s ≥ 6 or s not active → `NotActive`.
+2. **See**: already seen → `BadAmount`; else seen = true. Done (allowed any
+   time, even during a pending Side Show; turn unchanged).
+3. **Side Show pending** (requester R, target T): only T may act; a
+   response from T, or a Timeout by T (= reject), is accepted; anything else
+   → `SideShowPending`. Reject: turn = next active after R. Accept: if
+   key(R) > key(T) then T packs, else R packs (tie: R); turn = next active
+   after R.
+4. A Side Show response with none pending → `NoSideShowPending`.
+5. s is not order[turn] → `NotYourTurn`.
+6. **Chaal x**: seen: x must be 2·stake or 4·stake (`BadAmount`), new stake =
+   x / 2. Blind: blind_turns ≥ 4 → `MustSee`; x must be stake or 2·stake
+   (`BadAmount`), new stake = x. Then pay x: x > 128·boot → `BadAmount`;
+   x > stack → `InsufficientStack`. Blind: blind_turns + 1. If pot ≥
+   1,024·boot: settle `pot_limit`, winners = best key among active seats.
+   Else turn = next active after s.
+7. **Pack / Timeout**: s inactive. One active seat left → settle
+   `last_player` with it. Else turn = next active after s.
+8. **Show**: active count ≠ 2 → `CannotShow`; opponent O = next active after
+   s; s blind and O seen → `CannotShow`; pay the minimum bet (blind: stake,
+   seen: 2·stake; same pay checks); settle `show`, winners = best key of s, O.
+9. **Side Show request**: s not seen or < 3 active → `CannotSideShow`;
+   target = previous active before s; target blind → `CannotSideShow`; pay
+   2·stake; phase = pending (s, target); turn unchanged.
+
+**Settle**: rake = min(⌊pot · rake_bps / 10,000⌋, rake_cap, pot); the rest
+is split equally between winners; the remainder lamports go to the first
+winner in dealing order; winners' stacks are credited; pot = 0.
+
+**Replaying a log** (§7 encoding): decode each byte against the state before
+it (undecodable: high bit set, seat ≥ 6, unknown code or flag → error
+`BadEncoding` at that index), apply it (error at that index), and require
+the hand to be over at the end (else `NotOver`, no index).
+
+## 9. Sign-off checklist (CF-014) — all confirmed 2026-11-19
 
 - [x] A-2-3 is the second-highest sequence
 - [x] 4 blind turns, then See
