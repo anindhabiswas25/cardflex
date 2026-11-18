@@ -149,6 +149,8 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         turn_deadline: 0,
         button: 5,
         seat_epoch: [0; MAX_SEATS],
+        leaving: 0,
+        departed: 0,
         bump,
     };
     let mut data = Vec::new();
@@ -588,7 +590,8 @@ fn runtime_byte_offsets() {
             .flat_map(|e| e.to_le_bytes())
             .collect::<Vec<u8>>()[..]
     );
-    assert_eq!(d[1187], rt.bump, "bump follows seat_epoch");
+    assert_eq!((d[1187], d[1188]), (rt.leaving, rt.departed));
+    assert_eq!(d[1189], rt.bump, "bump follows departed");
 }
 
 /// Keeps `HL` in `packages/probes/src/common.mjs` in sync with `HandLog`.

@@ -32,8 +32,9 @@ commits, so it must decide from committed state alone:
    the vault and creates the ledger with `synced_stack = buy_in`, the payout
    wallet and the chosen session key. It never touches `TableRuntime`.
    `join_seat` (permissionless, base before delegation or PER after) copies
-   the ledger into the runtime when its epoch is exactly
-   `seat_epoch[s] + 1` and the seat is free; it also gives the session key
+   the ledger into the runtime when its epoch is **greater than**
+   `seat_epoch[s]`, it is unsynced (`synced_stack == buy_in > 0`, so a
+   refunded, zeroed ledger can't join) and the seat is free; it also gives the session key
    its read access (seat hand permission, runtime members). In PER the
    ledger is a read-only clone of the base account (MagicBlock clones
    non-delegated accounts); the program checks its address, owner and tag.
@@ -75,6 +76,23 @@ commits, so it must decide from committed state alone:
    that difference is money in play, not in the vault formula.
 9. **Refunds** (ADR 0004) are unchanged. `emergency_refund` and
    `claim_refund` pay `synced_stack`; unswept rake stays sweepable.
+
+10. **Cancelling an unjoined buy-in** (`cancel_buy_in`) is signed by the
+    recorded wallet and allowed only on a table that was **never**
+    delegated (`TableConfig.ever_delegated`). Once PER has run, it may hold
+    a clone of the ledger and could seat it after the base account closed;
+    so on a live table the way out is join, then leave. A cancelled epoch is
+    simply skipped (join accepts any newer epoch).
+
+## Amendment (same day, security review of CF-031)
+
+- First version required `ledger.epoch == seat_epoch + 1`; a cancelled
+  buy-in bumped the base counter, so the seat could never be joined again,
+  and anyone could cancel. Fixed by decision 2 (`>`) and decision 10.
+- First version allowed cancel whenever the runtime was back on the base
+  layer; a stale PER clone could then seat refunded money after a
+  re-delegation. Fixed by `ever_delegated` and the `synced_stack == buy_in`
+  join check.
 
 ## Consequences
 

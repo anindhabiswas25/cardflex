@@ -164,6 +164,9 @@ pub struct TableConfig {
     /// Session key chosen at each seat's buy-in (collision check; a later
     /// `rotate_session` in PER is checked there by `is_valid_new_session`).
     pub sessions: [Pubkey; MAX_SEATS],
+    /// Set by the first `delegate_table`. From then on PER may hold a clone
+    /// of any ledger, so `cancel_buy_in` is never allowed again.
+    pub ever_delegated: bool,
 }
 
 /// Program-wide settings (ADR 0005 decision 7). Base layer, never delegated.
@@ -318,6 +321,11 @@ pub struct TableRuntime {
     pub button: u8,
     /// ADR 0005: epoch of the sit-down at each seat (0 = never joined).
     pub seat_epoch: [u32; MAX_SEATS],
+    /// CF-032: seats that asked to leave; applied between hands.
+    pub leaving: u8,
+    /// Seats that left; their final stack stays in `stacks` until the
+    /// matching ledger is cashed out and a new epoch joins.
+    pub departed: u8,
     pub bump: u8,
 }
 
@@ -767,8 +775,32 @@ pub struct JoinSeat<'info> {
     pub magic_program: Option<UncheckedAccount<'info>>,
 }
 
-/// `cancel_buy_in`: refunds a ledger that never joined, only while the
-/// runtime is on the base layer (not delegated), so no join can race it.
+/// `leave_seat`: the seat's session key or wallet asks to leave.
+#[derive(Accounts)]
+pub struct LeaveSeat<'info> {
+    pub signer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+}
+
+/// `cash_out`: anyone pays a left ledger to its recorded wallet (base).
+#[derive(Accounts)]
+#[instruction(seat: u8)]
+pub struct CashOut<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
+    #[account(mut, close = wallet, seeds = [LEDGER_SEED, config.key().as_ref(), &[seat]], bump = ledger.bump, has_one = wallet)]
+    pub ledger: Box<Account<'info, SeatLedger>>,
+    /// CHECK: the payout wallet recorded at buy-in (`has_one`).
+    #[account(mut)]
+    pub wallet: UncheckedAccount<'info>,
+}
+
+/// `cancel_buy_in`: the recorded wallet takes back a buy-in that never
+/// joined, only on a table that was never delegated (no PER clone exists).
 #[derive(Accounts)]
 #[instruction(seat: u8)]
 pub struct CancelBuyIn<'info> {
@@ -781,9 +813,9 @@ pub struct CancelBuyIn<'info> {
     pub vault: Box<Account<'info, TableVault>>,
     #[account(mut, close = wallet, seeds = [LEDGER_SEED, config.key().as_ref(), &[seat]], bump = ledger.bump, has_one = wallet)]
     pub ledger: Box<Account<'info, SeatLedger>>,
-    /// CHECK: the payout wallet recorded at buy-in (`has_one`).
+    /// The payout wallet recorded at buy-in (`has_one`) must sign.
     #[account(mut)]
-    pub wallet: UncheckedAccount<'info>,
+    pub wallet: Signer<'info>,
 }
 
 /// `sync_hand`: anyone copies committed runtime state into the seat ledgers.

@@ -206,6 +206,11 @@ Planned crates and apps are listed in PRD §7.
   (permissionless, IDLE only) puts it in the runtime. Probes: `buyInIx` then
   `joinSeatIx` (common.mjs). Open seat hands and salts for ALL seats at setup:
   `join_seat` in PER only swaps reader lists, it never creates accounts.
+- Leaving (CF-032): `leave_seat` → (`next_hand` if mid-hand) → commit +
+  `sync_hand` sets `SeatLedger.left` → `cash_out` (closes the ledger).
+  `cancel_buy_in` only on never-delegated tables, wallet-signed: PER may
+  hold stale clones of base accounts, so never add a base-side path that
+  closes or zeroes a ledger a PER join could still read as valid.
 - Money (ADR 0004): lamports only in TableVault (never delegated); only
   `SeatLedger.synced_stack` is ever paid; `sync_hand` trusts committed runtime
   state only after checking the delegation record (validator + owner) and

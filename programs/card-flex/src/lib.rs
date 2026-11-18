@@ -253,7 +253,15 @@ pub mod card_flex {
             );
             require_keys_eq!(ledger.config, runtime.config, CardFlexError::BadLedger);
             require!(
-                ledger.epoch == runtime.seat_epoch[seat as usize].wrapping_add(1) && !ledger.left,
+                // A newer sit-down than the runtime has seen. The ledger of a
+                // live or not yet cashed-out sit-down has epoch == seat_epoch,
+                // so it can never join twice; epochs skipped by a cancelled
+                // buy-in are fine. synced_stack == buy_in: never synced or
+                // refunded (a claimed ledger is zeroed).
+                ledger.epoch > runtime.seat_epoch[seat as usize]
+                    && !ledger.left
+                    && ledger.synced_stack == ledger.buy_in
+                    && ledger.buy_in > 0,
                 CardFlexError::BadLedger
             );
             let runtime_key = runtime.key();
@@ -276,9 +284,10 @@ pub mod card_flex {
             let s = seat as usize;
             runtime.wallets[s] = ledger.wallet;
             runtime.session_keys[s] = ledger.session_key;
-            runtime.stacks[s] = ledger.buy_in;
+            runtime.stacks[s] = ledger.synced_stack;
             runtime.seat_epoch[s] = ledger.epoch;
             runtime.occupied |= 1 << seat;
+            runtime.departed &= !(1 << seat);
             let mut members = vec![Member {
                 flags,
                 pubkey: runtime.authority,
@@ -372,11 +381,64 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// A player asks to leave (ADR 0005 decision 3), signed by the seat's
+    /// session key or wallet. Between hands it applies at once; during a hand
+    /// the player finishes it and `next_hand` applies it.
+    pub fn leave_seat(ctx: Context<LeaveSeat>, seat: u8) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        let s = seat as usize;
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        require!(
+            runtime.occupied & (1 << seat) != 0,
+            CardFlexError::SeatEmpty
+        );
+        let signer = ctx.accounts.signer.key();
+        require!(
+            signer == runtime.session_keys[s] || signer == runtime.wallets[s],
+            CardFlexError::NotSeatOwner
+        );
+        runtime.leaving |= 1 << seat;
+        if runtime.phase == phase::IDLE {
+            apply_leaves(runtime);
+        }
+        Ok(())
+    }
+
+    /// Pays a seat that has left (ADR 0005 decision 4): its `synced_stack`,
+    /// set by `sync_hand` from the committed runtime, to the wallet recorded
+    /// at buy-in. Closes the ledger, so it can't be paid twice. Anyone may
+    /// submit it; it works while paused and after a refund.
+    pub fn cash_out(ctx: Context<CashOut>, seat: u8) -> Result<()> {
+        require!(ctx.accounts.ledger.left, CardFlexError::NotLeft);
+        let pay = ctx.accounts.ledger.synced_stack;
+        let vault_info = ctx.accounts.vault.to_account_info();
+        let rent_floor = Rent::get()?.minimum_balance(vault_info.data_len());
+        require!(
+            vault_info.lamports() >= rent_floor.saturating_add(pay),
+            CardFlexError::VaultShort
+        );
+        ctx.accounts.ledger.synced_stack = 0;
+        **vault_info.try_borrow_mut_lamports()? -= pay;
+        **ctx.accounts.wallet.try_borrow_mut_lamports()? += pay;
+        let config = &mut ctx.accounts.config;
+        config.seated &= !(1 << seat);
+        config.wallets[seat as usize] = Pubkey::default();
+        config.sessions[seat as usize] = Pubkey::default();
+        Ok(())
+    }
+
     /// Refunds a buy-in that never joined (ADR 0005). Only while the runtime
     /// is on the base layer and owned by this program: then the base copy is
-    /// the truth, and no join in PER can race the refund. Anyone may submit;
-    /// it pays the recorded wallet and closes the ledger.
+    /// the truth, and no join in PER can race the refund, and only if the
+    /// table was never delegated. Signed by the recorded wallet (no one else
+    /// can cancel a player's buy-in); closes the ledger.
     pub fn cancel_buy_in(ctx: Context<CancelBuyIn>, seat: u8) -> Result<()> {
+        // Once delegated, PER may hold a clone of this ledger and seat it
+        // later even after the base account is closed (stale clone): never.
+        require!(
+            !ctx.accounts.config.ever_delegated,
+            CardFlexError::TableLocked
+        );
         let runtime = &ctx.accounts.runtime;
         require!(
             runtime.seat_epoch[seat as usize] < ctx.accounts.ledger.epoch,
@@ -486,8 +548,15 @@ pub mod card_flex {
             let mut ledger: Account<SeatLedger> = Account::try_from(acc)?;
             // ADR 0005: only the sit-down this ledger belongs to. A ledger
             // that hasn't joined yet keeps its buy-in.
-            if rt.seat_epoch[seat as usize] == ledger.epoch && rt.occupied & (1 << seat) != 0 {
+            let bit = 1u8 << seat;
+            if rt.seat_epoch[seat as usize] == ledger.epoch
+                && (rt.occupied | rt.departed) & bit != 0
+                && !ledger.left
+            {
                 ledger.synced_stack = rt.stacks[seat as usize];
+                // CF-032: the committed runtime shows this sit-down left; its
+                // stack is final and may now be cashed out.
+                ledger.left = rt.departed & bit != 0;
                 ledger.exit(&crate::ID)?;
             }
         }
@@ -560,6 +629,7 @@ pub mod card_flex {
             CardFlexError::ValidatorNotAllowed
         );
         ctx.accounts.config.validator = v;
+        ctx.accounts.config.ever_delegated = true;
         let runtime_key = ctx.accounts.runtime.key();
         ctx.accounts.delegate_hand_log(
             &ctx.accounts.authority,
@@ -1360,6 +1430,7 @@ pub mod card_flex {
         runtime.action_seq = 0;
         runtime.turn_deadline = 0;
         runtime.side_show_viewers = [0; MAX_SEATS];
+        apply_leaves(runtime);
         Ok(())
     }
 
@@ -1693,6 +1764,17 @@ fn create_permission_with<'info>(
     Ok(())
 }
 
+/// Applies pending leaves between hands (ADR 0005 decision 3): the seat is
+/// no longer occupied and is marked departed; its final stack stays in
+/// `stacks` for `sync_hand`. Its session key keeps reading only its own old
+/// seat hand (never dealt again) until `join_seat` replaces it.
+fn apply_leaves(runtime: &mut TableRuntime) {
+    let l = runtime.leaving & runtime.occupied;
+    runtime.occupied &= !l;
+    runtime.departed |= l;
+    runtime.leaving = 0;
+}
+
 /// An optional account that must be present (permission paths of `join_seat`).
 fn need<'info>(o: &Option<UncheckedAccount<'info>>) -> Result<AccountInfo<'info>> {
     o.as_ref()
@@ -1974,6 +2056,8 @@ pub enum CardFlexError {
     ValidatorNotAllowed,
     #[msg("nothing left to claim for this seat")]
     NothingToClaim,
+    #[msg("the seat hasn't left in a synced commit yet")]
+    NotLeft,
     #[msg("only the program's upgrade authority may do this")]
     NotUpgradeAuthority,
     #[msg("the program is paused for new tables and buy-ins")]

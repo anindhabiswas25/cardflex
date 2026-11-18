@@ -131,7 +131,7 @@ export const RT = {
   stacks: 810, commit_seq: 858,
   // CF-020 rules and live hand (checked by tests/test_game.rs runtime_byte_offsets).
   boot: 866, rake_bps: 874, rake_cap: 876, rake_owed: 884, action_seq: 892, game: 900,
-  side_show_viewers: 1140, side_show_hand_no: 1146, turn_deadline: 1154, button: 1162, seat_epoch: 1163,
+  side_show_viewers: 1140, side_show_hand_no: 1146, turn_deadline: 1154, button: 1162, seat_epoch: 1163, leaving: 1187, departed: 1188,
 };
 // GameState offsets inside TableRuntime (absolute). Seats are 20 bytes each:
 // dealt, active, seen, blind_turns (1 each), stack u64, contributed u64.

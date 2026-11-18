@@ -30,8 +30,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-025 | P5: six-player full game on Devnet, verified end to end | Done: 3- and 5-hand games 39/39 and 66/66; handflow 67/67, privacy suite 230/230, recovery 20/20; fix: Side Show viewers cleared by `next_hand` | `pnpm game`, `docs/findings/cf-025-full-game.md` |
 | CF-030 | P6: ADR 0005 (seat lifecycle + money) and `GlobalConfig` (treasury, max rake, pause) | Done locally (Devnet in CF-035) | `docs/adr/0005-seat-lifecycle-and-money.md`, `tests/test_global.rs` |
 | CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Done locally (Devnet in CF-035): `cancel_buy_in` for unjoined seats while not delegated; seat hands and salts opened for empty seats | `tests/test_recovery.rs` |
-| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Next | |
-| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Planned | |
+| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Done locally (Devnet in CF-035); also fixed two CF-031 review findings (seat bricking after cancel, stale-clone race) | `tests/test_recovery.rs`, ADR 0005 amendment |
+| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Next | |
 | CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Planned | |
 | CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Planned | |
 
@@ -51,6 +51,16 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-032 (local): `leave_seat` (session key or wallet; at once
+  between hands, otherwise at `next_hand`); `sync_hand` marks a departed
+  matching-epoch ledger `left` with its final stack; `cash_out` pays it once
+  to the recorded wallet and closes the ledger; the seat can then be bought
+  and joined again with a new epoch. Security review of CF-031 found two
+  real bugs, both fixed with regression tests: a cancelled buy-in bricked the
+  seat (join required epoch + 1 exactly) and anyone could cancel; and a
+  cancel after an undelegation could let a stale PER clone seat refunded
+  money. Now: join accepts any newer, unsynced epoch; cancel is wallet-signed
+  and only on never-delegated tables.
 - 2026-11-19 — CF-031 (local): `buy_in` works on a live table (ledger with
   a new seat epoch, payout wallet, session key; pause-checked); permissionless
   `join_seat` seats exactly the next epoch between hands and, in PER, swaps
