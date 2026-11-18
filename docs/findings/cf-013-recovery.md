@@ -102,10 +102,19 @@ every commit rejected by the local base layer: *"failed to deserialize
 solana_transaction::versioned::VersionedTransaction"*. The MagicBlock
 validator 1.1.1 is built on solana-core 4.0, while our pinned
 `solana-test-validator` is Agave 3.1.10. On Devnet (Agave 4.5) commits work
-(outage drill). This is a **local toolchain mismatch**, not a restart
-effect. Checking commits after a restart locally needs an Agave 4.x
-`solana-test-validator` for the local stack only (open item; needs the
-team's approval to add a second Solana toolchain).
+(outage drill). This is **not a restart effect** (the control run fails too).
+
+**Correction (later the same day):** the first explanation, that Agave 3.1
+can't parse solana 4.0 transactions, was wrong. With an approved, separate
+Agave **4.0.3** `solana-test-validator` as the local base layer (installed
+in `~/.local/share/agave-4.0.3/`; the pinned 3.1.10 CLI is untouched), the
+log confirms `Version: 4.0.3`, and commits are rejected with the **same**
+error. The real cause is still unknown. Candidates: a newer transaction
+format or feature gate that only Devnet (Agave 4.5) has, or a
+MagicBlock-specific local setup we're missing. Next options: try Agave
+4.4.x, ask MagicBlock which local base-layer version validator 1.1.1
+expects, or pin an older local validator. Commits after a restart remain
+unverified locally; Devnet commits work.
 
 ## G3 evaluation (PRD §13.6)
 

@@ -176,10 +176,11 @@ Planned crates and apps are listed in PRD §7.
 - Only MagicBlock's TEE validator (`TEE_VALIDATOR`) may hold a table; the
   local validator only with feature `local-stack` (drills). Refunds are
   pull-based: `emergency_refund` then one `claim_refund` per seat.
-- Local stack commits to the base layer FAIL: our Agave 3.1.10
-  `solana-test-validator` can't parse MagicBlock validator 1.1.1 (solana
-  4.0) transactions. Devnet commits work. Don't debug this again; it needs an
-  Agave 4.x local validator (pending team approval).
+- Local stack commits to the base layer FAIL ("failed to deserialize
+  VersionedTransaction") with both Agave 3.1.10 and a separate Agave 4.0.3
+  (`~/.local/share/agave-4.0.3/`, used by scripts/restart-drill.sh). Cause
+  unknown (CF-013 findings); Devnet commits work. Ask MagicBlock which local
+  base-layer version validator 1.1.1 needs before spending more time.
 - The 16 "Stack offset … exceeded" warnings from `anchor build` come from
   unused sha2 serialization code in dependencies; they predate P3 and are
   harmless.

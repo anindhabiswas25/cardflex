@@ -23,7 +23,16 @@ start() { # name, args...
 
 echo "== start local services separately (fresh storage)"
 rm -rf magicblock-test-storage test-ledger
-start base "$bin/mb-test-validator" --rpc-port 8899
+# The local base layer must be Agave 4.x to accept MagicBlock 1.1.1 (solana 4.0)
+# commits. It lives in its own folder; the pinned 3.1.10 CLI is untouched.
+agave4="${AGAVE4_BIN:-$HOME/.local/share/agave-4.0.3/solana-release/bin}"
+if [[ -x "$agave4/solana-test-validator" ]]; then
+  echo "   local base layer: $("$agave4/solana-test-validator" --version | cut -d' ' -f1-2)"
+  start base env PATH="$agave4:$PATH" "$bin/mb-test-validator" --rpc-port 8899
+else
+  echo "   WARNING: no Agave 4.x at $agave4; commits will fail (see AGENTS.md)"
+  start base "$bin/mb-test-validator" --rpc-port 8899
+fi
 health http://127.0.0.1:8899
 er_cmd=("$bin/ephemeral-validator" --no-tui --listen 127.0.0.1:7799 --remotes http://127.0.0.1:8899 --remotes ws://127.0.0.1:8900)
 start er "${er_cmd[@]}"; er_pid=$!

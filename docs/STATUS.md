@@ -34,12 +34,16 @@ starts, finishes or gets blocked. Newest entries first in the log.
 - Ask MagicBlock about the write-latency tail on Devnet (CF-004) and missed
   `accountSubscribe` updates for ephemeral accounts (CF-006).
 - Sign off rules v1 (PRD §11.3; CF-014).
-- Approve (or not) an Agave 4.x `solana-test-validator` for the local stack only,
-  to test commits after a validator restart.
+- Ask MagicBlock which local base-layer (solana-test-validator) version their
+  validator 1.1.1 expects for commits (local commits fail with 3.1.10 and 4.0.3).
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
 
 ## Log
 
+- 2026-11-18 — Agave 4.0.3 installed separately for the local stack (pins
+  untouched). Local commits still fail with the same deserialize error, so
+  the earlier "3.1 vs 4.0 mismatch" explanation was wrong; cause unknown.
+  Docs corrected; question added for MagicBlock.
 - 2026-11-18 — User signed off G3 as GO (conditional) and approved a separate
   Agave 4.x for the local stack only (no pin change). P4 started:
   `teen-patti-core` (no_std) with hand ranking (exact category counts over
