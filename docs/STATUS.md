@@ -12,7 +12,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-003 | Latency, access and attestation probe | In progress: probe built, `dev-machine-1` measured; other regions pending | `packages/probes/`, `docs/findings/cf-003-devnet-access.md` |
 | CF-004 | Minimal program on devnet-tee: delegate, write, commit, undelegate; measure write latency | Done | `programs/card-flex` probe_* instructions, `packages/probes/src/roundtrip.mjs`, `docs/findings/cf-004-devnet-roundtrip.md` |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | Done | `docs/adr/0002-account-lifecycle.md`; PRD v1.2 amendment 1 |
-| CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | Done: six-player privacy matrix passes 2/2 on Devnet; WS delivery unreliable | `programs/card-flex/src/table.rs`, `pnpm tablepoc`, `docs/findings/cf-006-six-player-table.md`, `docs/findings/cf-006-a1-ephemeral-privacy.md` |
+| CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | Done: six-player privacy matrix passes 2/2 on Devnet; WS delivery unreliable | `programs/card-flex/src/table.rs`, `packages/probes/src/archive/tablepoc.mjs` (superseded by `pnpm privacy-suite`), `docs/findings/cf-006-six-player-table.md`, `docs/findings/cf-006-a1-ephemeral-privacy.md` |
 | CF-007 | Privacy probe suite for G1 | Done from `dev-machine-1`: 134/134 checks, 2/2 runs. **G1 provisionally passed**; needs other regions + a second day | `pnpm privacy-suite`, `docs/findings/cf-007-privacy-suite-g1.md` |
 | CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | Done | `crates/fairness-core`, `docs/spec/cf-fairness-v2.md`, `docs/spec/vectors/`, `scripts/check_fairness_vectors.py`, ADR 0003 |
 | CF-009 | Salt round: private `submit_salt` into SaltAccount, public commitment | Done: suite 231/231 (2/2 runs) incl. salts; salt tx redacted to everyone | `open_salt`/`start_hand`/`submit_salt`, `docs/findings/cf-009-salt-round.md` |
@@ -22,9 +22,9 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Done: Devnet outage drill 20/20 (pull-based refunds, validator pinned); local restart drill: state survives and hand continues; local commits blocked by an Agave 3.1 vs MagicBlock 4.0 tx-format mismatch. **G3 recommended GO (conditional), awaiting PM sign-off** | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery`, `scripts/restart-drill.sh` |
 | CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | Done: signed off by the PM 2026-11-19 (all ⚑ choices confirmed) | `docs/spec/teen-patti-rules-v1.md` |
 | CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done: 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
-| CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Next | |
-| CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Planned | |
-| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Planned | |
+| CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Done locally (Devnet run in CF-025): `act`; differential test vs host engine over random hands; ≤ 49k CU per action; `poc_join` removed (seats only via `buy_in`) | `programs/card-flex/tests/test_game.rs` |
+| CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Done locally (Devnet run in CF-025): `end_hand` removed; public action log in `HandLog`; `cf-verify` replays the game (`cf-hand-record/2`) | `docs/spec/teen-patti-rules-v1.md` §7 |
+| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Next | |
 | CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Planned | |
 | CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Planned | |
 | CF-025 | P5: six-player full game on Devnet, verified end to end | Planned | |
@@ -45,6 +45,13 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-020/021 (local): the program plays hands with
+  `teen-patti-core`. `act` (session key, sequence number) bets, packs, shows
+  and side-shows; settlement writes stacks and rake and is the only way to
+  reach `HAND_COMPLETE` (`end_hand` and `poc_join` removed). Every action is
+  logged publicly in `HandLog`; `cf-verify` replays it on the rebuilt deck.
+  Program 651 KB. Devnet probes migrated but not yet run (needs a deploy;
+  done in CF-025).
 - 2026-11-19 — PM signed off rules v1 (CF-014). P4 complete. P5 planned as
   CF-020…CF-025.
 - 2026-11-18 — Agave 4.0.3 installed separately for the local stack (pins

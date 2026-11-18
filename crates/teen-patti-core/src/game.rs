@@ -458,3 +458,93 @@ mod heapless {
         }
     }
 }
+
+/// Upper bound on logged actions in one hand. Every bet, Show and Side Show
+/// request adds at least one boot to the pot and the pot limit ends the hand
+/// at 1,024 boots, so there are at most ~1,022 of them, ≤ 511 Side Show
+/// responses, and ≤ 12 Sees and Packs/Timeouts. 1,600 leaves margin.
+pub const MAX_ACTIONS: usize = 1_600;
+
+/// One-byte action encoding for the public hand log (rules v1 §7):
+/// `seat << 4 | code << 1 | flag`. Codes: 0 See, 1 Chaal, 2 Pack, 3 Show,
+/// 4 Side Show request, 5 Side Show response, 6 Timeout. `flag` is 1 for a
+/// Chaal of twice the minimum bet, or for an accepted Side Show. Encode
+/// against the state *before* the action is applied.
+pub fn encode_action(seat: u8, action: Action, h: &Hand) -> Option<u8> {
+    if seat as usize >= MAX_SEATS {
+        return None;
+    }
+    let (code, flag) = match action {
+        Action::See => (0, 0),
+        Action::Chaal { amount } if amount == h.min_bet(seat) => (1, 0),
+        Action::Chaal { amount } if amount == 2 * h.min_bet(seat) => (1, 1),
+        Action::Chaal { .. } => return None,
+        Action::Pack => (2, 0),
+        Action::Show => (3, 0),
+        Action::SideShowRequest => (4, 0),
+        Action::SideShowRespond { accept } => (5, accept as u8),
+        Action::Timeout => (6, 0),
+    };
+    Some(seat << 4 | code << 1 | flag)
+}
+
+/// Inverse of [`encode_action`], against the state before the action.
+pub fn decode_action(b: u8, h: &Hand) -> Option<(u8, Action)> {
+    let (seat, code, flag) = (b >> 4, (b >> 1) & 7, b & 1);
+    if seat as usize >= MAX_SEATS || b & 0x80 != 0 {
+        return None;
+    }
+    let action = match (code, flag) {
+        (0, 0) => Action::See,
+        (1, f) => Action::Chaal {
+            amount: h.min_bet(seat) << f,
+        },
+        (2, 0) => Action::Pack,
+        (3, 0) => Action::Show,
+        (4, 0) => Action::SideShowRequest,
+        (5, f) => Action::SideShowRespond { accept: f == 1 },
+        (6, 0) => Action::Timeout,
+        _ => return None,
+    };
+    Some((seat, action))
+}
+
+/// Replays a logged hand from its starting stacks (seat-indexed), dealing
+/// order and actions. Every action must be legal and the hand must end.
+pub fn replay(
+    rules: Rules,
+    stacks: [u64; MAX_SEATS],
+    order: &[u8],
+    actions: &[u8],
+    oracle: &impl HandOracle,
+) -> Result<Hand, ReplayError> {
+    let mut h = Hand::start(rules, stacks, order).map_err(|e| ReplayError {
+        index: None,
+        error: Some(e),
+    })?;
+    for (i, &b) in actions.iter().enumerate() {
+        let (seat, action) = decode_action(b, &h).ok_or(ReplayError {
+            index: Some(i),
+            error: None,
+        })?;
+        h.apply(seat, action, oracle).map_err(|e| ReplayError {
+            index: Some(i),
+            error: Some(e),
+        })?;
+    }
+    if h.phase != Phase::Over {
+        return Err(ReplayError {
+            index: None,
+            error: None,
+        });
+    }
+    Ok(h)
+}
+
+/// Why a replay failed: which action (`None` = setup or "hand not over"),
+/// and the rule error (`None` = undecodable byte or unfinished hand).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReplayError {
+    pub index: Option<usize>,
+    pub error: Option<RuleError>,
+}

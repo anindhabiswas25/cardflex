@@ -379,3 +379,74 @@ fn random_hands_conserve_lamports_and_terminate() {
         }
     }
 }
+
+/// Encoding round-trips, and replaying the log rebuilds the same hand.
+#[test]
+fn action_log_round_trips_and_replays() {
+    let mut x: u64 = 0xdead_beef_1234_5678;
+    let mut rnd = move || {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        x
+    };
+    for _ in 0..5_000 {
+        let n = 2 + (rnd() % 5) as usize;
+        let order: Vec<u8> = (0..n as u8).collect();
+        let o = Hands(core::array::from_fn(|_| {
+            let r = 4 + (rnd() % 11) as u8;
+            high([r, r - 1, 2])
+        }));
+        let r = Rules::v1(100, (rnd() % 600) as u16, 1 + rnd() % 400);
+        let st: [u64; MAX_SEATS] = core::array::from_fn(|_| 100 + rnd() % 50_000);
+        let mut h = Hand::start(r, st, &order).unwrap();
+        let mut log = Vec::new();
+        while h.phase != Phase::Over {
+            let seat = match h.phase {
+                Phase::SideShow { target, .. } => target,
+                _ => h.to_act(),
+            };
+            let action = match rnd() % 8 {
+                0 => Action::Pack,
+                1 => Action::See,
+                2 => Action::Show,
+                3 => Action::SideShowRequest,
+                4 => Action::SideShowRespond {
+                    accept: rnd() % 2 == 0,
+                },
+                5 => Action::Timeout,
+                6 => Action::Chaal {
+                    amount: h.min_bet(seat) * 2,
+                },
+                _ => Action::Chaal {
+                    amount: h.min_bet(seat),
+                },
+            };
+            let b = encode_action(seat, action, &h).unwrap();
+            assert_eq!(decode_action(b, &h), Some((seat, action)));
+            if h.apply(seat, action, &o).is_ok() {
+                log.push(b);
+            }
+            if log.len() > 300 {
+                let s = h.to_act();
+                if h.phase == Phase::Betting {
+                    log.push(encode_action(s, Action::Timeout, &h).unwrap());
+                    h.apply(s, Action::Timeout, &o).unwrap();
+                }
+            }
+        }
+        assert!(log.len() <= MAX_ACTIONS);
+        let replayed = replay(r, st, &order, &log, &o).unwrap();
+        assert_eq!(replayed, h);
+        // A truncated log is not a finished hand; a corrupted byte fails.
+        assert!(replay(r, st, &order, &log[..log.len() - 1], &o).is_err());
+    }
+    let h = Hand::start(rules(), stacks(10_000), &[0, 1]).unwrap();
+    assert_eq!(
+        encode_action(0, Action::Chaal { amount: 3 * BOOT }, &h),
+        None
+    );
+    assert_eq!(decode_action(0x80, &h), None);
+    assert_eq!(decode_action(6 << 4, &h), None, "seat 6 doesn't exist");
+    assert_eq!(decode_action(0b1110, &h), None, "code 7");
+}

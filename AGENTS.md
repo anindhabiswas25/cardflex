@@ -55,7 +55,6 @@ cargo test --workspace   # needs anchor build first (LiteSVM loads the .so)
 pnpm verify              # all of the above, same order as CI
 pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
-pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet
 pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (needs devnet-poc build deployed)
 pnpm handflow -- --region <label>   # P2: salts -> VRF -> deal -> reveal -> cf-verify (48 checks)
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
@@ -75,7 +74,7 @@ crates/card-types/     frozen canonical card encoding (no_std)
 crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/spec/
 crates/fairness-verifier/  offline verifier lib + `cf-verify <record.json>` CLI
 crates/teen-patti-core/    rules v1: ranking + betting state machine (no_std); spec in docs/spec/teen-patti-rules-v1.md
-packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), tablepoc.mjs
+packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), archive/tablepoc.mjs
                        (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011);
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
 docs/adr/              decisions     docs/findings/  measured results
@@ -165,9 +164,22 @@ Planned crates and apps are listed in PRD §7.
   Accounts struct with more than one of them, or the 4 KB SBF stack overflows
   ("Access violation in stack frame").
 - `HandLog` is PUBLIC by design (explicit `is_private = false` permission);
-  `reveal_hand` makes the deck derivable, so it requires `HAND_COMPLETE`;
-  today only the interim authority-only `end_hand` sets that, and P5 must
-  replace it with showdown logic. Hand record format: `cf-hand-record/1` (crates/fairness-verifier).
+  `reveal_hand` makes the deck derivable, so it requires `HAND_COMPLETE`,
+  which ONLY the game sets (`act` settling: last player, Show, pot limit).
+  Never add another way to end a hand. Hand record format:
+  `cf-hand-record/2` (with the game section; `/1` = deck only still verifies).
+- Betting (CF-020): `act(action, amount, expected_seq)` signed by the seat's
+  session key; seat hands of the dealt seats go in remaining accounts in
+  dealing order (program ranks them; never logged). Rules live only in
+  `crates/teen-patti-core`; the program stores `TableRuntime.game` and
+  converts with `GameState::{from_hand,to_hand}`. Tables must be configured
+  (`configure_table(boot, rake_bps, rake_cap, refund_timeout)`) before a hand;
+  seats only via `buy_in` (40–200 boots). `poc_join` and `end_hand` are gone.
+- The action log is a raw tail of `HandLog` (`ACTION_LOG_OFFSET`), not a Borsh
+  field: a 1,600-byte array in the struct overflows the 4 KB SBF stack.
+  Byte offsets for JS are pinned by tests in `tests/test_game.rs`
+  (`runtime_byte_offsets`, `hand_log_byte_offsets`); keep `RT`, `GAME`, `HL`
+  in `common.mjs` in sync.
 - Money (ADR 0004): lamports only in TableVault (never delegated); only
   `SeatLedger.synced_stack` is ever paid; `sync_hand` trusts committed runtime
   state only after checking the delegation record (validator + owner) and

@@ -14,7 +14,6 @@
     "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust && pnpm check:fairness && pnpm check:g2",
     "mb-stack": "mb-stack",
     "probe": "pnpm --filter @card-flex/probes probe",
-    "tablepoc": "pnpm --filter @card-flex/probes tablepoc",
     "build:program:devnet-poc": "anchor build -- --features poc-test-deck",
     "privacy-suite": "pnpm --filter @card-flex/probes privacy-suite",
     "check:fairness": "python3 -I scripts/check_fairness_vectors.py",

@@ -1,4 +1,4 @@
-//! CF-006 base-layer table instructions. PER parts (permissions, ephemeral
+//! CF-006 base-layer table instructions (seating via `buy_in` since CF-020). PER parts (permissions, ephemeral
 //! accounts, deal) run on Devnet via `pnpm tablepoc`.
 
 use {
@@ -20,6 +20,7 @@ struct Table {
     authority: Keypair,
     config: Pubkey,
     runtime: Pubkey,
+    vault: Pubkey,
 }
 
 fn send(svm: &mut LiteSVM, ix: Instruction, signer: &Keypair) -> bool {
@@ -91,24 +92,57 @@ fn create(max_seats: u8) -> (Table, bool) {
         .to_account_metas(None),
     );
     let ok = send(&mut svm, ix, &authority);
+    let configure = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::ConfigureTable {
+            boot: 25_000,
+            rake_bps: 0,
+            rake_cap: 0,
+            refund_timeout_secs: 3_600,
+        }
+        .data(),
+        card_flex::accounts::ConfigureTable {
+            authority: authority.pubkey(),
+            config,
+            runtime,
+        }
+        .to_account_metas(None),
+    );
+    let ok = ok && send(&mut svm, configure, &authority);
     (
         Table {
             svm,
             authority,
             config,
             runtime,
+            vault,
         },
         ok,
     )
 }
 
+/// Takes a seat with the minimum buy-in (40 boots).
 fn join(t: &mut Table, wallet: &Keypair, seat: u8, session_key: Pubkey) -> bool {
+    let ledger = Pubkey::find_program_address(
+        &[card_flex::table::LEDGER_SEED, t.config.as_ref(), &[seat]],
+        &card_flex::id(),
+    )
+    .0;
     let ix = Instruction::new_with_bytes(
         card_flex::id(),
-        &card_flex::instruction::PocJoin { seat, session_key }.data(),
-        card_flex::accounts::PocJoin {
+        &card_flex::instruction::BuyIn {
+            seat,
+            amount: 1_000_000,
+            session_key,
+        }
+        .data(),
+        card_flex::accounts::BuyIn {
             wallet: wallet.pubkey(),
+            config: t.config,
             runtime: t.runtime,
+            vault: t.vault,
+            ledger,
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

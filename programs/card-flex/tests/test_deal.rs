@@ -33,7 +33,7 @@ fn send(svm: &mut LiteSVM, ixs: &[Instruction], signer: &Keypair) -> Result<u64,
     let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[signer]).unwrap();
     svm.send_transaction(tx)
         .map(|m| m.compute_units_consumed)
-        .map_err(|e| format!("{:?}", e.err))
+        .map_err(|e| format!("{:?} {:?}", e.err, e.meta.logs))
 }
 
 fn program_account(data: Vec<u8>) -> Account {
@@ -130,8 +130,14 @@ fn seeded_table(seats: u8) -> Table {
         merkle_root: [0; 32],
         vrf_request_slot: 0,
         cancelled_hands: 0,
-        stacks: [0; MAX_SEATS],
+        stacks: [100_000; MAX_SEATS],
         commit_seq: 0,
+        boot: 1_000,
+        rake_bps: 0,
+        rake_cap: 0,
+        rake_owed: 0,
+        action_seq: 0,
+        game: Default::default(),
         bump,
     };
     for s in 0..seats as usize {
@@ -400,8 +406,10 @@ fn revealed_hand_log_passes_the_independent_verifier() {
     let mut acc = t.svm.get_account(&t.runtime).unwrap();
     let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
     let wallets: Vec<Pubkey> = (0..seats).map(|_| Pubkey::new_unique()).collect();
+    let sessions: Vec<Keypair> = (0..seats).map(|_| Keypair::new()).collect();
     for (s, w) in wallets.iter().enumerate() {
         rt.wallets[s] = *w;
+        rt.session_keys[s] = sessions[s].pubkey();
     }
     let roster = roster_hash::<SoftSha256>(
         &(0..seats)
@@ -472,11 +480,19 @@ fn revealed_hand_log_passes_the_independent_verifier() {
         vrf_output: [0; 32],
         merkle_root: [0; 32],
         revealed: false,
+        boot: 0,
+        rake_bps: 0,
+        rake_cap: 0,
+        start_stacks: [0; MAX_SEATS],
+        end_reason: 0,
+        winners: 0,
+        payouts: [0; MAX_SEATS],
+        rake: 0,
         bump,
     };
     let mut ld = Vec::new();
     log.try_serialize(&mut ld).unwrap();
-    ld.resize(8 + HandLog::INIT_SPACE, 0);
+    ld.resize(HAND_LOG_LEN, 0);
     t.svm.set_account(hand_log, program_account(ld)).unwrap();
 
     let deal = deal_ix(&t, &t.hands.clone());
@@ -499,19 +515,59 @@ fn revealed_hand_log_passes_the_independent_verifier() {
         metas.clone(),
     );
     // Security review: no reveal while the hand is being played.
-    assert!(custom_error(
-        &send(&mut t.svm, std::slice::from_ref(&reveal), &payer),
-        card_flex::CardFlexError::WrongPhase
-    ));
-    // Finish the hand (interim end_hand; P5: showdown), then reveal.
-    let mut acc = t.svm.get_account(&t.runtime).unwrap();
-    let mut rt2 = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
-    rt2.phase = phase::HAND_COMPLETE;
-    let mut data = Vec::new();
-    rt2.try_serialize(&mut data).unwrap();
-    data.resize(acc.data.len(), 0);
-    acc.data = data;
-    t.svm.set_account(t.runtime, acc).unwrap();
+    let early = send(&mut t.svm, std::slice::from_ref(&reveal), &payer);
+    assert!(
+        custom_error(&early, card_flex::CardFlexError::WrongPhase),
+        "{early:?}"
+    );
+    // Play the hand with real actions (CF-021): everyone packs until two
+    // remain, then the player to act Sees and calls a Show.
+    loop {
+        let rt2 = TableRuntime::try_deserialize(
+            &mut t.svm.get_account(&t.runtime).unwrap().data.as_slice(),
+        )
+        .unwrap();
+        if rt2.phase == phase::HAND_COMPLETE {
+            break;
+        }
+        let h = rt2.game.to_hand();
+        let seat = h.to_act();
+        let (code, amount) = if h.active_count() > 2 {
+            (2u8, 0u64) // Pack
+        } else if !h.seats[seat as usize].seen {
+            (0, 0) // See
+        } else {
+            (3, 0) // Show
+        };
+        let mut metas = card_flex::accounts::Act {
+            session: sessions[seat as usize].pubkey(),
+            runtime: t.runtime,
+            hand_log,
+        }
+        .to_account_metas(None);
+        metas.extend(t.hands.iter().map(|h| {
+            anchor_lang::solana_program::instruction::AccountMeta::new_readonly(*h, false)
+        }));
+        let act = Instruction::new_with_bytes(
+            card_flex::id(),
+            &card_flex::instruction::Act {
+                action: code,
+                amount,
+                expected_seq: rt2.action_seq,
+            }
+            .data(),
+            metas,
+        );
+        t.svm.expire_blockhash();
+        let msg =
+            Message::new_with_blockhash(&[act], Some(&payer.pubkey()), &t.svm.latest_blockhash());
+        let tx = VersionedTransaction::try_new(
+            VersionedMessage::Legacy(msg),
+            &[&payer, &sessions[seat as usize]],
+        )
+        .unwrap();
+        t.svm.send_transaction(tx).expect("act");
+    }
     send(&mut t.svm, &[reveal], &payer).expect("reveal");
     // Reveal only once.
     let again = Instruction::new_with_bytes(
@@ -531,11 +587,41 @@ fn revealed_hand_log_passes_the_independent_verifier() {
         let d = t.svm.get_account(&t.hands[1]).unwrap().data;
         d[HAND_CARDS..HAND_CARDS + 3].to_vec()
     };
+    let actions = {
+        let d = t.svm.get_account(&hand_log).unwrap().data;
+        let (_, count) = action_log_header(&d);
+        d[ACTION_LOG_ACTIONS..ACTION_LOG_ACTIONS + count as usize].to_vec()
+    };
+    let list = |v: &[u64]| {
+        v[..n]
+            .iter()
+            .map(|x| format!("\"{x}\""))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let winners: Vec<u8> = log.seats[..n]
+        .iter()
+        .copied()
+        .filter(|s| log.winners & (1 << s) != 0)
+        .collect();
+    let game = format!(
+        r#"{{"boot":"{}","rake_bps":{},"rake_cap":"{}","start_stacks":[{}],"actions":"{}","end_reason":{},"winners":{:?},"payouts":[{}],"rake":"{}"}}"#,
+        log.boot,
+        log.rake_bps,
+        log.rake_cap,
+        list(&log.start_stacks),
+        hex(&actions),
+        log.end_reason,
+        winners,
+        list(&log.payouts),
+        log.rake
+    );
+    assert_eq!(log.end_reason, 1, "ended by Show");
     let json = format!(
-        r#"{{"format":"cf-hand-record/1","protocol_version":{},"program_id":"{}","table":"{}","hand_no":"{}","rules_version":{},
+        r#"{{"format":"cf-hand-record/2","protocol_version":{},"program_id":"{}","table":"{}","hand_no":"{}","rules_version":{},
            "seats":[{}],"salts":[{}],"vrf_output":"{}",
            "claimed":{{"roster_hash":"{}","hand_ctx":"{}","salt_commitments":[{}],"vrf_caller_seed":"{}","merkle_root":"{}"}},
-           "hands":[{{"seat":1,"cards":{:?}}}]}}"#,
+           "hands":[{{"seat":1,"cards":{:?}}}],"game":{game}}}"#,
         log.protocol_version,
         card_flex::id(),
         log.config,
@@ -570,5 +656,9 @@ fn revealed_hand_log_passes_the_independent_verifier() {
         "{}",
         report.render()
     );
+    assert!(report
+        .checks
+        .iter()
+        .any(|c| c.name == "Game result" && c.status == fairness_verifier::Status::Valid));
     eprintln!("{}", report.render());
 }

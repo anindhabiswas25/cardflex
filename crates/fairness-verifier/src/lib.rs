@@ -1,7 +1,9 @@
 //! Independent offline verifier for one Card Flex hand (CF-Fairness v2).
 //!
-//! Input: a hand record (JSON, format `cf-hand-record/1`) built from public
-//! data only: the `HandLog` reveal plus any cards shown. Output: a report
+//! Input: a hand record (JSON, format `cf-hand-record/2`, or `/1` without
+//! the game section) built from public data only: the `HandLog` reveal plus
+//! any cards shown. With `/2` the verifier also replays the betting with
+//! `teen-patti-core` on the rebuilt deck and checks winners, payouts and rake. Output: a report
 //! with one line per check (PRD §22). It never asks the program, the backend
 //! or the PER whether a hand was fair; it rebuilds everything from the spec
 //! (`docs/spec/cf-fairness-v2.md`) and compares.
@@ -12,7 +14,27 @@ use card_types::Card;
 use fairness_core::{self as fc, Hash, SoftSha256 as H};
 use serde::Deserialize;
 
-pub const RECORD_FORMAT: &str = "cf-hand-record/1";
+pub const RECORD_FORMAT: &str = "cf-hand-record/2";
+/// Older records (deck only, no game section) still verify.
+pub const RECORD_FORMAT_V1: &str = "cf-hand-record/1";
+
+/// The betting of one hand, from `HandLog` (CF-021). Amounts are decimal
+/// strings; per-seat lists are in dealing order.
+#[derive(Debug, Deserialize)]
+pub struct GameRecord {
+    pub boot: String,
+    pub rake_bps: u16,
+    pub rake_cap: String,
+    pub start_stacks: Vec<String>,
+    /// Hex, one byte per action (`teen_patti_core::game::encode_action`).
+    pub actions: String,
+    /// 0 last player, 1 show, 2 pot limit.
+    pub end_reason: u8,
+    /// Winning seat indices.
+    pub winners: Vec<u8>,
+    pub payouts: Vec<String>,
+    pub rake: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct SeatEntry {
@@ -52,6 +74,9 @@ pub struct HandRecord {
     /// Cards a player showed or received (e.g. at showdown). Optional.
     #[serde(default)]
     pub hands: Vec<ShownHand>,
+    /// Required in `cf-hand-record/2`.
+    #[serde(default)]
+    pub game: Option<GameRecord>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,7 +168,8 @@ pub fn verify(rec: &HandRecord) -> Report {
         })
     };
 
-    let header_ok = rec.format == RECORD_FORMAT && rec.protocol_version == fc::PROTOCOL_VERSION;
+    let header_ok = (rec.format == RECORD_FORMAT || rec.format == RECORD_FORMAT_V1)
+        && rec.protocol_version == fc::PROTOCOL_VERSION;
     push(
         "Protocol version",
         header_ok,
@@ -315,9 +341,138 @@ pub fn verify(rec: &HandRecord) -> Report {
         });
     }
 
+    checks.push(game_check(rec, &seats, &deck));
+
     Report {
         checks,
         deck: Some(deck.iter().map(|c| c.id()).collect()),
+    }
+}
+
+/// Replays the logged betting on the rebuilt deck (rules v1) and compares
+/// the result with what the program recorded.
+fn game_check(rec: &HandRecord, seats: &[fc::Seat], deck: &[Card]) -> Check {
+    use teen_patti_core::game::{self, HandOracle, Rules, MAX_SEATS};
+    let name = "Game result";
+    let Some(g) = &rec.game else {
+        return Check {
+            name,
+            status: if rec.format == RECORD_FORMAT_V1 {
+                Status::NotProvided
+            } else {
+                Status::Invalid
+            },
+            detail: "no game section in the record".into(),
+        };
+    };
+    let invalid = |detail: String| Check {
+        name,
+        status: Status::Invalid,
+        detail,
+    };
+    let n = seats.len();
+    let num = |s: &String| s.parse::<u64>().map_err(|_| format!("{s:?} is not a u64"));
+    let parsed = (|| -> Result<_, String> {
+        if rec.rules_version != 1 {
+            return Err(format!("rules_version {} not supported", rec.rules_version));
+        }
+        if g.start_stacks.len() != n || g.payouts.len() != n {
+            return Err("start_stacks and payouts need one entry per seat".into());
+        }
+        let a = g.actions.trim_start_matches("0x");
+        if a.len() % 2 != 0 {
+            return Err("actions: odd hex length".into());
+        }
+        let actions = (0..a.len() / 2)
+            .map(|i| u8::from_str_radix(&a[2 * i..2 * i + 2], 16).map_err(|e| e.to_string()))
+            .collect::<Result<Vec<u8>, _>>()?;
+        let starts = g
+            .start_stacks
+            .iter()
+            .map(num)
+            .collect::<Result<Vec<_>, _>>()?;
+        let payouts = g.payouts.iter().map(num).collect::<Result<Vec<_>, _>>()?;
+        Ok((
+            num(&g.boot)?,
+            num(&g.rake_cap)?,
+            num(&g.rake)?,
+            actions,
+            starts,
+            payouts,
+        ))
+    })();
+    let (boot, rake_cap, rake, actions, starts, payouts) = match parsed {
+        Ok(p) => p,
+        Err(e) => return invalid(e),
+    };
+
+    struct Ranks([teen_patti_core::HandRank; MAX_SEATS]);
+    impl HandOracle for Ranks {
+        fn rank(&self, seat: u8) -> teen_patti_core::HandRank {
+            self.0[seat as usize]
+        }
+    }
+    let mut ranks = Ranks([teen_patti_core::HandRank { key: 0 }; MAX_SEATS]);
+    let mut stacks = [0u64; MAX_SEATS];
+    let order: Vec<u8> = seats.iter().map(|s| s.index).collect();
+    for (k, s) in seats.iter().enumerate() {
+        let p = fc::deal_positions(k, n);
+        ranks.0[s.index as usize] = teen_patti_core::evaluate([deck[p[0]], deck[p[1]], deck[p[2]]]);
+        stacks[s.index as usize] = starts[k];
+    }
+    let rules = Rules::v1(boot, g.rake_bps, rake_cap);
+    let hand = match game::replay(rules, stacks, &order, &actions, &ranks) {
+        Ok(h) => h,
+        Err(e) => {
+            return invalid(match e.index {
+                Some(i) => format!(
+                    "action {i} (0x{:02x}) is illegal: {:?}",
+                    actions[i], e.error
+                ),
+                None => format!(
+                    "the logged actions don't finish a legal hand ({:?})",
+                    e.error
+                ),
+            })
+        }
+    };
+    let st = hand.settlement.expect("replay ends the hand");
+    let reason = st.reason as u8;
+    let won: Vec<u8> = order
+        .iter()
+        .copied()
+        .filter(|s| st.winners & (1 << s) != 0)
+        .collect();
+    let paid: Vec<u64> = order.iter().map(|&s| st.payouts[s as usize]).collect();
+    let mut claimed_winners = g.winners.clone();
+    claimed_winners.sort_unstable();
+    let mut won_sorted = won.clone();
+    won_sorted.sort_unstable();
+    let mut problems = Vec::new();
+    if reason != g.end_reason {
+        problems.push(format!("end reason {reason}, recorded {}", g.end_reason));
+    }
+    if won_sorted != claimed_winners {
+        problems.push(format!("winners {won:?}, recorded {:?}", g.winners));
+    }
+    if paid != payouts {
+        problems.push(format!("payouts {paid:?}, recorded {payouts:?}"));
+    }
+    if st.rake != rake {
+        problems.push(format!("rake {}, recorded {rake}", st.rake));
+    }
+    if !problems.is_empty() {
+        return invalid(problems.join("; "));
+    }
+    let how = ["last player standing", "show", "pot limit"][reason as usize];
+    Check {
+        name,
+        status: Status::Valid,
+        detail: format!(
+            "{} actions replayed; seat(s) {won:?} win by {how}; rake {}",
+            actions.len(),
+            st.rake
+        ),
     }
 }
 
@@ -363,11 +518,12 @@ mod tests {
             .map(|&p| deck[p].id())
             .collect();
         let b58 = |k: &[u8; 32]| bs58::encode(k).into_string();
+        let game = game_json(&seats, &deck);
         let json = format!(
             r#"{{"format":"{RECORD_FORMAT}","protocol_version":2,"program_id":"{}","table":"{}","hand_no":"9","rules_version":1,
                "seats":[{}],"salts":[{}],"vrf_output":"{}",
                "claimed":{{"roster_hash":"{}","hand_ctx":"{}","salt_commitments":[{}],"vrf_caller_seed":"{}","merkle_root":"{}"}},
-               "hands":[{{"seat":2,"cards":{:?}}}]}}"#,
+               "hands":[{{"seat":2,"cards":{:?}}}],"game":{game}}}"#,
             b58(&program_id),
             b58(&table),
             seats
@@ -392,6 +548,150 @@ mod tests {
             shown,
         );
         (json, deck.iter().map(|c| c.id()).collect())
+    }
+
+    /// Plays one hand on this deck: seat 0 bets blind, seat 2 sees and bets,
+    /// seat 5 packs, seat 0 sees and calls a Show.
+    fn game_json(seats: &[fc::Seat], deck: &[Card]) -> String {
+        use teen_patti_core::game::*;
+        struct R([teen_patti_core::HandRank; MAX_SEATS]);
+        impl HandOracle for R {
+            fn rank(&self, s: u8) -> teen_patti_core::HandRank {
+                self.0[s as usize]
+            }
+        }
+        let n = seats.len();
+        let mut r = R([teen_patti_core::HandRank { key: 0 }; MAX_SEATS]);
+        for (k, s) in seats.iter().enumerate() {
+            let p = fc::deal_positions(k, n);
+            r.0[s.index as usize] = teen_patti_core::evaluate([deck[p[0]], deck[p[1]], deck[p[2]]]);
+        }
+        let mut stacks = [0u64; MAX_SEATS];
+        for s in seats {
+            stacks[s.index as usize] = 100_000;
+        }
+        let order: Vec<u8> = seats.iter().map(|s| s.index).collect();
+        let mut h = Hand::start(Rules::v1(1_000, 250, 2_000), stacks, &order).unwrap();
+        let mut log = Vec::new();
+        for (seat, a) in [
+            (0, Action::Chaal { amount: 1_000 }),
+            (2, Action::See),
+            (2, Action::Chaal { amount: 2_000 }),
+            (5, Action::Pack),
+            (0, Action::See),
+            (0, Action::Show),
+        ] {
+            log.push(encode_action(seat, a, &h).unwrap());
+            h.apply(seat, a, &r).unwrap();
+        }
+        let st = h.settlement.unwrap();
+        let winners: Vec<u8> = order
+            .iter()
+            .copied()
+            .filter(|s| st.winners & (1 << s) != 0)
+            .collect();
+        let list = |v: Vec<u64>| {
+            v.iter()
+                .map(|x| format!("\"{x}\""))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        format!(
+            r#"{{"boot":"1000","rake_bps":250,"rake_cap":"2000","start_stacks":[{}],"actions":"{}","end_reason":{},"winners":{:?},"payouts":[{}],"rake":"{}"}}"#,
+            list(vec![100_000; n]),
+            hex(&log),
+            st.reason as u8,
+            winners,
+            list(order.iter().map(|&s| st.payouts[s as usize]).collect()),
+            st.rake
+        )
+    }
+
+    fn replace_once(json: &str, from: &str, to: &str) -> String {
+        assert_eq!(json.matches(from).count(), 1, "{from}");
+        json.replacen(from, to, 1)
+    }
+
+    #[test]
+    fn game_result_is_replayed_and_checked() {
+        let (json, _) = record();
+        let rep = verify(&parse(&json).unwrap());
+        let g = rep.checks.iter().find(|c| c.name == "Game result").unwrap();
+        assert_eq!(g.status, Status::Valid, "{}", rep.render());
+        assert!(
+            g.detail.contains("6 actions replayed") && g.detail.contains("show"),
+            "{}",
+            g.detail
+        );
+        // Tampering with the result, the rake, a payout or the log is caught.
+        let rec = parse(&json).unwrap();
+        let game = rec.game.as_ref().unwrap();
+        let other = if game.winners == vec![0] {
+            "[2]"
+        } else {
+            "[0]"
+        };
+        assert_eq!(
+            failed(&replace_once(
+                &json,
+                &format!("\"winners\":{:?}", game.winners),
+                &format!("\"winners\":{other}")
+            )),
+            vec!["Game result"]
+        );
+        assert_eq!(
+            failed(&replace_once(
+                &json,
+                &format!("\"rake\":\"{}\"", game.rake),
+                "\"rake\":\"1\""
+            )),
+            vec!["Game result"]
+        );
+        assert_eq!(
+            failed(&replace_once(&json, "\"end_reason\":1", "\"end_reason\":0")),
+            vec!["Game result"]
+        );
+        let p0 = &game.payouts[0];
+        let p0_bumped = (p0.parse::<u64>().unwrap() + 1).to_string();
+        assert_eq!(
+            failed(&replace_once(
+                &json,
+                &format!("\"payouts\":[\"{p0}\""),
+                &format!("\"payouts\":[\"{p0_bumped}\"")
+            )),
+            vec!["Game result"]
+        );
+        let a = &game.actions;
+        // Drop the final Show: the hand is no longer finished.
+        assert_eq!(
+            failed(&replace_once(&json, a, &a[..a.len() - 2])),
+            vec!["Game result"]
+        );
+        // A starting stack too small for the logged bets (seat 0 can't pay
+        // for its Show).
+        assert_eq!(
+            failed(&replace_once(
+                &json,
+                "\"start_stacks\":[\"100000\"",
+                "\"start_stacks\":[\"1500\""
+            )),
+            vec!["Game result"]
+        );
+        // /2 needs the game section; /1 may omit it.
+        let i = json.find(",\"game\":").unwrap();
+        let no_game = format!("{}}}", &json[..i]);
+        assert_eq!(failed(&no_game), vec!["Game result"]);
+        let v1 = no_game.replace(RECORD_FORMAT, RECORD_FORMAT_V1);
+        let rep = verify(&parse(&v1).unwrap());
+        assert_eq!(rep.overall(), Status::Valid, "{}", rep.render());
+        assert_eq!(
+            rep.checks
+                .iter()
+                .find(|c| c.name == "Game result")
+                .unwrap()
+                .status,
+            Status::NotProvided
+        );
     }
 
     #[test]
@@ -497,7 +797,7 @@ mod tests {
                 .map(|(s, w)| format!(r#"{{"seat":{},"wallet":"{}"}}"#, s, b58hex(w)))
                 .collect();
             let json = format!(
-                r#"{{"format":"{RECORD_FORMAT}","protocol_version":2,"program_id":"{}","table":"{}","hand_no":{},"rules_version":{},
+                r#"{{"format":"{RECORD_FORMAT_V1}","protocol_version":2,"program_id":"{}","table":"{}","hand_no":{},"rules_version":{},
                    "seats":[{}],"salts":{},"vrf_output":{},
                    "claimed":{{"roster_hash":{},"hand_ctx":{},"salt_commitments":{},"vrf_caller_seed":{},"merkle_root":{}}},
                    "hands":[{}]}}"#,
@@ -582,7 +882,7 @@ mod g2 {
             let root = fc::merkle_root::<H>(&fc::leaves::<H>(&ctx, &seed, &deck));
             let k = (r(b"k")[0] as usize) % n;
             let mut rec = HandRecord {
-                format: RECORD_FORMAT.into(),
+                format: RECORD_FORMAT_V1.into(),
                 protocol_version: 2,
                 program_id: bs58::encode(program_id).into_string(),
                 table: bs58::encode(table).into_string(),
@@ -611,6 +911,7 @@ mod g2 {
                         .map(|&p| deck[p].id())
                         .collect(),
                 }],
+                game: None,
             };
             if verify(&rec).overall() == Status::Valid {
                 valid += 1;

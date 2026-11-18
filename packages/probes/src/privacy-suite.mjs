@@ -66,8 +66,15 @@ try {
   log("setup: table, six players, delegate");
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
   await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
+  // Seat with real buy-ins (CF-020): boot 25,000, buy-in 40 boots.
+  const cfgData = Buffer.alloc(22);
+  cfgData.writeBigUInt64LE(25_000n, 0); cfgData.writeBigUInt64LE(0n, 10); cfgData.writeUInt32LE(3600, 18);
+  await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime)], cfgData)], [authority]);
   for (let s = 0; s < SEATS; s++) {
-    await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
+    const ledger = PublicKey.findProgramAddressSync([Buffer.from("seat-ledger"), config.toBuffer(), u8(s)], PROGRAM_ID)[0];
+    await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: 6_000_000 })], [payer]);
+    await send(base, [ix("buy_in", [w(players[s].wallet.publicKey, true), w(config), w(runtime), w(vault), w(ledger), r(SystemProgram.programId)],
+      Buffer.concat([u8(s), u64(1_000_000), players[s].session.publicKey.toBuffer()]))], [players[s].wallet]);
   }
   await send(base, [ix("delegate_table", [
     r(authority.publicKey, true), w(config),

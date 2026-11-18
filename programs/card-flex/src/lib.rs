@@ -95,23 +95,35 @@ pub mod card_flex {
     /// bought in, so players always see the terms they joined under.
     pub fn configure_table(
         ctx: Context<ConfigureTable>,
-        min_buy_in: u64,
-        max_buy_in: u64,
+        boot: u64,
+        rake_bps: u16,
+        rake_cap: u64,
         refund_timeout_secs: u32,
     ) -> Result<()> {
         let config = &mut ctx.accounts.config;
         require!(config.seated == 0, CardFlexError::TableLocked);
-        require!(
-            min_buy_in >= Rent::get()?.minimum_balance(0) && min_buy_in <= max_buy_in,
-            CardFlexError::BadAmount
-        );
+        require!(boot > 0, CardFlexError::BadAmount);
+        require!(rake_bps <= MAX_RAKE_BPS, CardFlexError::BadAmount);
         require!(
             (REFUND_TIMEOUT_MIN_SECS..=REFUND_TIMEOUT_MAX_SECS).contains(&refund_timeout_secs),
             CardFlexError::BadTimeout
         );
+        // Rules v1 §6: 40–200 boots, never below the rent-exempt minimum.
+        let min_buy_in = boot
+            .checked_mul(MIN_BUY_IN_BOOTS)
+            .ok_or(CardFlexError::Overflow)?
+            .max(Rent::get()?.minimum_balance(0));
+        let max_buy_in = boot
+            .checked_mul(MAX_BUY_IN_BOOTS)
+            .ok_or(CardFlexError::Overflow)?;
+        require!(min_buy_in <= max_buy_in, CardFlexError::BadAmount);
         config.min_buy_in = min_buy_in;
         config.max_buy_in = max_buy_in;
         config.refund_timeout_secs = refund_timeout_secs;
+        let runtime = &mut ctx.accounts.runtime;
+        runtime.boot = boot;
+        runtime.rake_bps = rake_bps;
+        runtime.rake_cap = rake_cap;
         Ok(())
     }
 
@@ -227,7 +239,9 @@ pub mod card_flex {
         } else {
             require_keys_eq!(*rt_info.owner, crate::ID, CardFlexError::BadRuntime);
         }
-        let rt = TableRuntime::try_deserialize(&mut &rt_info.try_borrow_data()?[..])?;
+        let rt = Box::new(TableRuntime::try_deserialize(
+            &mut &rt_info.try_borrow_data()?[..],
+        )?);
         require_keys_eq!(rt.config, config_key, CardFlexError::BadRuntime);
         require!(
             rt.commit_seq > config.last_synced_seq,
@@ -300,34 +314,6 @@ pub mod card_flex {
         ledger.synced_stack = 0;
         **vault_info.try_borrow_mut_lamports()? -= pay;
         **ctx.accounts.wallet.try_borrow_mut_lamports()? += pay;
-        Ok(())
-    }
-
-    /// P1 seating on the base layer: records the wallet and its session key.
-    /// P6 replaces this with `buy_in`.
-    pub fn poc_join(ctx: Context<PocJoin>, seat: u8, session_key: Pubkey) -> Result<()> {
-        let runtime = &mut ctx.accounts.runtime;
-        let wallet = ctx.accounts.wallet.key();
-        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
-        require!(
-            runtime.occupied & (1 << seat) == 0,
-            CardFlexError::SeatTaken
-        );
-        require!(!runtime.dealt, CardFlexError::AlreadyDealt);
-        require!(!runtime.locked, CardFlexError::TableLocked);
-        require!(
-            !runtime.seated().any(|i| runtime.wallets[i] == wallet),
-            CardFlexError::SeatTaken
-        );
-        let runtime_key = runtime.key();
-        let config = runtime.config;
-        require!(
-            runtime.is_valid_new_session(&session_key, &runtime_key, &config, &wallet),
-            CardFlexError::BadSessionKey
-        );
-        runtime.wallets[seat as usize] = wallet;
-        runtime.session_keys[seat as usize] = session_key;
-        runtime.occupied |= 1 << seat;
         Ok(())
     }
 
@@ -708,8 +694,13 @@ pub mod card_flex {
         let runtime = &mut ctx.accounts.runtime;
         require!(runtime.locked, CardFlexError::TableNotLocked);
         require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+        // Rules v1 §1: a seat whose stack is below the boot isn't dealt in.
+        // A table must be configured (boot set) before any hand.
+        let boot = runtime.boot;
+        require!(boot > 0, CardFlexError::BadAmount);
         let seats: Vec<fairness_core::Seat> = runtime
             .seated()
+            .filter(|&i| runtime.stacks[i] >= boot)
             .map(|i| fairness_core::Seat {
                 index: i as u8,
                 wallet: runtime.wallets[i].to_bytes(),
@@ -1003,6 +994,89 @@ pub mod card_flex {
         runtime.merkle_root = out.root;
         runtime.dealt = true;
         runtime.phase = phase::DEALT;
+        // CF-020: betting starts; boots are collected now.
+        let rules =
+            teen_patti_core::game::Rules::v1(runtime.boot, runtime.rake_bps, runtime.rake_cap);
+        let hand = teen_patti_core::game::Hand::start(rules, runtime.stacks, &order)
+            .map_err(|_| CardFlexError::BadStacks)?;
+        runtime.game = GameState::from_hand(&hand);
+        runtime.action_seq = 0;
+        Ok(())
+    }
+
+    /// One player action during betting (CF-020). Signed by the acting seat's
+    /// session key; `expected_seq` must equal the current `action_seq`, so a
+    /// stale or replayed action fails. Rules come only from
+    /// `teen-patti-core`; on settlement the stacks and rake are written back
+    /// and the hand becomes `HAND_COMPLETE`.
+    pub fn act(ctx: Context<Act>, action: u8, amount: u64, expected_seq: u64) -> Result<()> {
+        use teen_patti_core::game::{Action, Event};
+        let runtime_key = ctx.accounts.runtime.key();
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
+        require!(
+            expected_seq == runtime.action_seq,
+            CardFlexError::StaleAction
+        );
+        let session = ctx.accounts.session.key();
+        let seat = runtime
+            .seated()
+            .find(|&i| runtime.session_keys[i] == session)
+            .ok_or(CardFlexError::NotSeatOwner)? as u8;
+        let action = match action {
+            0 => Action::See,
+            1 => Action::Chaal { amount },
+            2 => Action::Pack,
+            3 => Action::Show,
+            4 => Action::SideShowRequest,
+            5 => Action::SideShowRespond {
+                accept: amount != 0,
+            },
+            _ => return err!(CardFlexError::IllegalAction),
+        };
+        let oracle = read_hand_ranks(runtime, runtime_key, ctx.remaining_accounts)?;
+        let mut hand = runtime.game.to_hand();
+        let before = hand.table_total();
+        let entry = teen_patti_core::game::encode_action(seat, action, &hand)
+            .ok_or(CardFlexError::BadBet)?;
+        let event = hand.apply(seat, action, &oracle).map_err(rule_error)?;
+        // CF-021: append to the public log tail (index = action_seq).
+        let i = runtime.action_seq as usize;
+        require!(
+            i < teen_patti_core::game::MAX_ACTIONS,
+            CardFlexError::Overflow
+        );
+        {
+            let info = ctx.accounts.hand_log.to_account_info();
+            let mut d = info.try_borrow_mut_data()?;
+            require!(d.len() >= HAND_LOG_LEN, CardFlexError::Overflow);
+            let o = ACTION_LOG_OFFSET;
+            d[o..o + 8].copy_from_slice(&runtime.hand_no.to_le_bytes());
+            d[o + 8..o + 10].copy_from_slice(&((i + 1) as u16).to_le_bytes());
+            d[ACTION_LOG_ACTIONS + i] = entry;
+        }
+        runtime.game = GameState::from_hand(&hand);
+        runtime.action_seq = runtime
+            .action_seq
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        if let Event::HandOver(s) = event {
+            // Conservation: nothing created or lost (rules v1 §5).
+            require!(
+                hand.table_total() + s.rake == before,
+                CardFlexError::BadStacks
+            );
+            for i in 0..MAX_SEATS {
+                if hand.seats[i].dealt {
+                    runtime.stacks[i] = hand.seats[i].stack;
+                }
+            }
+            runtime.rake_owed = runtime
+                .rake_owed
+                .checked_add(s.rake)
+                .ok_or(CardFlexError::Overflow)?;
+            runtime.phase = phase::HAND_COMPLETE;
+        }
         Ok(())
     }
 
@@ -1060,21 +1134,10 @@ pub mod card_flex {
         )
     }
 
-    /// Marks a dealt hand as finished. Interim, authority-only stand-in for
-    /// the P5 showdown / last-player resolution, which will set
-    /// `HAND_COMPLETE` itself; until then no game is played on these tables.
-    /// TODO(P5): remove; only game logic may finish a hand.
-    pub fn end_hand(ctx: Context<StartHand>) -> Result<()> {
-        let runtime = &mut ctx.accounts.runtime;
-        require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
-        runtime.phase = phase::HAND_COMPLETE;
-        Ok(())
-    }
-
     /// Publishes a finished hand's seed inputs (spec §9) in `HandLog`: roster,
     /// salts, VRF output, commitments and root. Permissionless. Salts are
     /// re-checked against their commitments. After this, anyone can rebuild
-    /// the deck, so in P5 it runs only after showdown.
+    /// the deck, so it runs only after the game has ended the hand.
     pub fn reveal_hand(ctx: Context<RevealHand>) -> Result<()> {
         let runtime = &mut ctx.accounts.runtime;
         // Security review: revealing during play would let anyone rebuild
@@ -1129,6 +1192,22 @@ pub mod card_flex {
         log.roster_hash = runtime.roster_hash;
         log.vrf_caller_seed = runtime.vrf_caller_seed;
         log.merkle_root = runtime.merkle_root;
+        // CF-021: rules, starting stacks and result, for replay. A hand that
+        // ended without any action can't exist (the game ends only on one).
+        let (log_hand, log_count) = {
+            let info = log.to_account_info();
+            let d = info.try_borrow_data()?;
+            require!(d.len() >= HAND_LOG_LEN, CardFlexError::WrongPhase);
+            action_log_header(&d)
+        };
+        require!(
+            runtime.game.phase == 2
+                && log_hand == runtime.hand_no
+                && log_count as u64 == runtime.action_seq
+                && log_count > 0,
+            CardFlexError::WrongPhase
+        );
+        write_game_summary(&runtime.game, &order, log);
         log.revealed = true;
         runtime.phase = phase::REVEALED;
         Ok(())
@@ -1276,7 +1355,7 @@ pub struct RequestShuffle<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: ephemeral dealer PDA (callback target), checked by seeds.
     #[account(seeds = [DEALER_SEED, runtime.key().as_ref()], bump)]
     pub dealer: UncheckedAccount<'info>,
@@ -1292,7 +1371,7 @@ pub struct RequestShuffle<'info> {
 #[derive(Accounts)]
 pub struct VrfDeal<'info> {
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
     #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
     pub dealer: UncheckedAccount<'info>,
@@ -1329,6 +1408,78 @@ fn create_permission_with<'info>(
     }
     .invoke_signed(signer_seeds)?;
     Ok(())
+}
+
+/// Copies the rules, starting stacks and result into the public log, in
+/// dealing order. Separate function: keeps `reveal_hand`'s stack frame small.
+#[inline(never)]
+fn write_game_summary(g: &GameState, order: &[u8], log: &mut HandLog) {
+    log.boot = g.boot;
+    log.rake_bps = g.rake_bps;
+    log.rake_cap = g.rake_cap;
+    log.end_reason = g.end_reason;
+    log.winners = g.winners;
+    log.rake = g.rake;
+    log.start_stacks = [0; MAX_SEATS];
+    log.payouts = [0; MAX_SEATS];
+    for (k, &seat) in order.iter().enumerate() {
+        let s = &g.seats[seat as usize];
+        let payout = g.payouts[seat as usize];
+        log.start_stacks[k] = s.stack + s.contributed - payout;
+        log.payouts[k] = payout;
+    }
+}
+
+/// Reads and ranks the dealt hands from the seat-hand accounts (dealing
+/// order). Each account is checked by PDA, owner, tag and hand number.
+fn read_hand_ranks(
+    runtime: &TableRuntime,
+    runtime_key: Pubkey,
+    accounts: &[AccountInfo],
+) -> Result<SeatHandOracle> {
+    let n = runtime.game.n as usize;
+    require!(accounts.len() == n, CardFlexError::BadSeatHand);
+    let mut ranks = [teen_patti_core::HandRank { key: 0 }; MAX_SEATS];
+    for (k, acc) in accounts.iter().enumerate() {
+        let seat = runtime.game.order[k];
+        let (expected, _) = Pubkey::find_program_address(
+            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
+            &crate::ID,
+        );
+        require_keys_eq!(acc.key(), expected, CardFlexError::BadSeatHand);
+        require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSeatHand);
+        let d = acc.try_borrow_data()?;
+        require!(
+            d.len() == SEAT_HAND_LEN as usize
+                && &d[..8] == SEAT_HAND_TAG
+                && d[41..49] == runtime.hand_no.to_le_bytes(),
+            CardFlexError::BadSeatHand
+        );
+        let cards: [card_types::Card; 3] = [
+            card_types::Card::from_id(d[HAND_CARDS]).map_err(|_| CardFlexError::BadSeatHand)?,
+            card_types::Card::from_id(d[HAND_CARDS + 1]).map_err(|_| CardFlexError::BadSeatHand)?,
+            card_types::Card::from_id(d[HAND_CARDS + 2]).map_err(|_| CardFlexError::BadSeatHand)?,
+        ];
+        ranks[seat as usize] = teen_patti_core::evaluate(cards);
+    }
+    Ok(SeatHandOracle { ranks })
+}
+
+fn rule_error(e: teen_patti_core::game::RuleError) -> anchor_lang::error::Error {
+    use teen_patti_core::game::RuleError as R;
+    match e {
+        R::NotYourTurn => error!(CardFlexError::NotYourTurn),
+        R::NotActive => error!(CardFlexError::NotActive),
+        R::BadAmount => error!(CardFlexError::BadBet),
+        R::MustSee => error!(CardFlexError::MustSee),
+        R::InsufficientStack => error!(CardFlexError::InsufficientStack),
+        R::CannotShow => error!(CardFlexError::CannotShow),
+        R::CannotSideShow => error!(CardFlexError::CannotSideShow),
+        R::SideShowPending => error!(CardFlexError::SideShowPending),
+        R::NoSideShowPending => error!(CardFlexError::NoSideShowPending),
+        R::HandOver => error!(CardFlexError::WrongPhase),
+        R::BadSetup => error!(CardFlexError::BadStacks),
+    }
 }
 
 #[error_code]
@@ -1405,4 +1556,28 @@ pub enum CardFlexError {
     ValidatorNotAllowed,
     #[msg("nothing left to claim for this seat")]
     NothingToClaim,
+    #[msg("action sequence number is stale")]
+    StaleAction,
+    #[msg("unknown action")]
+    IllegalAction,
+    #[msg("stacks inconsistent with the rules")]
+    BadStacks,
+    #[msg("not your turn")]
+    NotYourTurn,
+    #[msg("seat is not active in this hand")]
+    NotActive,
+    #[msg("bet amount not allowed")]
+    BadBet,
+    #[msg("blind turns used up: see your cards first")]
+    MustSee,
+    #[msg("stack can't cover the bet (no all-in): pack")]
+    InsufficientStack,
+    #[msg("show not allowed now")]
+    CannotShow,
+    #[msg("side show not allowed now")]
+    CannotSideShow,
+    #[msg("a side show is waiting for its target")]
+    SideShowPending,
+    #[msg("no side show pending")]
+    NoSideShowPending,
 }

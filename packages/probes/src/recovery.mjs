@@ -39,7 +39,7 @@ const check = (group, name, expected, actual, note) => {
 
 let t;
 try {
-  t = await setupTable({ seats: SEATS, buyIn: BUY_IN, refundTimeout: TIMEOUT });
+  t = await setupTable({ seats: SEATS, boot: BUY_IN / 40, buyIn: BUY_IN, refundTimeout: TIMEOUT });
   const { ix, tee, base, authority, players, config, runtime, handLog, vault, ledgers, dealer, saltAccs, hands } = t;
   const cfg = async () => (await base.getAccountInfo(config)).data;
   const record = delegationRecordPdaFromDelegatedAccount(runtime);
@@ -120,7 +120,7 @@ try {
   check("late commit", "no redeal: new VRF request rejected", true, await rejected(tee, [reqIx(keeper)], [keeper]));
 
   // Tidy up PER: finish, reveal, then teardown closes and undelegates.
-  await send(tee, [ix("end_hand", [r(authority.publicKey, true), r(config), w(runtime)])], [authority], { skipPreflight: true });
+  await t.packOut();
   await send(tee, [ix("reveal_hand", [r(keeper.publicKey, true), w(runtime), r(dealer), w(handLog), ...saltAccs.map((a) => r(a))])], [keeper], { skipPreflight: true });
 } catch (e) {
   report.error = (e instanceof Error ? String(e.stack ?? e) : JSON.stringify(e)).slice(0, 800);

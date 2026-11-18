@@ -897,6 +897,7 @@ dependencies = [
  "solana-sha256-hasher 3.1.0",
  "solana-signer",
  "solana-transaction",
+ "teen-patti-core",
 ]
 
 [[package]]
@@ -1534,6 +1535,7 @@ dependencies = [
  "fairness-core",
  "serde",
  "serde_json",
+ "teen-patti-core",
 ]
 
 [[package]]

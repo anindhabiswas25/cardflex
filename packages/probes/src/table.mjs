@@ -8,12 +8,13 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, loadDiscriminators, loadPayer, makeIx, send, tokenFor, teeConn,
-  waitFor, log, w, r, u8, u64,
+  waitFor, log, w, r, u8, u64, RT, GAME, PHASE, ACTION,
 } from "./common.mjs";
 
-// buyIn (lamports): use real buy_in (vault + seat ledgers, ADR 0004) instead
-// of poc_join; refundTimeout (s) is set with configure_table first.
-export async function setupTable({ seats = 6, buyIn = 0, refundTimeout = 3600 } = {}) {
+// Every seat buys in for real (vault + seat ledgers, ADR 0004). The table is
+// configured first: boot (lamports), rake and refund timeout. Buy-in must be
+// 40-200 boots (rules v1 section 6); the defaults give 40 boots.
+export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, rakeBps = 0, rakeCap = 0, refundTimeout = 3600 } = {}) {
   const ix = makeIx(loadDiscriminators());
   const payer = loadPayer();
   const base = new Connection(BASE_RPC, "confirmed");
@@ -37,20 +38,17 @@ export async function setupTable({ seats = 6, buyIn = 0, refundTimeout = 3600 } 
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
   await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
   const ledgers = players.map((_, s) => pda(Buffer.from("seat-ledger"), config.toBuffer(), u8(s)));
-  if (buyIn > 0) {
-    const cfgData = Buffer.alloc(20);
-    // min buy-in must be >= the rent-exempt minimum (program rule)
-    cfgData.writeBigUInt64LE(1_000_000n, 0); cfgData.writeBigUInt64LE(BigInt(buyIn) * 10n, 8); cfgData.writeUInt32LE(refundTimeout, 16);
-    await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config)], cfgData)], [authority]);
+  {
+    // configure_table(boot u64, rake_bps u16, rake_cap u64, refund_timeout_secs u32)
+    const cfgData = Buffer.alloc(22);
+    cfgData.writeBigUInt64LE(BigInt(boot), 0); cfgData.writeUInt16LE(rakeBps, 8);
+    cfgData.writeBigUInt64LE(BigInt(rakeCap), 10); cfgData.writeUInt32LE(refundTimeout, 18);
+    await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime)], cfgData)], [authority]);
     for (let s = 0; s < seats; s++) {
       // Fund each wallet for its buy-in plus the seat-ledger rent.
       await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: buyIn + 5_000_000 })], [payer]);
       await send(base, [ix("buy_in", [w(players[s].wallet.publicKey, true), w(config), w(runtime), w(vault), w(ledgers[s]), r(SystemProgram.programId)],
         Buffer.concat([u8(s), u64(buyIn), players[s].session.publicKey.toBuffer()]))], [players[s].wallet]);
-    }
-  } else {
-    for (let s = 0; s < seats; s++) {
-      await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
     }
   }
   await send(base, [ix("delegate_table", [
@@ -85,5 +83,27 @@ export async function setupTable({ seats = 6, buyIn = 0, refundTimeout = 3600 } 
     return waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   }
 
-  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats };
+  // CF-020 player action, signed by the seat's session key. Seat hands of the
+  // dealt seats follow in dealing order (read from the on-chain game).
+  const readRuntime = async (conn = tee) => (await conn.getAccountInfo(runtime))?.data;
+  const actIx = (d, s, code, amount = 0n) => {
+    const n = d[GAME.n];
+    const order = [...d.subarray(GAME.order, GAME.order + n)];
+    return ix("act", [r(players[s].session.publicKey, true), w(runtime), w(handLog), ...order.map((k) => r(hands[k]))],
+      Buffer.concat([u8(code), u64(BigInt(amount)), u64(d.readBigUInt64LE(RT.action_seq))]));
+  };
+  // Ends a dealt hand the only way the program allows: through the game.
+  // Whoever is to act packs until one player is left (CF-021).
+  async function packOut(conn = tee) {
+    for (let i = 0; i < 2 * seats; i++) {
+      const d = await readRuntime(conn);
+      if (d[RT.phase] !== PHASE.DEALT) return d[RT.phase];
+      const s = d[GAME.order + d[GAME.turn]];
+      await send(conn, [actIx(d, s, ACTION.PACK)], [players[s].session], { skipPreflight: true });
+      await waitFor(async () => { const e = await readRuntime(conn); return e && e.readBigUInt64LE(RT.action_seq) > d.readBigUInt64LE(RT.action_seq) ? e : null; }, 15_000, 100);
+    }
+    return (await readRuntime(conn))[RT.phase];
+  }
+
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, packOut };
 }

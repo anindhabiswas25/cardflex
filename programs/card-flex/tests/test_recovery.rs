@@ -93,14 +93,16 @@ fn setup(seats: usize) -> T {
     let configure = Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::ConfigureTable {
-            min_buy_in: 1_000_000,
-            max_buy_in: 1_000_000_000,
+            boot: 25_000,
+            rake_bps: 0,
+            rake_cap: 0,
             refund_timeout_secs: 60,
         }
         .data(),
         card_flex::accounts::ConfigureTable {
             authority: authority.pubkey(),
             config,
+            runtime,
         }
         .to_account_metas(None),
     );
@@ -292,14 +294,16 @@ fn buy_in_moves_lamports_into_the_vault_and_records_ledgers() {
     let ix = Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::ConfigureTable {
-            min_buy_in: 1,
-            max_buy_in: 10,
+            boot: 1,
+            rake_bps: 0,
+            rake_cap: 0,
             refund_timeout_secs: 60,
         }
         .data(),
         card_flex::accounts::ConfigureTable {
             authority: a.pubkey(),
             config: t.config,
+            runtime: t.runtime,
         }
         .to_account_metas(None),
     );

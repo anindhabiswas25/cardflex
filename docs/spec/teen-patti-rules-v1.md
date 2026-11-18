@@ -73,7 +73,8 @@ Amounts are lamports. "Stake" is the current bet in **blind terms**.
 
 - **Rake** = pot × `rake_bps` / 10,000 (integer floor), capped at `rake_cap`
   and taken from the won pot only. Both values come from the table config;
-  the program enforces a maximum (P6).
+  the program caps `rake_bps` at 1,000 (10%). Collected rake accrues in
+  `TableRuntime.rake_owed` (swept to the treasury in P6).
 - **Split pots:** the remainder is divided equally between the tied winners.
   Odd lamports go to the first tied winner in dealing order (the first seat
   clockwise from the button).
@@ -81,15 +82,30 @@ Amounts are lamports. "Stake" is the current bet in **blind terms**.
   stacks + rake equals the starting total exactly. Tested over 20,000
   random hands.
 
-## 6. Buy-in and table (enforced in P6, listed here for sign-off)
+## 6. Buy-in and table
 
 | Rule | v1 |
 | --- | --- |
-| Buy-in ⚑ | 40× to 200× boot (and at least the rent-exempt minimum, ADR 0004) |
+| Buy-in ⚑ | 40× to 200× boot (and at least the rent-exempt minimum, ADR 0004); enforced by `configure_table` since CF-020 |
 | Top-up | None during a hand |
 | Table close | Idle 10 minutes or all seats empty |
 
-## 7. Sign-off checklist (CF-014) — all confirmed 2026-11-19
+## 7. Public action log (CF-021)
+
+Every accepted action is appended, one byte each, to the public `HandLog`
+(raw tail after the struct: `actions_hand_no` u64, `action_count` u16, then
+the bytes). Byte = `seat << 4 | code << 1 | flag`; codes 0 See, 1 Chaal,
+2 Pack, 3 Show, 4 Side Show request, 5 Side Show response, 6 Timeout. `flag`
+= 1 for a Chaal of twice the minimum bet, or an accepted Side Show. Bet
+amounts are implied by the state, so the log needs no amounts. At most
+1,600 actions per hand (bounded by the pot limit).
+
+At reveal the log also gets the rules (boot, rake), starting stacks and the
+result (end reason, winners, payouts, rake). `cf-verify` (record format
+`cf-hand-record/2`) replays the log with `teen-patti-core` on the rebuilt
+deck and must reach exactly that result.
+
+## 8. Sign-off checklist (CF-014) — all confirmed 2026-11-19
 
 - [x] A-2-3 is the second-highest sequence
 - [x] 4 blind turns, then See

@@ -140,9 +140,15 @@ try {
     const revealIx = (payer) => ix("reveal_hand", [r(payer.publicKey, true), w(runtime), r(dealer), w(t.handLog), ...saltAccs.map((a) => r(a))]);
     check("reveal", "reveal during play (DEALT) rejected", true, await rejected(tee, [revealIx(stranger)], [stranger]));
     check("integrity", "closing a seat hand during play rejected", true, await rejected(tee, [ix("close_ephemeral", t.perKeys(t.hands[0]), Buffer.from([1, 0]))], [authority]));
-    const endIx = (signer) => ix("end_hand", [r(signer.publicKey, true), r(config), w(runtime)]);
-    check("reveal", "stranger cannot end the hand", true, await rejected(tee, [endIx(stranger)], [stranger]));
-    await send(tee, [endIx(authority)], [authority], { skipPreflight: true });
+    // CF-020/021: only the game ends a hand. A stranger can't act; the
+    // players pack until one is left.
+    {
+      const d = await t.readRuntime();
+      const strangerAct = ix("act", [r(stranger.publicKey, true), w(runtime), w(t.handLog), ...t.hands.map((h) => r(h))],
+        Buffer.concat([u8(2), u64(0n), u64(d.readBigUInt64LE(RT.action_seq))]));
+      check("game", "stranger cannot act", true, await rejected(tee, [strangerAct], [stranger]));
+    }
+    check("game", "hand ends only through the game (packs)", PHASE.HAND_COMPLETE, await t.packOut());
     check("integrity", "closing a salt account before the reveal rejected", true, await rejected(tee, [ix("close_salt", t.perKeys(saltAccs[0]), u8(0))], [authority]));
     await send(tee, [revealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless once complete
     check("reveal", "second reveal rejected", true, await rejected(tee, [revealIx(authority)], [authority]));

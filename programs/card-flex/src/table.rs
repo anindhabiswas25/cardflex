@@ -38,6 +38,11 @@ pub const LEDGER_SEED: &[u8] = b"seat-ledger";
 pub const REFUND_TIMEOUT_MIN_SECS: u32 = 60;
 pub const REFUND_TIMEOUT_MAX_SECS: u32 = 86_400;
 pub const REFUND_TIMEOUT_DEFAULT_SECS: u32 = 3_600;
+/// Rules v1 §6: buy-in between 40 and 200 boots.
+pub const MIN_BUY_IN_BOOTS: u64 = 40;
+pub const MAX_BUY_IN_BOOTS: u64 = 200;
+/// Highest rake the program accepts: 10% of a won pot.
+pub const MAX_RAKE_BPS: u16 = 1_000;
 
 /// MagicBlock's TEE validator (Devnet and Mainnet PER). The only validator a
 /// table may be delegated to; a table's committed state is trusted for money
@@ -86,8 +91,8 @@ pub mod phase {
     pub const SEEDED: u8 = 4;
     /// Deck shuffled from the seed, hands written, Merkle root public (CF-011).
     pub const DEALT: u8 = 5;
-    /// Hand finished; only now may it be revealed. Set by `end_hand` (P5:
-    /// by showdown / last-player resolution only).
+    /// Hand finished; only now may it be revealed. Set only by the game
+    /// (`act` settling the hand: last player, Show or pot limit).
     pub const HAND_COMPLETE: u8 = 6;
     /// Seed inputs published in `HandLog` (spec §9, CF-012).
     pub const REVEALED: u8 = 7;
@@ -195,6 +200,21 @@ pub struct HandLog {
     pub vrf_output: [u8; 32],
     pub merkle_root: [u8; 32],
     pub revealed: bool,
+    // ---- CF-021: the betting, for replay by any verifier ----
+    // The action log itself lives in the raw tail after this struct (see
+    // `ACTION_LOG_OFFSET`): Borsh would copy 1,600 bytes onto the 4 KB stack.
+    /// Written at reveal: rules, starting stacks and the result, in dealing
+    /// order. The verifier replays `actions` from `start_stacks` on the
+    /// rebuilt deck and must arrive at exactly this result.
+    pub boot: u64,
+    pub rake_bps: u16,
+    pub rake_cap: u64,
+    pub start_stacks: [u64; MAX_SEATS],
+    pub end_reason: u8,
+    /// Bit i = seat index i won.
+    pub winners: u8,
+    pub payouts: [u64; MAX_SEATS],
+    pub rake: u64,
     pub bump: u8,
 }
 
@@ -239,6 +259,15 @@ pub struct TableRuntime {
     pub stacks: [u64; MAX_SEATS],
     /// Bumped by every `commit_hand`; `sync_hand` accepts only newer ones.
     pub commit_seq: u64,
+    // ---- CF-020: rules and live hand ----
+    pub boot: u64,
+    pub rake_bps: u16,
+    pub rake_cap: u64,
+    /// Rake collected and not yet swept to the treasury (P6).
+    pub rake_owed: u64,
+    /// Bumped by every accepted `act`; callers pass the value they expect.
+    pub action_seq: u64,
+    pub game: GameState,
     pub bump: u8,
 }
 
@@ -282,6 +311,167 @@ impl TableRuntime {
             && !self
                 .seated()
                 .any(|i| self.wallets[i] == *key || self.session_keys[i] == *key)
+    }
+}
+
+/// `HandLog` action tail (CF-021), right after the Borsh struct:
+/// `actions_hand_no` u64, `action_count` u16, then one byte per action
+/// (`teen_patti_core::game::encode_action`).
+pub const ACTION_LOG_OFFSET: usize = 8 + HandLog::INIT_SPACE;
+pub const ACTION_LOG_ACTIONS: usize = ACTION_LOG_OFFSET + 10;
+pub const HAND_LOG_LEN: usize = ACTION_LOG_ACTIONS + teen_patti_core::game::MAX_ACTIONS;
+
+/// Reads (hand_no, count) of the action log tail.
+pub fn action_log_header(data: &[u8]) -> (u64, u16) {
+    let o = ACTION_LOG_OFFSET;
+    (
+        u64::from_le_bytes(data[o..o + 8].try_into().unwrap()),
+        u16::from_le_bytes([data[o + 8], data[o + 9]]),
+    )
+}
+
+/// One seat of the on-chain copy of `teen_patti_core::game::Hand`.
+#[derive(
+    AnchorSerialize, AnchorDeserialize, Clone, Copy, Default, InitSpace, PartialEq, Eq, Debug,
+)]
+pub struct GameSeat {
+    pub dealt: bool,
+    pub active: bool,
+    pub seen: bool,
+    pub blind_turns: u8,
+    pub stack: u64,
+    pub contributed: u64,
+}
+
+/// On-chain copy of the rules engine's hand state (CF-020). Public: it holds
+/// stacks, bets and turns, never cards.
+#[derive(
+    AnchorSerialize, AnchorDeserialize, Clone, Copy, Default, InitSpace, PartialEq, Eq, Debug,
+)]
+pub struct GameState {
+    pub boot: u64,
+    pub chaal_limit_boots: u64,
+    pub pot_limit_boots: u64,
+    pub max_blind_turns: u8,
+    pub rake_bps: u16,
+    pub rake_cap: u64,
+    pub seats: [GameSeat; MAX_SEATS],
+    pub order: [u8; MAX_SEATS],
+    pub n: u8,
+    pub turn: u8,
+    pub stake: u64,
+    pub pot: u64,
+    /// 0 betting, 1 side show pending, 2 over.
+    pub phase: u8,
+    pub ss_requester: u8,
+    pub ss_target: u8,
+    /// Settlement (valid when phase = 2): 0 last player, 1 show, 2 pot limit.
+    pub end_reason: u8,
+    pub winners: u8,
+    pub payouts: [u64; MAX_SEATS],
+    pub rake: u64,
+}
+
+impl GameState {
+    pub fn from_hand(h: &teen_patti_core::game::Hand) -> GameState {
+        use teen_patti_core::game::{EndReason, Phase};
+        let (phase, ss_requester, ss_target) = match h.phase {
+            Phase::Betting => (0, 0, 0),
+            Phase::SideShow { requester, target } => (1, requester, target),
+            Phase::Over => (2, 0, 0),
+        };
+        let st = h.settlement;
+        GameState {
+            boot: h.rules.boot,
+            chaal_limit_boots: h.rules.chaal_limit_boots,
+            pot_limit_boots: h.rules.pot_limit_boots,
+            max_blind_turns: h.rules.max_blind_turns,
+            rake_bps: h.rules.rake_bps,
+            rake_cap: h.rules.rake_cap,
+            seats: h.seats.map(|s| GameSeat {
+                dealt: s.dealt,
+                active: s.active,
+                seen: s.seen,
+                blind_turns: s.blind_turns,
+                stack: s.stack,
+                contributed: s.contributed,
+            }),
+            order: h.order,
+            n: h.n,
+            turn: h.turn,
+            stake: h.stake,
+            pot: h.pot,
+            phase,
+            ss_requester,
+            ss_target,
+            end_reason: match st.map(|s| s.reason) {
+                Some(EndReason::Show) => 1,
+                Some(EndReason::PotLimit) => 2,
+                _ => 0,
+            },
+            winners: st.map(|s| s.winners).unwrap_or(0),
+            payouts: st.map(|s| s.payouts).unwrap_or([0; MAX_SEATS]),
+            rake: st.map(|s| s.rake).unwrap_or(0),
+        }
+    }
+
+    pub fn to_hand(&self) -> teen_patti_core::game::Hand {
+        use teen_patti_core::game::{EndReason, Hand, Phase, Rules, Seat, Settlement};
+        let phase = match self.phase {
+            0 => Phase::Betting,
+            1 => Phase::SideShow {
+                requester: self.ss_requester,
+                target: self.ss_target,
+            },
+            _ => Phase::Over,
+        };
+        let settlement = (self.phase == 2).then_some(Settlement {
+            reason: match self.end_reason {
+                1 => EndReason::Show,
+                2 => EndReason::PotLimit,
+                _ => EndReason::LastPlayer,
+            },
+            winners: self.winners,
+            payouts: self.payouts,
+            rake: self.rake,
+        });
+        Hand {
+            rules: Rules {
+                boot: self.boot,
+                chaal_limit_boots: self.chaal_limit_boots,
+                pot_limit_boots: self.pot_limit_boots,
+                max_blind_turns: self.max_blind_turns,
+                rake_bps: self.rake_bps,
+                rake_cap: self.rake_cap,
+            },
+            seats: self.seats.map(|s| Seat {
+                dealt: s.dealt,
+                active: s.active,
+                seen: s.seen,
+                blind_turns: s.blind_turns,
+                stack: s.stack,
+                contributed: s.contributed,
+            }),
+            order: self.order,
+            n: self.n,
+            turn: self.turn,
+            stake: self.stake,
+            pot: self.pot,
+            phase,
+            settlement,
+        }
+    }
+}
+
+/// Ranks of the hands dealt this hand, read from the private seat hands by
+/// the program (never exposed). Implements the rules engine's oracle.
+pub struct SeatHandOracle {
+    pub ranks: [teen_patti_core::HandRank; MAX_SEATS],
+}
+
+impl teen_patti_core::game::HandOracle for SeatHandOracle {
+    fn rank(&self, seat: u8) -> teen_patti_core::HandRank {
+        self.ranks[seat as usize]
     }
 }
 
@@ -353,7 +543,7 @@ pub struct CreateTable<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + HandLog::INIT_SPACE,
+        space = HAND_LOG_LEN,
         seeds = [HAND_LOG_SEED, runtime.key().as_ref()],
         bump
     )]
@@ -371,12 +561,28 @@ pub struct CreateTable<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// `configure_table`: authority sets money limits before anyone buys in.
+/// `configure_table`: authority sets boot, rake and timeout before anyone
+/// buys in (base layer, before delegation).
 #[derive(Accounts)]
 pub struct ConfigureTable<'info> {
     pub authority: Signer<'info>,
     #[account(mut, has_one = authority)]
     pub config: Box<Account<'info, TableConfig>>,
+    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+}
+
+/// `act`: one player action, signed by the seat's session key. Seat hands of
+/// every dealt seat follow in `remaining_accounts`, in dealing order (the
+/// program compares hands for Show, Side Show and the pot limit).
+#[derive(Accounts)]
+pub struct Act<'info> {
+    pub session: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    /// Public action log (CF-021).
+    #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
+    pub hand_log: Box<Account<'info, HandLog>>,
 }
 
 /// `buy_in`: a wallet takes a seat with lamports (base layer, before the
@@ -442,14 +648,6 @@ pub struct ClaimRefund<'info> {
     pub wallet: UncheckedAccount<'info>,
 }
 
-#[derive(Accounts)]
-pub struct PocJoin<'info> {
-    /// The player's wallet. In P6 this becomes `buy_in`.
-    pub wallet: Signer<'info>,
-    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
-}
-
 #[delegate]
 #[derive(Accounts)]
 pub struct DelegateTable<'info> {
@@ -473,7 +671,7 @@ pub struct DelegateTable<'info> {
 pub struct TablePer<'info> {
     pub authority: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: the ephemeral or permissioned target; PDA checked in the handler.
     #[account(mut)]
     pub target: UncheckedAccount<'info>,
@@ -502,7 +700,7 @@ pub struct TablePer<'info> {
 pub struct SetHandReaders<'info> {
     pub authority: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: the seat hand PDA, checked in the handler.
     #[account(mut)]
     pub target: UncheckedAccount<'info>,
@@ -533,7 +731,7 @@ pub struct StartHand<'info> {
     #[account(seeds = [TABLE_SEED, authority.key().as_ref(), &config.table_id.to_le_bytes()], bump = config.bump, has_one = authority)]
     pub config: Account<'info, TableConfig>,
     #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump, has_one = authority, has_one = config)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
 }
 
 /// `submit_salt`: signed by the seat's session key.
@@ -541,7 +739,7 @@ pub struct StartHand<'info> {
 pub struct SubmitSalt<'info> {
     pub session: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: ephemeral salt PDA, checked by seeds, owner and tag.
     #[account(mut, owner = crate::ID)]
     pub salt: UncheckedAccount<'info>,
@@ -554,7 +752,7 @@ pub struct SubmitSalt<'info> {
 pub struct DealHand<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
     #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
     pub dealer: UncheckedAccount<'info>,
@@ -565,7 +763,7 @@ pub struct DealHand<'info> {
 pub struct CancelHand<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
 }
 
 /// `bench_deal`: no accounts, no state. Lets LiteSVM measure the compute
@@ -579,7 +777,7 @@ pub struct BenchDeal {}
 pub struct RotateSession<'info> {
     pub wallet: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: the seat hand PDA, checked in the handler.
     #[account(mut)]
     pub hand: UncheckedAccount<'info>,
@@ -616,7 +814,7 @@ pub struct RotateSession<'info> {
 pub struct PocDeal<'info> {
     pub authority: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
     /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
     #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
     pub dealer: UncheckedAccount<'info>,

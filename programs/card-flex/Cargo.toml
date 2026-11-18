@@ -31,6 +31,7 @@ local-stack = []
 anchor-lang = { workspace = true }
 card-types = { path = "../../crates/card-types" }
 fairness-core = { path = "../../crates/fairness-core" }
+teen-patti-core = { path = "../../crates/teen-patti-core" }
 # sol_sha256 syscall on-chain.
 solana-sha256-hasher = "=3.1.0"
 # Pulled in now so CI proves the pinned Anchor + MagicBlock SDK combination builds.

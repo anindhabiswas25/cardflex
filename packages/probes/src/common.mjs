@@ -129,7 +129,16 @@ export const RT = {
   hand_ctx: 470, roster_hash: 502, salts_in: 534, dealing_order: 535, dealing_count: 541, salt_commitments: 542,
   vrf_caller_seed: 734, merkle_root: 766, vrf_request_slot: 798, cancelled_hands: 806,
   stacks: 810, commit_seq: 858,
+  // CF-020 rules and live hand (checked by tests/test_game.rs runtime_byte_offsets).
+  boot: 866, rake_bps: 874, rake_cap: 876, rake_owed: 884, action_seq: 892, game: 900,
 };
+// GameState offsets inside TableRuntime (absolute). Seats are 20 bytes each:
+// dealt, active, seen, blind_turns (1 each), stack u64, contributed u64.
+export const GAME = {
+  boot: 900, seats: 935, seat_len: 20, order: 1055, n: 1061, turn: 1062, stake: 1063, pot: 1071,
+  phase: 1079, ss_requester: 1080, ss_target: 1081, end_reason: 1082, winners: 1083, payouts: 1084, rake: 1132,
+};
+export const ACTION = { SEE: 0, CHAAL: 1, PACK: 2, SHOW: 3, SIDE_SHOW: 4, SIDE_SHOW_RESPOND: 5 };
 // TableConfig byte offsets (ADR 0004 fields).
 export const TC = { status: 82, validator: 83, refund_timeout_secs: 115, min_buy_in: 119, max_buy_in: 127, seated: 135, last_sync_time: 136, last_synced_seq: 144 };
 // SeatLedger: config(8) seat(40) wallet(41) buy_in(73) synced_stack(81).
@@ -152,15 +161,18 @@ export const HL = {
   config: 40, hand_no: 72, rules_version: 80, protocol_version: 82, dealing_count: 84, seats: 85,
   wallets: 91, salts: 283, salt_commitments: 475, hand_ctx: 667, roster_hash: 699,
   vrf_caller_seed: 731, vrf_output: 763, merkle_root: 795, revealed: 827,
+  // CF-021 game summary (written at reveal, dealing order) and action tail.
+  boot: 828, rake_bps: 836, rake_cap: 838, start_stacks: 846, end_reason: 894, winners: 895,
+  payouts: 896, rake: 944, actions_hand_no: 953, action_count: 961, actions: 963, len: 2563,
 };
 
-/** Builds a `cf-hand-record/1` (crates/fairness-verifier) from raw HandLog bytes. */
+/** Builds a `cf-hand-record/2` (crates/fairness-verifier) from raw HandLog bytes. */
 export function handRecordFromLog(d, shownHands = []) {
   const n = d[HL.dealing_count];
   const h = (off) => d.subarray(off, off + 32).toString("hex");
   const key = (off) => new PublicKey(d.subarray(off, off + 32)).toBase58();
   return {
-    format: "cf-hand-record/1",
+    format: "cf-hand-record/2",
     protocol_version: d.readUInt16LE(HL.protocol_version),
     program_id: PROGRAM_ID.toBase58(),
     table: key(HL.config),
@@ -177,5 +189,16 @@ export function handRecordFromLog(d, shownHands = []) {
       merkle_root: h(HL.merkle_root),
     },
     hands: shownHands,
+    game: {
+      boot: d.readBigUInt64LE(HL.boot).toString(),
+      rake_bps: d.readUInt16LE(HL.rake_bps),
+      rake_cap: d.readBigUInt64LE(HL.rake_cap).toString(),
+      start_stacks: Array.from({ length: n }, (_, k) => d.readBigUInt64LE(HL.start_stacks + 8 * k).toString()),
+      actions: d.subarray(HL.actions, HL.actions + d.readUInt16LE(HL.action_count)).toString("hex"),
+      end_reason: d[HL.end_reason],
+      winners: Array.from({ length: n }, (_, k) => d[HL.seats + k]).filter((s) => (d[HL.winners] >> s) & 1),
+      payouts: Array.from({ length: n }, (_, k) => d.readBigUInt64LE(HL.payouts + 8 * k).toString()),
+      rake: d.readBigUInt64LE(HL.rake).toString(),
+    },
   };
 }
