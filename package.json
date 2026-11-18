@@ -11,7 +11,7 @@
     "build:program": "anchor build",
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
-    "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust && pnpm check:fairness",
+    "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust && pnpm check:fairness && pnpm check:g2",
     "mb-stack": "mb-stack",
     "probe": "pnpm --filter @card-flex/probes probe",
     "tablepoc": "pnpm --filter @card-flex/probes tablepoc",
@@ -19,7 +19,8 @@
     "privacy-suite": "pnpm --filter @card-flex/probes privacy-suite",
     "check:fairness": "python3 -I scripts/check_fairness_vectors.py",
     "handflow": "pnpm --filter @card-flex/probes handflow",
-    "deploy:devnet": "bash scripts/deploy-devnet.sh"
+    "deploy:devnet": "bash scripts/deploy-devnet.sh",
+    "check:g2": "cargo test -p fairness-verifier --release -- --ignored"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

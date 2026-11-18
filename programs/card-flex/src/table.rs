@@ -31,6 +31,7 @@ pub const SEAT_HAND_SEED: &[u8] = b"seat-hand";
 pub const DEALER_SEED: &[u8] = b"dealer";
 
 pub const SALT_SEED: &[u8] = b"salt";
+pub const HAND_LOG_SEED: &[u8] = b"hand-log";
 pub const SALT_TAG: &[u8; 8] = b"CFSALT02";
 /// tag(8) + runtime(32) + seat(1) + hand_no(8) + salt(32)
 pub const SALT_LEN: u32 = 81;
@@ -61,6 +62,8 @@ pub mod phase {
     pub const SEEDED: u8 = 4;
     /// Deck shuffled from the seed, hands written, Merkle root public (CF-011).
     pub const DEALT: u8 = 5;
+    /// Seed inputs published in `HandLog` (spec §9, CF-012).
+    pub const REVEALED: u8 = 6;
 }
 
 pub const SEAT_HAND_TAG: &[u8; 8] = b"CFSEATHD";
@@ -101,6 +104,35 @@ pub struct TableConfig {
     pub table_id: u64,
     pub max_seats: u8,
     pub runtime: Pubkey,
+    pub bump: u8,
+}
+
+/// Public record of the last revealed hand (ADR 0002 `HandLog`, spec §9).
+/// Delegated with the runtime, committed back to Solana with it. Everything
+/// here is public by design: it is what any verifier needs.
+#[account]
+#[derive(InitSpace)]
+pub struct HandLog {
+    pub runtime: Pubkey,
+    pub config: Pubkey,
+    pub hand_no: u64,
+    pub rules_version: u16,
+    pub protocol_version: u16,
+    pub dealing_count: u8,
+    /// Seat indices in dealing order.
+    pub seats: [u8; MAX_SEATS],
+    /// Wallets in dealing order.
+    pub wallets: [Pubkey; MAX_SEATS],
+    /// Salts in dealing order (revealed).
+    pub salts: [[u8; 32]; MAX_SEATS],
+    /// Commitments in dealing order.
+    pub salt_commitments: [[u8; 32]; MAX_SEATS],
+    pub hand_ctx: [u8; 32],
+    pub roster_hash: [u8; 32],
+    pub vrf_caller_seed: [u8; 32],
+    pub vrf_output: [u8; 32],
+    pub merkle_root: [u8; 32],
+    pub revealed: bool,
     pub bump: u8,
 }
 
@@ -236,7 +268,7 @@ pub struct CreateTable<'info> {
         seeds = [TABLE_SEED, authority.key().as_ref(), &table_id.to_le_bytes()],
         bump
     )]
-    pub config: Account<'info, TableConfig>,
+    pub config: Box<Account<'info, TableConfig>>,
     #[account(
         init,
         payer = authority,
@@ -244,7 +276,15 @@ pub struct CreateTable<'info> {
         seeds = [RUNTIME_SEED, config.key().as_ref()],
         bump
     )]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + HandLog::INIT_SPACE,
+        seeds = [HAND_LOG_SEED, runtime.key().as_ref()],
+        bump
+    )]
+    pub hand_log: Box<Account<'info, HandLog>>,
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -267,6 +307,9 @@ pub struct DelegateTable<'info> {
     /// CHECK: the runtime PDA, checked by seeds; delegated by the SDK.
     #[account(mut, del, seeds = [RUNTIME_SEED, config.key().as_ref()], bump)]
     pub runtime: UncheckedAccount<'info>,
+    /// CHECK: the hand-log PDA, checked by seeds; delegated with the runtime.
+    #[account(mut, del, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump)]
+    pub hand_log: UncheckedAccount<'info>,
     /// CHECK: validator identity, checked by the delegation program.
     pub validator: Option<UncheckedAccount<'info>>,
 }
@@ -433,7 +476,23 @@ pub struct CommitTable<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
-    pub runtime: Account<'info, TableRuntime>,
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
+    pub hand_log: Box<Account<'info, HandLog>>,
+}
+
+/// `reveal_hand`: anyone may publish a dealt hand's seed inputs. Salt
+/// accounts follow in `remaining_accounts`, in dealing order.
+#[derive(Accounts)]
+pub struct RevealHand<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
+    #[account(seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    pub dealer: UncheckedAccount<'info>,
+    #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
+    pub hand_log: Box<Account<'info, HandLog>>,
 }
 
 #[cfg(test)]

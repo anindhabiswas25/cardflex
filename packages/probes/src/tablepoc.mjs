@@ -112,6 +112,7 @@ const players = Array.from({ length: SEATS }, () => ({ wallet: Keypair.generate(
 const tableId = BigInt(Date.now());
 const [config] = PublicKey.findProgramAddressSync([Buffer.from("table"), authority.publicKey.toBuffer(), u64(tableId)], PROGRAM_ID);
 const [runtime] = PublicKey.findProgramAddressSync([Buffer.from("table-runtime"), config.toBuffer()], PROGRAM_ID);
+const [handLog] = PublicKey.findProgramAddressSync([Buffer.from("hand-log"), runtime.toBuffer()], PROGRAM_ID);
 const [dealer] = PublicKey.findProgramAddressSync([Buffer.from("dealer"), runtime.toBuffer()], PROGRAM_ID);
 const hands = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
 report.accounts = { authority: authority.publicKey.toBase58(), config: config.toBase58(), runtime: runtime.toBase58(), dealer: dealer.toBase58(), hands: hands.map(String) };
@@ -126,7 +127,7 @@ try {
   // ---- base layer ----
   log("1/8 base: create table, seat six players, delegate");
   report.steps.fund = await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  report.steps.create_table = await send(base, [ix("create_table", [w(config), w(runtime), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
+  report.steps.create_table = await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
   report.steps.joins = [];
   for (let s = 0; s < SEATS; s++) {
     // The deployer pays the fee; the player's wallet signs. Wallets need no SOL.
@@ -136,7 +137,10 @@ try {
     r(authority.publicKey, true), r(config),
     w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(runtime, PROGRAM_ID)),
     w(delegationRecordPdaFromDelegatedAccount(runtime)), w(delegationMetadataPdaFromDelegatedAccount(runtime)),
-    w(runtime), r(TEE_VALIDATOR), r(PROGRAM_ID), r(DELEGATION_PROGRAM_ID), r(SystemProgram.programId),
+    w(runtime),
+    w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(handLog, PROGRAM_ID)),
+    w(delegationRecordPdaFromDelegatedAccount(handLog)), w(delegationMetadataPdaFromDelegatedAccount(handLog)),
+    w(handLog), r(TEE_VALIDATOR), r(PROGRAM_ID), r(DELEGATION_PROGRAM_ID), r(SystemProgram.programId),
   ])], [authority]);
 
   // ---- PER setup ----
@@ -157,6 +161,7 @@ try {
 
   log("3/8 PER: permissions, dealer state, six seat hands");
   report.steps.open_runtime_permission = await send(tee, [ix("open_runtime_permission", perKeys(runtime))], [authority], { skipPreflight: true });
+  await send(tee, [ix("open_hand_log_permission", perKeys(handLog))], [authority], { skipPreflight: true });
   // Seating must be closed once permissions exist (security review fix).
   {
     const late = Keypair.generate();
@@ -242,7 +247,7 @@ try {
   report.steps.close.push(await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true }));
 
   log("7/8 PER: commit + undelegate table runtime");
-  report.steps.undelegate = await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
+  report.steps.undelegate = await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
   const home = await waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   report.steps.runtime_back_on_base_ms = home.ms;
 

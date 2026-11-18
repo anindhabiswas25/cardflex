@@ -12,8 +12,9 @@ import { randomBytes } from "node:crypto";
 import { Keypair, PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY } from "@solana/web3.js";
 import {
   PROGRAM_ID, repoRoot, send, rejected, waitFor, sleep, log, ms, w, r, u8, u64, authFailures,
-  RT, PHASE, HAND, saltCommitment, vrfCallerSeed, verifyCard, teeConn, tokenFor,
+  RT, PHASE, HAND, HL, saltCommitment, vrfCallerSeed, verifyCard, teeConn, tokenFor, handRecordFromLog,
 } from "./common.mjs";
+import { spawnSync } from "node:child_process";
 import { setupTable } from "./table.mjs";
 
 const VRF_PROGRAM_ID = new PublicKey("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz");
@@ -128,13 +129,64 @@ try {
     check("deal", "all 18 cards verify against the public root (JS)", n * 3, verified);
     check("deal", "18 distinct cards", n * 3, seen.size);
     check("privacy", "session1 cannot read seat 0's hand", null, await sessionConns[1].getAccountInfo(t.hands[0]));
+
+    // ---- CF-012: reveal and independent verification ----
+    log("CF-012 reveal_hand + cf-verify");
+    const shown = [];
+    for (let s = 0; s < n; s++) {
+      const a = await sessionConns[s].getAccountInfo(t.hands[s]);
+      shown.push({ seat: s, cards: [...a.data.subarray(HAND.cards, HAND.cards + 3)] });
+    }
+    const revealIx = (payer) => ix("reveal_hand", [r(payer.publicKey, true), w(runtime), r(dealer), w(t.handLog), ...saltAccs.map((a) => r(a))]);
+    await send(tee, [revealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless
+    check("reveal", "second reveal rejected", true, await rejected(tee, [revealIx(authority)], [authority]));
+    const noToken = teeConn(null);
+    const logAcc = await waitFor(async () => { const a = await noToken.getAccountInfo(t.handLog); return a && a.data[HL.revealed] === 1 ? a : null; }, 15_000, 200);
+    check("reveal", "HandLog readable with no token (public)", true, !!logAcc.value);
+    if (logAcc.value) {
+      const record = handRecordFromLog(logAcc.value.data, shown);
+      check("reveal", "revealed salts equal the submitted salts", salts.map((x) => x.toString("hex")), record.salts);
+      const verifyFile = (rec, tag) => {
+        const f = resolve(repoRoot, `docs/probes/${report.started_at.replace(/[:.]/g, "-")}-hand-record-${tag}.json`);
+        writeFileSync(f, JSON.stringify(rec, null, 2) + "\n");
+        const res = spawnSync("cargo", ["run", "-q", "-p", "fairness-verifier", "--bin", "cf-verify", "--", f], { cwd: repoRoot, encoding: "utf8" });
+        return { status: res.status, out: res.stdout.trim(), file: f };
+      };
+      const ok = verifyFile(record, "per");
+      report.verifier_report = ok.out.split("\n");
+      check("verify", "cf-verify: revealed hand is VALID (exit 0)", 0, ok.status, ok.file.split("/").pop());
+      const bad = JSON.parse(JSON.stringify(record));
+      bad.salts[2] = bad.salts[2].replace(/^./, (c) => (c === "0" ? "1" : "0"));
+      const tampered = verifyFile(bad, "tampered");
+      check("verify", "cf-verify: tampered salt is INVALID (exit 1)", 1, tampered.status);
+      check("verify", "tampered report flags the salt commitments", true, /Salt commitments:\s+INVALID/.test(tampered.out));
+      report.record_from_per = record;
+    }
   }
 } catch (e) {
   report.error = (e instanceof Error ? String(e.stack ?? e) : JSON.stringify(e)).slice(0, 800);
 }
-try { if (t) report.timings.teardown_ok = !!(await t.teardown()).value; } catch (e) { report.teardown_error = String(e.message ?? e).slice(0, 200); }
+try {
+  if (t) {
+    report.timings.teardown_ok = !!(await t.teardown()).value;
+    if (report.record_from_per) {
+      // Permanence: the committed HandLog on the Solana base layer.
+      const baseLog = await waitFor(async () => { const a = await t.base.getAccountInfo(t.handLog); return a && a.owner.equals(PROGRAM_ID) && a.data[HL.revealed] === 1 ? a : null; }, 60_000, 500);
+      check("verify", "HandLog committed to Solana base layer", true, !!baseLog.value);
+      if (baseLog.value) {
+        const rec = handRecordFromLog(baseLog.value.data, report.record_from_per.hands);
+        check("verify", "base-layer HandLog equals the PER reveal", JSON.stringify(report.record_from_per), JSON.stringify(rec));
+        const f = resolve(repoRoot, `docs/probes/${report.started_at.replace(/[:.]/g, "-")}-hand-record-base.json`);
+        writeFileSync(f, JSON.stringify(rec, null, 2) + "\n");
+        const res = spawnSync("cargo", ["run", "-q", "-p", "fairness-verifier", "--bin", "cf-verify", "--", f], { cwd: repoRoot, encoding: "utf8" });
+        check("verify", "cf-verify on the base-layer record is VALID", 0, res.status);
+      }
+    }
+  }
+} catch (e) { report.teardown_error = String(e.message ?? e).slice(0, 200); }
 
 report.auth_transient_failures = authFailures;
+delete report.record_from_per;
 report.passed = report.checks.filter((c) => c.pass).length;
 report.failed = report.checks.filter((c) => !c.pass).length;
 report.ok = !report.error && report.failed === 0;

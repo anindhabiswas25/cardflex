@@ -26,7 +26,15 @@ fn send(svm: &mut LiteSVM, ix: Instruction, signer: &Keypair) -> bool {
     svm.expire_blockhash();
     let msg = Message::new_with_blockhash(&[ix], Some(&signer.pubkey()), &svm.latest_blockhash());
     let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[signer]).unwrap();
-    svm.send_transaction(tx).is_ok()
+    match svm.send_transaction(tx) {
+        Ok(_) => true,
+        Err(e) => {
+            if std::env::var("CF_DEBUG").is_ok() {
+                eprintln!("tx failed: {:?}\n{}", e.err, e.meta.logs.join("\n"));
+            }
+            false
+        }
+    }
 }
 
 fn funded(svm: &mut LiteSVM) -> Keypair {
@@ -55,6 +63,11 @@ fn create(max_seats: u8) -> (Table, bool) {
     .0;
     let runtime =
         Pubkey::find_program_address(&[RUNTIME_SEED, config.as_ref()], &card_flex::id()).0;
+    let hand_log = Pubkey::find_program_address(
+        &[card_flex::table::HAND_LOG_SEED, runtime.as_ref()],
+        &card_flex::id(),
+    )
+    .0;
     let ix = Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::CreateTable {
@@ -65,6 +78,7 @@ fn create(max_seats: u8) -> (Table, bool) {
         card_flex::accounts::CreateTable {
             config,
             runtime,
+            hand_log,
             authority: authority.pubkey(),
             system_program: system_program::ID,
         }

@@ -1,0 +1,385 @@
+{
+  "probe": "P2-handflow",
+  "version": 1,
+  "region": "dev-machine-1",
+  "queue": "ephemeral",
+  "started_at": "2026-11-18T15:35:36.242Z",
+  "checks": [
+    {
+      "group": "vrf",
+      "name": "request before SALTS_DONE rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "phase SALTS_DONE",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "deal before SEEDED rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "integrity",
+      "name": "closing a salt account mid-hand rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "unknown queue rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "fake callback before request rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "on-chain vrf_caller_seed matches spec (JS)",
+      "expected": "8792b1d96f09a07160b94eb8e1c74dbde3a7fbbcdcb589c4473a2b7089b7a8b6",
+      "actual": "8792b1d96f09a07160b94eb8e1c74dbde3a7fbbcdcb589c4473a2b7089b7a8b6",
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "second request while pending rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "fake callback while pending rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "authority cannot fake the callback",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "VRF callback arrives and phase becomes SEEDED",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "2069.6 ms from request"
+    },
+    {
+      "group": "vrf",
+      "name": "fake callback after fulfilment rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "new request after fulfilment rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "privacy",
+      "name": "dealer state unreadable by authority",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "integrity",
+      "name": "cancel before the VRF timeout rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "phase DEALT",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "merkle root published",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "second deal rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 0 card 0 at expected position",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 0 card 1 at expected position",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 0 card 2 at expected position",
+      "expected": 12,
+      "actual": 12,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 1 card 0 at expected position",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 1 card 1 at expected position",
+      "expected": 7,
+      "actual": 7,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 1 card 2 at expected position",
+      "expected": 13,
+      "actual": 13,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 2 card 0 at expected position",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 2 card 1 at expected position",
+      "expected": 8,
+      "actual": 8,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 2 card 2 at expected position",
+      "expected": 14,
+      "actual": 14,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 3 card 0 at expected position",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 3 card 1 at expected position",
+      "expected": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 3 card 2 at expected position",
+      "expected": 15,
+      "actual": 15,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 4 card 0 at expected position",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 4 card 1 at expected position",
+      "expected": 10,
+      "actual": 10,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 4 card 2 at expected position",
+      "expected": 16,
+      "actual": 16,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 5 card 0 at expected position",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 5 card 1 at expected position",
+      "expected": 11,
+      "actual": 11,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "seat 5 card 2 at expected position",
+      "expected": 17,
+      "actual": 17,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "all 18 cards verify against the public root (JS)",
+      "expected": 18,
+      "actual": 18,
+      "pass": true
+    },
+    {
+      "group": "deal",
+      "name": "18 distinct cards",
+      "expected": 18,
+      "actual": 18,
+      "pass": true
+    },
+    {
+      "group": "privacy",
+      "name": "session1 cannot read seat 0's hand",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reveal",
+      "name": "second reveal rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "reveal",
+      "name": "HandLog readable with no token (public)",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "reveal",
+      "name": "revealed salts equal the submitted salts",
+      "expected": [
+        "809927c6570acb9be41a80460755b235ddf3e8f502dba980a47c544474713d1e",
+        "8b78e9e8681eeb0ad16629f00e3e37740bb1221829aedce2923018692db30cec",
+        "8ab359eedaafb8db89cd56947f7106f5f6087a90c86795d3d4a2e7c665f578cc",
+        "2c9a492973e26ed58198938ca68e7ea5507f5e946b1a4d65ab79d0348b12eaeb",
+        "eed8a84923eccde89471b421de516a0604f58aede5f927158111a5f9430710e6",
+        "d90d069ae8feb2e9aab693d51f34b505be0eccc6d7affcb683b440fd60496579"
+      ],
+      "actual": [
+        "809927c6570acb9be41a80460755b235ddf3e8f502dba980a47c544474713d1e",
+        "8b78e9e8681eeb0ad16629f00e3e37740bb1221829aedce2923018692db30cec",
+        "8ab359eedaafb8db89cd56947f7106f5f6087a90c86795d3d4a2e7c665f578cc",
+        "2c9a492973e26ed58198938ca68e7ea5507f5e946b1a4d65ab79d0348b12eaeb",
+        "eed8a84923eccde89471b421de516a0604f58aede5f927158111a5f9430710e6",
+        "d90d069ae8feb2e9aab693d51f34b505be0eccc6d7affcb683b440fd60496579"
+      ],
+      "pass": true
+    },
+    {
+      "group": "verify",
+      "name": "cf-verify: revealed hand is VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-18T15-35-36-242Z-hand-record-per.json"
+    },
+    {
+      "group": "verify",
+      "name": "cf-verify: tampered salt is INVALID (exit 1)",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "group": "verify",
+      "name": "tampered report flags the salt commitments",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "verify",
+      "name": "HandLog committed to Solana base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "verify",
+      "name": "base-layer HandLog equals the PER reveal",
+      "expected": "{\"format\":\"cf-hand-record/1\",\"protocol_version\":2,\"program_id\":\"4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL\",\"table\":\"DeczuN9LjvvzWry6Pc4ZSpmJqepRiR4czGHfUezKgCfA\",\"hand_no\":\"0\",\"rules_version\":1,\"seats\":[{\"seat\":0,\"wallet\":\"2ousrx569u9c5cbDoEzeTDxSRxTLii5c9QmqP4U51LSB\"},{\"seat\":1,\"wallet\":\"BVBunSL4W88DeNMzDfhz5kt5GKKAH6voRQRaJ77W1fz4\"},{\"seat\":2,\"wallet\":\"HHLpW19Jwm29BNQFeU8S2KZvzscBcANiCY2KEHHcVmes\"},{\"seat\":3,\"wallet\":\"DVwb68pLNwSJkPaV4BAqtFbqjRARPt9farwTuJm3vYXS\"},{\"seat\":4,\"wallet\":\"EE6tKTEq6sCmsX5j9AWJQZfCa136ujZYJiuP7Y1LcU7r\"},{\"seat\":5,\"wallet\":\"coU4kD5G5ggk4EjitEHfHnNFfduU5sv13bcjP3Uep7n\"}],\"salts\":[\"809927c6570acb9be41a80460755b235ddf3e8f502dba980a47c544474713d1e\",\"8b78e9e8681eeb0ad16629f00e3e37740bb1221829aedce2923018692db30cec\",\"8ab359eedaafb8db89cd56947f7106f5f6087a90c86795d3d4a2e7c665f578cc\",\"2c9a492973e26ed58198938ca68e7ea5507f5e946b1a4d65ab79d0348b12eaeb\",\"eed8a84923eccde89471b421de516a0604f58aede5f927158111a5f9430710e6\",\"d90d069ae8feb2e9aab693d51f34b505be0eccc6d7affcb683b440fd60496579\"],\"vrf_output\":\"001381c8dee481d916425402b1e1bb4ce1c55d48d0b66bfdcb8cca777dd748c2\",\"claimed\":{\"roster_hash\":\"626b2ee57eee2a15a55d3a9f68a79b5e711a508487af8e92e7a4de71b61bcaa8\",\"hand_ctx\":\"d9daeebc707625b2ea849b74e7579269c291bc63a98ba00e634bbf5df19cd29d\",\"salt_commitments\":[\"e10721fdde9c13fc2b5e087050f5b96a8d02f642234dbd2fbd4f1feb99a5db62\",\"60153ccb0a69b550e1281ef8dd4b0e26c2caf357a54dee36fcc98c2e8b7bc332\",\"e50e70a72178cd0765c869a881a8fe804d24edd3b140495c3b9787bdd1ca8da0\",\"7b65c1625abfe109ee5c88ad1bb5ae2953b9ce2dd15dc1b3dbff8cdf8343cf71\",\"e6785b8565a46f00b6d872f0d3a2c071d90e9a62ec177c03b85d3981a3e64e8b\",\"79ce638fbedcde9c64bed4fd6572be1bc98d891c6cc3654208dd146178392b88\"],\"vrf_caller_seed\":\"8792b1d96f09a07160b94eb8e1c74dbde3a7fbbcdcb589c4473a2b7089b7a8b6\",\"merkle_root\":\"d75e3a3a6b95c441d5c6770d68f316a4b4932d48f66e3ed3b2052e5094797afc\"},\"hands\":[{\"seat\":0,\"cards\":[2,5,46]},{\"seat\":1,\"cards\":[43,6,45]},{\"seat\":2,\"cards\":[35,37,42]},{\"seat\":3,\"cards\":[20,30,24]},{\"seat\":4,\"cards\":[12,23,16]},{\"seat\":5,\"cards\":[38,13,1]}]}",
+      "actual": "{\"format\":\"cf-hand-record/1\",\"protocol_version\":2,\"program_id\":\"4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL\",\"table\":\"DeczuN9LjvvzWry6Pc4ZSpmJqepRiR4czGHfUezKgCfA\",\"hand_no\":\"0\",\"rules_version\":1,\"seats\":[{\"seat\":0,\"wallet\":\"2ousrx569u9c5cbDoEzeTDxSRxTLii5c9QmqP4U51LSB\"},{\"seat\":1,\"wallet\":\"BVBunSL4W88DeNMzDfhz5kt5GKKAH6voRQRaJ77W1fz4\"},{\"seat\":2,\"wallet\":\"HHLpW19Jwm29BNQFeU8S2KZvzscBcANiCY2KEHHcVmes\"},{\"seat\":3,\"wallet\":\"DVwb68pLNwSJkPaV4BAqtFbqjRARPt9farwTuJm3vYXS\"},{\"seat\":4,\"wallet\":\"EE6tKTEq6sCmsX5j9AWJQZfCa136ujZYJiuP7Y1LcU7r\"},{\"seat\":5,\"wallet\":\"coU4kD5G5ggk4EjitEHfHnNFfduU5sv13bcjP3Uep7n\"}],\"salts\":[\"809927c6570acb9be41a80460755b235ddf3e8f502dba980a47c544474713d1e\",\"8b78e9e8681eeb0ad16629f00e3e37740bb1221829aedce2923018692db30cec\",\"8ab359eedaafb8db89cd56947f7106f5f6087a90c86795d3d4a2e7c665f578cc\",\"2c9a492973e26ed58198938ca68e7ea5507f5e946b1a4d65ab79d0348b12eaeb\",\"eed8a84923eccde89471b421de516a0604f58aede5f927158111a5f9430710e6\",\"d90d069ae8feb2e9aab693d51f34b505be0eccc6d7affcb683b440fd60496579\"],\"vrf_output\":\"001381c8dee481d916425402b1e1bb4ce1c55d48d0b66bfdcb8cca777dd748c2\",\"claimed\":{\"roster_hash\":\"626b2ee57eee2a15a55d3a9f68a79b5e711a508487af8e92e7a4de71b61bcaa8\",\"hand_ctx\":\"d9daeebc707625b2ea849b74e7579269c291bc63a98ba00e634bbf5df19cd29d\",\"salt_commitments\":[\"e10721fdde9c13fc2b5e087050f5b96a8d02f642234dbd2fbd4f1feb99a5db62\",\"60153ccb0a69b550e1281ef8dd4b0e26c2caf357a54dee36fcc98c2e8b7bc332\",\"e50e70a72178cd0765c869a881a8fe804d24edd3b140495c3b9787bdd1ca8da0\",\"7b65c1625abfe109ee5c88ad1bb5ae2953b9ce2dd15dc1b3dbff8cdf8343cf71\",\"e6785b8565a46f00b6d872f0d3a2c071d90e9a62ec177c03b85d3981a3e64e8b\",\"79ce638fbedcde9c64bed4fd6572be1bc98d891c6cc3654208dd146178392b88\"],\"vrf_caller_seed\":\"8792b1d96f09a07160b94eb8e1c74dbde3a7fbbcdcb589c4473a2b7089b7a8b6\",\"merkle_root\":\"d75e3a3a6b95c441d5c6770d68f316a4b4932d48f66e3ed3b2052e5094797afc\"},\"hands\":[{\"seat\":0,\"cards\":[2,5,46]},{\"seat\":1,\"cards\":[43,6,45]},{\"seat\":2,\"cards\":[35,37,42]},{\"seat\":3,\"cards\":[20,30,24]},{\"seat\":4,\"cards\":[12,23,16]},{\"seat\":5,\"cards\":[38,13,1]}]}",
+      "pass": true
+    },
+    {
+      "group": "verify",
+      "name": "cf-verify on the base-layer record is VALID",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    }
+  ],
+  "timings": {
+    "request_confirm_ms": 317.5,
+    "request_to_seeded_ms": 2069.6,
+    "deal_confirm_ms": 1307.5,
+    "all_players_read_hands_ms": 781,
+    "teardown_ok": true
+  },
+  "verifier_report": [
+    "Protocol version:         VALID         cf-hand-record/1 v2 (verifier supports cf-hand-record/1 v2)",
+    "Roster hash:              VALID         626b2ee57eee2a15a55d3a9f68a79b5e711a508487af8e92e7a4de71b61bcaa8",
+    "Game context:             VALID         d9daeebc707625b2ea849b74e7579269c291bc63a98ba00e634bbf5df19cd29d",
+    "Salt commitments:         VALID         6 salts match their commitments",
+    "Randomness binding:       VALID         VRF caller seed 8792b1d96f09a07160b94eb8e1c74dbde3a7fbbcdcb589c4473a2b7089b7a8b6",
+    "Shuffle reconstruction:   VALID         seed 75bda2f68dae7e7115bbc6afca516aad4e9c7d8dc2c7dc8a86bb85c47c0c2e3c",
+    "Deck uniqueness:          VALID         52 distinct cards",
+    "Merkle root:              VALID         d75e3a3a6b95c441d5c6770d68f316a4b4932d48f66e3ed3b2052e5094797afc",
+    "Dealing map:              VALID         6 shown hands match the deal",
+    "Overall:                  VALID"
+  ],
+  "auth_transient_failures": [],
+  "passed": 48,
+  "failed": 0,
+  "ok": true,
+  "finished_at": "2026-11-18T15:36:33.157Z"
+}

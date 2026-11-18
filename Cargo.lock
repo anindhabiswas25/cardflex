@@ -885,9 +885,11 @@ name = "card-flex"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "bs58",
  "card-types",
  "ephemeral-rollups-sdk",
  "fairness-core",
+ "fairness-verifier",
  "litesvm",
  "solana-account 3.4.0",
  "solana-keypair",
@@ -1521,6 +1523,17 @@ dependencies = [
  "card-types",
  "fairness-core",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "fairness-verifier"
+version = "0.1.0"
+dependencies = [
+ "bs58",
+ "card-types",
+ "fairness-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,20 @@
+[package]
+name = "fairness-verifier"
+version = "0.1.0"
+description = "Independent offline verifier for Card Flex hands (CF-Fairness v2)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "cf-verify"
+path = "src/main.rs"
+
+[dependencies]
+# Never depends on the program crate or any network library (PRD §14.4).
+card-types = { path = "../card-types" }
+fairness-core = { path = "../fairness-core", features = ["sha2"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+bs58 = "=0.5.1"

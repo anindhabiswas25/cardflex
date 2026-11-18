@@ -384,3 +384,173 @@ fn ephemeral_accounts_frozen_while_a_hand_is_in_progress() {
         }
     }
 }
+
+/// A table whose hand_ctx, roster, salts and commitments are all consistent,
+/// so the revealed HandLog can be checked by the independent verifier.
+#[test]
+fn revealed_hand_log_passes_the_independent_verifier() {
+    use fairness_core::{hand_ctx, roster_hash, salt_commitment, HandContext, Seat};
+    let seats = 4u8;
+    let mut t = seeded_table(seats);
+    let payer = t.payer.insecure_clone();
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+    let wallets: Vec<Pubkey> = (0..seats).map(|_| Pubkey::new_unique()).collect();
+    for (s, w) in wallets.iter().enumerate() {
+        rt.wallets[s] = *w;
+    }
+    let roster = roster_hash::<SoftSha256>(
+        &(0..seats)
+            .map(|s| Seat {
+                index: s,
+                wallet: wallets[s as usize].to_bytes(),
+            })
+            .collect::<Vec<_>>(),
+    );
+    let ctx = hand_ctx::<SoftSha256>(&HandContext {
+        program_id: card_flex::id().to_bytes(),
+        table: rt.config.to_bytes(),
+        hand_no: rt.hand_no,
+        roster_hash: roster,
+        rules_version: RULES_VERSION,
+    });
+    rt.hand_ctx = ctx;
+    rt.roster_hash = roster;
+    let salts: Vec<[u8; 32]> = (0..seats).map(|s| [0x70 + s; 32]).collect();
+    let mut salt_accs = Vec::new();
+    for s in 0..seats {
+        rt.salt_commitments[s as usize] =
+            salt_commitment::<SoftSha256>(&ctx, s, &salts[s as usize]);
+        let (a, _) =
+            Pubkey::find_program_address(&[SALT_SEED, t.runtime.as_ref(), &[s]], &card_flex::id());
+        let mut d = vec![0u8; SALT_LEN as usize];
+        d[..8].copy_from_slice(SALT_TAG);
+        d[8..40].copy_from_slice(t.runtime.as_ref());
+        d[40] = s;
+        d[41..49].copy_from_slice(&rt.hand_no.to_le_bytes());
+        d[49..81].copy_from_slice(&salts[s as usize]);
+        t.svm.set_account(a, program_account(d)).unwrap();
+        salt_accs.push(a);
+    }
+    let commitments: Vec<[u8; 32]> = (0..seats as usize)
+        .map(|s| rt.salt_commitments[s])
+        .collect();
+    rt.vrf_caller_seed = fairness_core::vrf_caller_seed::<SoftSha256>(&ctx, &commitments);
+    let vrf = [0x99u8; 32];
+    let seed = fairness_core::shuffle_seed::<SoftSha256>(&ctx, &vrf, &salts);
+    let mut data = Vec::new();
+    rt.try_serialize(&mut data).unwrap();
+    data.resize(acc.data.len(), 0);
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
+    // Dealer holds the VRF output and the seed derived from it (as vrf_deal writes).
+    let mut d = t.svm.get_account(&t.dealer).unwrap();
+    d.data[DEALER_VRF_OFFSET..DEALER_VRF_OFFSET + 32].copy_from_slice(&vrf);
+    d.data[DEALER_SEED_OFFSET..DEALER_SEED_OFFSET + 32].copy_from_slice(&seed);
+    t.svm.set_account(t.dealer, d).unwrap();
+    // HandLog as create_table leaves it.
+    let (hand_log, bump) =
+        Pubkey::find_program_address(&[HAND_LOG_SEED, t.runtime.as_ref()], &card_flex::id());
+    let log = HandLog {
+        runtime: t.runtime,
+        config: rt.config,
+        hand_no: 0,
+        rules_version: 0,
+        protocol_version: 0,
+        dealing_count: 0,
+        seats: [0; MAX_SEATS],
+        wallets: [Pubkey::default(); MAX_SEATS],
+        salts: [[0; 32]; MAX_SEATS],
+        salt_commitments: [[0; 32]; MAX_SEATS],
+        hand_ctx: [0; 32],
+        roster_hash: [0; 32],
+        vrf_caller_seed: [0; 32],
+        vrf_output: [0; 32],
+        merkle_root: [0; 32],
+        revealed: false,
+        bump,
+    };
+    let mut ld = Vec::new();
+    log.try_serialize(&mut ld).unwrap();
+    ld.resize(8 + HandLog::INIT_SPACE, 0);
+    t.svm.set_account(hand_log, program_account(ld)).unwrap();
+
+    let deal = deal_ix(&t, &t.hands.clone());
+    send(&mut t.svm, &[cu_ix(1_400_000), deal], &payer).expect("deal");
+    let mut metas = card_flex::accounts::RevealHand {
+        payer: payer.pubkey(),
+        runtime: t.runtime,
+        dealer: t.dealer,
+        hand_log,
+    }
+    .to_account_metas(None);
+    metas.extend(
+        salt_accs.iter().map(|a| {
+            anchor_lang::solana_program::instruction::AccountMeta::new_readonly(*a, false)
+        }),
+    );
+    let reveal = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::RevealHand {}.data(),
+        metas.clone(),
+    );
+    send(&mut t.svm, &[reveal], &payer).expect("reveal");
+    // Reveal only once.
+    let again = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::RevealHand {}.data(),
+        metas,
+    );
+    assert!(send(&mut t.svm, &[again], &payer).is_err());
+
+    let log = HandLog::try_deserialize(&mut t.svm.get_account(&hand_log).unwrap().data.as_slice())
+        .unwrap();
+    assert!(log.revealed);
+    // Build the public record exactly as an outside verifier would, and check it.
+    let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+    let n = log.dealing_count as usize;
+    let player_cards: Vec<u8> = {
+        let d = t.svm.get_account(&t.hands[1]).unwrap().data;
+        d[HAND_CARDS..HAND_CARDS + 3].to_vec()
+    };
+    let json = format!(
+        r#"{{"format":"cf-hand-record/1","protocol_version":{},"program_id":"{}","table":"{}","hand_no":"{}","rules_version":{},
+           "seats":[{}],"salts":[{}],"vrf_output":"{}",
+           "claimed":{{"roster_hash":"{}","hand_ctx":"{}","salt_commitments":[{}],"vrf_caller_seed":"{}","merkle_root":"{}"}},
+           "hands":[{{"seat":1,"cards":{:?}}}]}}"#,
+        log.protocol_version,
+        card_flex::id(),
+        log.config,
+        log.hand_no,
+        log.rules_version,
+        (0..n)
+            .map(|k| format!(
+                r#"{{"seat":{},"wallet":"{}"}}"#,
+                log.seats[k], log.wallets[k]
+            ))
+            .collect::<Vec<_>>()
+            .join(","),
+        (0..n)
+            .map(|k| format!("\"{}\"", hex(&log.salts[k])))
+            .collect::<Vec<_>>()
+            .join(","),
+        hex(&log.vrf_output),
+        hex(&log.roster_hash),
+        hex(&log.hand_ctx),
+        (0..n)
+            .map(|k| format!("\"{}\"", hex(&log.salt_commitments[k])))
+            .collect::<Vec<_>>()
+            .join(","),
+        hex(&log.vrf_caller_seed),
+        hex(&log.merkle_root),
+        player_cards,
+    );
+    let report = fairness_verifier::verify(&fairness_verifier::parse(&json).unwrap());
+    assert_eq!(
+        report.overall(),
+        fairness_verifier::Status::Valid,
+        "{}",
+        report.render()
+    );
+    eprintln!("{}", report.render());
+}

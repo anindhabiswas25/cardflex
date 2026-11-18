@@ -139,3 +139,36 @@ export function verifyCard(root, ctx, pos, card, salt, siblings) {
   return h.equals(root);
 }
 export const vrfCallerSeed = (ctx, commitments) => sha256(Buffer.from("CF_VRF_SEED_V2"), ctx, ...commitments);
+
+// HandLog byte offsets (table.rs HandLog, 8-byte discriminator first).
+export const HL = {
+  config: 40, hand_no: 72, rules_version: 80, protocol_version: 82, dealing_count: 84, seats: 85,
+  wallets: 91, salts: 283, salt_commitments: 475, hand_ctx: 667, roster_hash: 699,
+  vrf_caller_seed: 731, vrf_output: 763, merkle_root: 795, revealed: 827,
+};
+
+/** Builds a `cf-hand-record/1` (crates/fairness-verifier) from raw HandLog bytes. */
+export function handRecordFromLog(d, shownHands = []) {
+  const n = d[HL.dealing_count];
+  const h = (off) => d.subarray(off, off + 32).toString("hex");
+  const key = (off) => new PublicKey(d.subarray(off, off + 32)).toBase58();
+  return {
+    format: "cf-hand-record/1",
+    protocol_version: d.readUInt16LE(HL.protocol_version),
+    program_id: PROGRAM_ID.toBase58(),
+    table: key(HL.config),
+    hand_no: d.readBigUInt64LE(HL.hand_no).toString(),
+    rules_version: d.readUInt16LE(HL.rules_version),
+    seats: Array.from({ length: n }, (_, k) => ({ seat: d[HL.seats + k], wallet: key(HL.wallets + 32 * k) })),
+    salts: Array.from({ length: n }, (_, k) => h(HL.salts + 32 * k)),
+    vrf_output: h(HL.vrf_output),
+    claimed: {
+      roster_hash: h(HL.roster_hash),
+      hand_ctx: h(HL.hand_ctx),
+      salt_commitments: Array.from({ length: n }, (_, k) => h(HL.salt_commitments + 32 * k)),
+      vrf_caller_seed: h(HL.vrf_caller_seed),
+      merkle_root: h(HL.merkle_root),
+    },
+    hands: shownHands,
+  };
+}

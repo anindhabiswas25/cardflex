@@ -57,7 +57,9 @@ pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
 pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet
 pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (needs devnet-poc build deployed)
-pnpm handflow -- --region <label> [--queue ephemeral|base]   # P2 salts -> VRF -> (shuffle, verify)
+pnpm handflow -- --region <label>   # P2: salts -> VRF -> deal -> reveal -> cf-verify (48 checks)
+cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
+pnpm check:g2            # 10,000-hand verifier gate (release mode)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -69,6 +71,7 @@ programs/card-flex/    Anchor program: table.rs = accounts/layouts; lib.rs = ins
                        (table, permissions, salts, VRF, deal); poc_deal = test deck (feature)
 crates/card-types/     frozen canonical card encoding (no_std)
 crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/spec/
+crates/fairness-verifier/  offline verifier lib + `cf-verify <record.json>` CLI
 packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), tablepoc.mjs
                        (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011);
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
@@ -155,6 +158,12 @@ Planned crates and apps are listed in PRD §7.
   deprecated global `VRF_PROGRAM_IDENTITY`. `#[vrf]`/`#[vrf_callback]`
   account structs must live in lib.rs (the generated `invoke_signed_vrf` is
   module-private). Request -> callback takes ~2 s on Devnet.
+- Large accounts (TableRuntime, HandLog) must be `Box<Account<…>>` in any
+  Accounts struct with more than one of them, or the 4 KB SBF stack overflows
+  ("Access violation in stack frame").
+- `HandLog` is PUBLIC by design (explicit `is_private = false` permission);
+  `reveal_hand` makes the deck derivable, so in P5 it must only run after
+  showdown. Hand record format: `cf-hand-record/1` (crates/fairness-verifier).
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

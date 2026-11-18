@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P1 → P2.** G1 provisionally passed from one location; P2 (fairness) can start while other regions run the probes. Update this file whenever a ticket
+Current phase: **P2 done → P3 (recovery).** G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -18,7 +18,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-009 | Salt round: private `submit_salt` into SaltAccount, public commitment | Done: suite 231/231 (2/2 runs) incl. salts; salt tx redacted to everyone | `open_salt`/`start_hand`/`submit_salt`, `docs/findings/cf-009-salt-round.md` |
 | CF-010 | VRF request with caller_seed when SALTS_DONE; protected callback derives the seed | Done: ephemeral queue works inside PER, callback ~2.0–2.1 s; 12/12 checks ×2 | `request_shuffle`/`vrf_deal`, `pnpm handflow`, `docs/findings/cf-010-vrf.md` |
 | CF-011 | Shuffle, deal and Merkle root in-program from the seed; compute units; remove test deck from the real path | Done: Devnet 39/39 ×2, all cards verified vs public root; 56–86k CU; salt-substitution + stuck-VRF fixes | `deal_hand`/`cancel_hand`, `tests/test_deal.rs`, `docs/findings/cf-011-deal.md` |
-| CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Next (P2) | spec §9; needs HandLog reveal |
+| CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Done: Devnet hand revealed, read with no token, `cf-verify` VALID (PER and base-layer copies); 10,000 random hands VALID + tampers caught. **G2 passed** (one location) | `crates/fairness-verifier`, `reveal_hand`, `docs/findings/cf-012-verifier-g2.md` |
+| CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Next (P3) | ADR 0002 rules 4–5; gate G3 |
 
 ## Blockers and asks for the team
 
@@ -35,6 +36,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-012 done, **P2 complete, G2 passed** (one location).
+  HandLog (public, delegated, committed) + reveal_hand; offline `cf-verify`
+  CLI. Devnet: revealed hand verifies VALID from PER and from the Solana
+  base-layer copy; tampered salt INVALID. 10,000 random hands VALID with
+  every tamper caught (`pnpm check:g2`, in CI). Security fixes: VRF queue
+  pinned to the ephemeral queue; large accounts boxed (stack limit).
 - 2026-11-18 — CF-011 done. `deal_hand` shuffles, deals and commits on-chain
   from the private seed; each SeatHand carries its own Merkle proofs; Devnet
   39/39 in 2 runs (all 18 cards verified in JS against the public root).

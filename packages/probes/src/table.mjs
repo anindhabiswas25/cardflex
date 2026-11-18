@@ -21,6 +21,7 @@ export async function setupTable({ seats = 6 } = {}) {
   const pda = (...seeds) => PublicKey.findProgramAddressSync(seeds, PROGRAM_ID)[0];
   const config = pda(Buffer.from("table"), authority.publicKey.toBuffer(), u64(tableId));
   const runtime = pda(Buffer.from("table-runtime"), config.toBuffer());
+  const handLog = pda(Buffer.from("hand-log"), runtime.toBuffer());
   const dealer = pda(Buffer.from("dealer"), runtime.toBuffer());
   const hands = players.map((_, s) => pda(Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)));
   const saltAccs = players.map((_, s) => pda(Buffer.from("salt"), runtime.toBuffer(), u8(s)));
@@ -31,7 +32,7 @@ export async function setupTable({ seats = 6 } = {}) {
 
   log("setup: table, players, delegate");
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  await send(base, [ix("create_table", [w(config), w(runtime), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
+  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
   for (let s = 0; s < seats; s++) {
     await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
   }
@@ -39,7 +40,10 @@ export async function setupTable({ seats = 6 } = {}) {
     r(authority.publicKey, true), r(config),
     w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(runtime, PROGRAM_ID)),
     w(delegationRecordPdaFromDelegatedAccount(runtime)), w(delegationMetadataPdaFromDelegatedAccount(runtime)),
-    w(runtime), r(TEE_VALIDATOR), r(PROGRAM_ID), r(DELEGATION_PROGRAM_ID), r(SystemProgram.programId),
+    w(runtime),
+    w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(handLog, PROGRAM_ID)),
+    w(delegationRecordPdaFromDelegatedAccount(handLog)), w(delegationMetadataPdaFromDelegatedAccount(handLog)),
+    w(handLog), r(TEE_VALIDATOR), r(PROGRAM_ID), r(DELEGATION_PROGRAM_ID), r(SystemProgram.programId),
   ])], [authority]);
 
   const tee = teeConn(await tokenFor(authority));
@@ -48,6 +52,7 @@ export async function setupTable({ seats = 6 } = {}) {
 
   log("setup: permissions, dealer, hands, salts");
   await send(tee, [ix("open_runtime_permission", perKeys(runtime))], [authority], { skipPreflight: true });
+  await send(tee, [ix("open_hand_log_permission", perKeys(handLog))], [authority], { skipPreflight: true });
   await send(tee, [ix("open_dealer", perKeys(dealer))], [authority], { skipPreflight: true });
   for (let s = 0; s < seats; s++) await send(tee, [ix("open_seat_hand", perKeys(hands[s]), u8(s))], [authority], { skipPreflight: true });
   for (let s = 0; s < seats; s++) await send(tee, [ix("open_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true });
@@ -59,9 +64,9 @@ export async function setupTable({ seats = 6 } = {}) {
       await send(tee, [ix("close_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true }).catch(() => {});
     }
     await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true }).catch(() => {});
-    await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
+    await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
     return waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   }
 
-  return { ix, payer, base, tee, authority, players, config, runtime, dealer, hands, saltAccs, perKeys, teardown, seats };
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, dealer, hands, saltAccs, perKeys, teardown, seats };
 }

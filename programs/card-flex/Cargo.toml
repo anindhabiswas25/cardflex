@@ -42,6 +42,8 @@ solana-keypair = "3.0.1"
 solana-account = "3"
 card-types = { path = "../../crates/card-types" }
 fairness-core = { path = "../../crates/fairness-core", features = ["sha2"] }
+fairness-verifier = { path = "../../crates/fairness-verifier" }
+bs58 = "=0.5.1"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

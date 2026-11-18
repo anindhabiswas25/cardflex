@@ -1,0 +1,79 @@
+# CF-012 findings — independent verifier and gate G2
+
+- **Date:** 2026-11-18
+- **G2 status: passed** (provisional on the same terms as G1: one location
+  so far). All four G2 criteria from PRD §13.6 are met; see the table.
+- **Code:**
+  - `crates/fairness-verifier`: library plus the `cf-verify` CLI;
+  - `HandLog`, `reveal_hand` and `open_hand_log_permission` in
+    `programs/card-flex`;
+  - `handRecordFromLog` in `packages/probes/src/common.mjs`.
+- **Raw data:** `docs/probes/*p2-handflow*.json` and
+  `docs/probes/*hand-record-*.json` (real Devnet hand records).
+
+## What was built
+
+1. **`HandLog`** (ADR 0002): a public account created with the table,
+   delegated with `TableRuntime` and committed back with it. It gets an
+   explicit **public** permission (`open_hand_log_permission`,
+   `is_private = false`) instead of relying on the default.
+2. **`reveal_hand`** (anyone may call it, once, after `DEALT`) copies the
+   spec §9 reveal into `HandLog`:
+   - hand number, rules and protocol versions;
+   - seats and wallets in dealing order;
+   - salts, re-checked against their commitments;
+   - commitments, `hand_ctx`, roster hash, VRF caller seed, VRF output and
+     Merkle root.
+
+   In P5 it runs only after showdown, because a reveal makes the deck public.
+3. **`cf-verify <record.json>`** is offline. It doesn't depend on the program
+   crate, the network, MagicBlock or the backend. It reads a
+   `cf-hand-record/1` record, rebuilds everything with `fairness-core` and
+   prints the PRD §22 report:
+
+   ```text
+   Protocol version:         VALID
+   Roster hash:              VALID
+   Game context:             VALID
+   Salt commitments:         VALID         6 salts match their commitments
+   Randomness binding:       VALID         VRF caller seed …
+   Shuffle reconstruction:   VALID
+   Deck uniqueness:          VALID         52 distinct cards
+   Merkle root:              VALID
+   Dealing map:              VALID         6 shown hands match the deal
+   Overall:                  VALID
+   ```
+
+   Exit status: 0 = VALID, 1 = INVALID, 2 = unreadable record.
+
+## Evidence
+
+| Test | Result |
+| --- | --- |
+| Honest record | VALID |
+| Every frozen spec vector case | VALID |
+| One field tampered at a time (root, caller seed, roster, context, VRF output, a salt, a shown card, protocol version) | INVALID at the expected check(s) |
+| **10,000 random hands** (2–6 seats), honest | 10,000 VALID |
+| Same 10,000 with one random tamper each | 10,000 INVALID |
+| LiteSVM: real `deal_hand` + `reveal_hand`, then the verifier on the resulting `HandLog` | VALID |
+| **Devnet** (2 runs): real salts, VRF, deal and reveal; `HandLog` read **with no token**; record verified with `cf-verify` | VALID |
+| Devnet: the same record with one salt changed | INVALID, "Salt commitments" flagged |
+| Devnet: after undelegate, the `HandLog` committed to the **Solana base layer** equals the PER reveal and verifies | VALID |
+| Devnet: second reveal | rejected |
+
+## Gate G2 (PRD §13.6)
+
+| Criterion | Evidence | Status |
+| --- | --- | --- |
+| Verifier rebuilds 10,000 test hands | `pnpm check:g2` (CI step) | met |
+| Spoofed VRF callback rejected | CF-010: stranger and authority fake callbacks rejected before, during and after fulfilment; scoped identity | met |
+| Second shuffle impossible | CF-010/011: second request, second deal and late callback (hand-number bound) rejected; salts frozen mid-hand | met |
+| Compute cost per deal measured | CF-011: 56–86k CU | met |
+
+## Not covered yet (later phases)
+
+- Showdown, ranking and payouts aren't in the record yet (P4/P5). The
+  verifier checks the deal, not the winner.
+- A WASM build of the verifier for the browser (P7).
+- Reveal is currently allowed right after the deal. P5 moves it to after
+  showdown.

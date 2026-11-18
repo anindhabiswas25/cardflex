@@ -36,6 +36,7 @@ const players = Array.from({ length: SEATS }, () => ({ wallet: Keypair.generate(
 const tableId = BigInt(Date.now());
 const [config] = PublicKey.findProgramAddressSync([Buffer.from("table"), authority.publicKey.toBuffer(), u64(tableId)], PROGRAM_ID);
 const [runtime] = PublicKey.findProgramAddressSync([Buffer.from("table-runtime"), config.toBuffer()], PROGRAM_ID);
+const [handLog] = PublicKey.findProgramAddressSync([Buffer.from("hand-log"), runtime.toBuffer()], PROGRAM_ID);
 const [dealer] = PublicKey.findProgramAddressSync([Buffer.from("dealer"), runtime.toBuffer()], PROGRAM_ID);
 const hands = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
 const saltAccs = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("salt"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
@@ -63,7 +64,7 @@ try {
   // ---------------- setup ----------------
   log("setup: table, six players, delegate");
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  await send(base, [ix("create_table", [w(config), w(runtime), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
+  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
   for (let s = 0; s < SEATS; s++) {
     await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
   }
@@ -71,7 +72,10 @@ try {
     r(authority.publicKey, true), r(config),
     w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(runtime, PROGRAM_ID)),
     w(delegationRecordPdaFromDelegatedAccount(runtime)), w(delegationMetadataPdaFromDelegatedAccount(runtime)),
-    w(runtime), r(TEE_VALIDATOR), r(PROGRAM_ID), r(DELEGATION_PROGRAM_ID), r(SystemProgram.programId),
+    w(runtime),
+    w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(handLog, PROGRAM_ID)),
+    w(delegationRecordPdaFromDelegatedAccount(handLog)), w(delegationMetadataPdaFromDelegatedAccount(handLog)),
+    w(handLog), r(TEE_VALIDATOR), r(PROGRAM_ID), r(DELEGATION_PROGRAM_ID), r(SystemProgram.programId),
   ])], [authority]);
 
   log("setup: tokens");
@@ -86,6 +90,7 @@ try {
 
   log("setup: permissions, dealer, hands");
   await send(tee, [ix("open_runtime_permission", perKeys(runtime))], [authority], { skipPreflight: true });
+  await send(tee, [ix("open_hand_log_permission", perKeys(handLog))], [authority], { skipPreflight: true });
   await send(tee, [ix("open_dealer", perKeys(dealer))], [authority], { skipPreflight: true });
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("open_seat_hand", perKeys(hands[s]), u8(s))], [authority], { skipPreflight: true });
 
@@ -296,7 +301,7 @@ try {
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("close_ephemeral", perKeys(hands[s]), Buffer.from([1, s]))], [authority], { skipPreflight: true });
   await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true });
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("close_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true });
-  await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
+  await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
   const home = await waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   check("base layer", "runtime back on base", true, !!home.value);
   for (const k of [dealer, ...hands, ...saltAccs]) check("base layer", `${k.toBase58().slice(0, 6)}… absent on Solana`, null, await base.getAccountInfo(k));

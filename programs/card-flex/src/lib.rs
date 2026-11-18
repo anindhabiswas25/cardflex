@@ -74,6 +74,10 @@ pub mod card_flex {
         runtime.authority = config.authority;
         runtime.max_seats = max_seats;
         runtime.bump = ctx.bumps.runtime;
+        let hand_log = &mut ctx.accounts.hand_log;
+        hand_log.runtime = runtime.key();
+        hand_log.config = config.key();
+        hand_log.bump = ctx.bumps.hand_log;
         Ok(())
     }
 
@@ -113,6 +117,15 @@ pub mod card_flex {
         ctx.accounts.delegate_runtime(
             &ctx.accounts.authority,
             &[RUNTIME_SEED, config_key.as_ref()],
+            DelegateConfig {
+                commit_frequency_ms: u32::MAX,
+                validator,
+            },
+        )?;
+        let runtime_key = ctx.accounts.runtime.key();
+        ctx.accounts.delegate_hand_log(
+            &ctx.accounts.authority,
+            &[HAND_LOG_SEED, runtime_key.as_ref()],
             DelegateConfig {
                 commit_frequency_ms: u32::MAX,
                 validator,
@@ -576,11 +589,13 @@ pub mod card_flex {
     /// Requests MagicBlock VRF once every dealt seat has a salt. `caller_seed`
     /// = `vrf_caller_seed(hand_ctx, c_0..c_n)` (spec §3), computed here.
     pub fn request_shuffle(ctx: Context<RequestShuffle>) -> Result<()> {
+        // Security review: only the queue MagicBlock serves for PER. Accepting
+        // others (e.g. the test queue, never fulfilled on Devnet) would let
+        // anyone stall the hand and force a cancellation.
         let queue = ctx.accounts.oracle_queue.key();
-        require!(
-            queue == ephemeral_rollups_sdk::vrf::consts::DEFAULT_EPHEMERAL_QUEUE
-                || queue == ephemeral_rollups_sdk::vrf::consts::DEFAULT_QUEUE
-                || queue == ephemeral_rollups_sdk::vrf::consts::DEFAULT_EPHEMERAL_TEST_QUEUE,
+        require_keys_eq!(
+            queue,
+            ephemeral_rollups_sdk::vrf::consts::DEFAULT_EPHEMERAL_QUEUE,
             CardFlexError::BadQueue
         );
         let runtime = &mut ctx.accounts.runtime;
@@ -786,6 +801,91 @@ pub mod card_flex {
         Ok(())
     }
 
+    // ---------- CF-012 reveal (PER) ----------
+
+    /// Gives `HandLog` an explicit permission marking it **public** (ADR 0002:
+    /// never rely on the default for a delegated account).
+    pub fn open_hand_log_permission(ctx: Context<TablePer>) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        let runtime_key = runtime.key();
+        let (hand_log, bump) =
+            Pubkey::find_program_address(&[HAND_LOG_SEED, runtime_key.as_ref()], &crate::ID);
+        require_keys_eq!(
+            ctx.accounts.target.key(),
+            hand_log,
+            CardFlexError::BadHandLog
+        );
+        let seeds: &[&[u8]] = &[HAND_LOG_SEED, runtime_key.as_ref(), &[bump]];
+        create_permission_with(
+            ctx.accounts,
+            &ctx.accounts.target.to_account_info(),
+            vec![],
+            &[
+                &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]],
+                seeds,
+            ],
+            false,
+        )
+    }
+
+    /// Publishes a dealt hand's seed inputs (spec §9) in `HandLog`: roster,
+    /// salts, VRF output, commitments and root. Permissionless. Salts are
+    /// re-checked against their commitments. After this, anyone can rebuild
+    /// the deck, so in P5 it runs only after showdown.
+    pub fn reveal_hand(ctx: Context<RevealHand>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
+        let runtime_key = runtime.key();
+        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
+        require!(
+            ctx.remaining_accounts.len() == order.len(),
+            CardFlexError::BadSalt
+        );
+        let log = &mut ctx.accounts.hand_log;
+        log.hand_no = runtime.hand_no;
+        log.rules_version = RULES_VERSION;
+        log.protocol_version = fairness_core::PROTOCOL_VERSION;
+        log.dealing_count = order.len() as u8;
+        log.seats = [0; MAX_SEATS];
+        log.wallets = [Pubkey::default(); MAX_SEATS];
+        log.salts = [[0; 32]; MAX_SEATS];
+        log.salt_commitments = [[0; 32]; MAX_SEATS];
+        for (k, (&seat, acc)) in order.iter().zip(ctx.remaining_accounts).enumerate() {
+            let (expected, _) = Pubkey::find_program_address(
+                &[SALT_SEED, runtime_key.as_ref(), &[seat]],
+                &crate::ID,
+            );
+            require_keys_eq!(acc.key(), expected, CardFlexError::BadSalt);
+            require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSalt);
+            let data = acc.try_borrow_data()?;
+            require!(&data[..8] == SALT_TAG, CardFlexError::BadSalt);
+            let mut salt = [0u8; 32];
+            salt.copy_from_slice(&data[49..81]);
+            require!(
+                fairness_core::salt_commitment::<SolSha256>(&runtime.hand_ctx, seat, &salt)
+                    == runtime.salt_commitments[seat as usize],
+                CardFlexError::BadSalt
+            );
+            log.seats[k] = seat;
+            log.wallets[k] = runtime.wallets[seat as usize];
+            log.salts[k] = salt;
+            log.salt_commitments[k] = runtime.salt_commitments[seat as usize];
+        }
+        {
+            let d = ctx.accounts.dealer.try_borrow_data()?;
+            require!(&d[..8] == DEALER_TAG, CardFlexError::BadDealer);
+            log.vrf_output
+                .copy_from_slice(&d[DEALER_VRF_OFFSET..DEALER_VRF_OFFSET + 32]);
+        }
+        log.hand_ctx = runtime.hand_ctx;
+        log.roster_hash = runtime.roster_hash;
+        log.vrf_caller_seed = runtime.vrf_caller_seed;
+        log.merkle_root = runtime.merkle_root;
+        log.revealed = true;
+        runtime.phase = phase::REVEALED;
+        Ok(())
+    }
+
     /// Compute-cost benchmark of the real deal path; touches no accounts.
     pub fn bench_deal(
         _ctx: Context<BenchDeal>,
@@ -907,7 +1007,10 @@ pub mod card_flex {
             ctx.accounts.magic_context.to_account_info(),
             ctx.accounts.magic_program.to_account_info(),
         )
-        .commit_and_undelegate(&[ctx.accounts.runtime.to_account_info()])
+        .commit_and_undelegate(&[
+            ctx.accounts.runtime.to_account_info(),
+            ctx.accounts.hand_log.to_account_info(),
+        ])
         .build_and_invoke()?;
         Ok(())
     }
@@ -953,6 +1056,16 @@ fn create_permission<'info>(
     members: Vec<Member>,
     signer_seeds: &[&[&[u8]]],
 ) -> Result<()> {
+    create_permission_with(accs, account, members, signer_seeds, true)
+}
+
+fn create_permission_with<'info>(
+    accs: &TablePer<'info>,
+    account: &AccountInfo<'info>,
+    members: Vec<Member>,
+    signer_seeds: &[&[&[u8]]],
+    is_private: bool,
+) -> Result<()> {
     CreateEphemeralPermissionCpi {
         payer: accs.runtime.to_account_info(),
         permissioned_account: account.clone(),
@@ -961,7 +1074,7 @@ fn create_permission<'info>(
         magic_program: accs.magic_program.to_account_info(),
         permission_program: accs.permission_program.to_account_info(),
         args: EphemeralMembersArgs {
-            is_private: true,
+            is_private,
             members,
         },
     }
@@ -1021,4 +1134,6 @@ pub enum CardFlexError {
     StaleCallback,
     #[msg("the VRF timeout has not passed yet")]
     TooEarly,
+    #[msg("wrong hand log account")]
+    BadHandLog,
 }
