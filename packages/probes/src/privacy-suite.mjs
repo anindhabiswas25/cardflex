@@ -18,7 +18,7 @@ import {
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, repoRoot, loadDiscriminators, loadPayer, makeIx, send, rejected,
   tokenFor, authFailures, teeConn, teeUrl, rawRpc, waitFor, sleep, log, ms, w, r, u8, u64, vecPubkeys,
-  testDeck, dealPositions, rosterHash, handCtx, saltCommitment, RT,
+  testDeck, dealPositions, rosterHash, handCtx, saltCommitment, RT, GLOBAL, ensureGlobal,
 } from "./common.mjs";
 import { randomBytes } from "node:crypto";
 
@@ -68,12 +68,13 @@ const canRead = async (conn, key) => { try { return !!(await conn.getAccountInfo
 try {
   // ---------------- setup ----------------
   log("setup: table, six players, delegate");
+  await ensureGlobal(base, ix, payer);
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
+  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(GLOBAL), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
   // Seat with real buy-ins (CF-020): boot 25,000, buy-in 40 boots.
   const cfgData = Buffer.alloc(22);
   cfgData.writeBigUInt64LE(25_000n, 0); cfgData.writeBigUInt64LE(0n, 10); cfgData.writeUInt32LE(3600, 18);
-  await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime)], cfgData)], [authority]);
+  await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime), r(GLOBAL)], cfgData)], [authority]);
   for (let s = 0; s < SEATS; s++) {
     const ledger = PublicKey.findProgramAddressSync([Buffer.from("seat-ledger"), config.toBuffer(), u8(s)], PROGRAM_ID)[0];
     await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: 6_000_000 })], [payer]);

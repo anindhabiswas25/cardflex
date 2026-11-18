@@ -20,7 +20,8 @@ Solana base layer. Players buy in to a table, play hands with session keys
 3. `Card_Flex_Delivery_Plan.md` — phases P0–P9, gates G1–G3, ticket backlog
    (CF-xxx), risks, open questions for MagicBlock.
 4. `docs/adr/` — architecture decisions. ADR 0001 = pinned toolchain,
-   ADR 0002 = account lifecycle, ADR 0003 = fairness encoding (both amend the PRD).
+   ADR 0002 = account lifecycle, ADR 0003 = fairness encoding (both amend the PRD),
+   ADR 0004 = recovery, ADR 0005 = seat lifecycle and money (P6).
    `docs/spec/cf-fairness-v2.md` is the normative byte spec for fairness.
 5. `docs/findings/` — measured facts from tickets (e.g. CF-003 latency and
    attestation).
@@ -196,6 +197,11 @@ Planned crates and apps are listed in PRD §7.
   Byte offsets for JS are pinned by tests in `tests/test_game.rs`
   (`runtime_byte_offsets`, `hand_log_byte_offsets`); keep `RT`, `GAME`, `HL`
   in `common.mjs` in sync.
+- Seats and money while live (ADR 0005, P6): seat epochs (`seat_epoch` /
+  `SeatLedger.epoch`) — never copy a stack between different epochs;
+  `GlobalConfig` (`["global"]`) holds treasury, max rake and pause; only the
+  program's upgrade authority can create it (probes: `ensureGlobal`). Pause
+  must never block cash-out, refunds or rake sweeps.
 - Money (ADR 0004): lamports only in TableVault (never delegated); only
   `SeatLedger.synced_stack` is ever paid; `sync_hand` trusts committed runtime
   state only after checking the delegation record (validator + owner) and

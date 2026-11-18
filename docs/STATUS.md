@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P5 done (2026-11-19) → next P6 (money).** Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P6 (money).** P4 and P5 done 2026-11-19. Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -28,6 +28,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Done (Devnet verified in CF-025): `turn_deadline`, `timeout_turn`. Crank: the pinned SDK has no crank feature (ADR 0001), so a keeper calls `timeout_turn`; scheduling it is P8 keeper work | `programs/card-flex/tests/test_game.rs` |
 | CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Done (Devnet verified in CF-025): `button`, `next_hand`; fix: only dealt seats may submit salts | `programs/card-flex/tests/test_table.rs` |
 | CF-025 | P5: six-player full game on Devnet, verified end to end | Done: 3- and 5-hand games 39/39 and 66/66; handflow 67/67, privacy suite 230/230, recovery 20/20; fix: Side Show viewers cleared by `next_hand` | `pnpm game`, `docs/findings/cf-025-full-game.md` |
+| CF-030 | P6: ADR 0005 (seat lifecycle + money) and `GlobalConfig` (treasury, max rake, pause) | Done locally (Devnet in CF-035) | `docs/adr/0005-seat-lifecycle-and-money.md`, `tests/test_global.rs` |
+| CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Next | |
+| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Planned | |
+| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Planned | |
+| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Planned | |
+| CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Planned | |
 
 ## Blockers and asks for the team
 
@@ -45,6 +51,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — P6 started. ADR 0005: seat epochs keep a seat's old and new
+  occupant apart; buy-in = ledger on base + `join_seat`; leave at a hand
+  boundary, cash-out once from synced state; rake swept only from synced
+  results; vault invariant. CF-030: `GlobalConfig` (treasury, max rake,
+  pause), created only by the program's upgrade authority; pause blocks new
+  tables (and buy-ins, CF-031), never withdrawals.
 - 2026-11-19 — P4 exit met: rules v1 vectors frozen
   (`docs/spec/vectors/teen-patti-rules-v1.json`, generated and pinned by
   `cargo test -p teen-patti-core --test vectors`). 222 ranked hands, the

@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import nacl from "tweetnacl";
-import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { getAuthToken } from "@magicblock-labs/ephemeral-rollups-sdk";
 
 export const PROGRAM_ID = new PublicKey("4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL");
@@ -202,4 +202,26 @@ export function handRecordFromLog(d, shownHands = []) {
       rake: d.readBigUInt64LE(HL.rake).toString(),
     },
   };
+}
+
+// ---- CF-030: GlobalConfig (ADR 0005) ----
+export const GLOBAL = PublicKey.findProgramAddressSync([Buffer.from("global")], PROGRAM_ID)[0];
+const UPGRADEABLE_LOADER = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
+export const PROGRAM_DATA = PublicKey.findProgramAddressSync([PROGRAM_ID.toBuffer()], UPGRADEABLE_LOADER)[0];
+// GlobalConfig: authority(8) treasury(40) max_rake_bps(72) paused(74).
+export const GC = { authority: 8, treasury: 40, max_rake_bps: 72, paused: 74 };
+
+/** Creates GlobalConfig once on this cluster if missing. `admin` must be the
+ * program's upgrade authority (the devnet deployer). Treasury = admin. */
+export async function ensureGlobal(conn, ix, admin, maxRakeBps = 1_000) {
+  if (await conn.getAccountInfo(GLOBAL)) return false;
+  const data = Buffer.alloc(34);
+  admin.publicKey.toBuffer().copy(data, 0);
+  data.writeUInt16LE(maxRakeBps, 32);
+  await send(conn, [ix("init_global", [
+    { pubkey: admin.publicKey, isSigner: true, isWritable: true }, { pubkey: GLOBAL, isSigner: false, isWritable: true },
+    { pubkey: PROGRAM_ID, isSigner: false, isWritable: false }, { pubkey: PROGRAM_DATA, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+  ], data)], [admin]);
+  return true;
 }

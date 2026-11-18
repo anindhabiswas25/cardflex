@@ -2,6 +2,8 @@
 //! Buy-in into the vault, sync from committed runtime state (both the
 //! delegated and the undelegated path), and emergency refund.
 
+mod common;
+
 use {
     anchor_lang::{
         prelude::{AccountMeta, Pubkey},
@@ -61,6 +63,7 @@ fn setup(seats: usize) -> T {
         "/../deploy/card_flex.so"
     ));
     svm.add_program(card_flex::id(), bytes).unwrap();
+    common::setup_global(&mut svm);
     let authority = Keypair::new();
     svm.airdrop(&authority.pubkey(), 10_000_000_000).unwrap();
     let table_id: u64 = 42;
@@ -86,6 +89,7 @@ fn setup(seats: usize) -> T {
             vault,
             authority: authority.pubkey(),
             system_program: system_program::ID,
+            global: common::global_address(),
         }
         .to_account_metas(None),
     );
@@ -103,6 +107,7 @@ fn setup(seats: usize) -> T {
             authority: authority.pubkey(),
             config,
             runtime,
+            global: common::global_address(),
         }
         .to_account_metas(None),
     );
@@ -304,6 +309,7 @@ fn buy_in_moves_lamports_into_the_vault_and_records_ledgers() {
             authority: a.pubkey(),
             config: t.config,
             runtime: t.runtime,
+            global: common::global_address(),
         }
         .to_account_metas(None),
     );

@@ -48,7 +48,41 @@ pub mod card_flex {
 
     /// Creates `TableConfig` and `TableRuntime` and pre-funds the runtime
     /// with the ephemeral rent it will spend inside PER.
+    /// Creates the program-wide settings once (ADR 0005). Only the program's
+    /// upgrade authority can sign it.
+    pub fn init_global(
+        ctx: Context<InitGlobal>,
+        treasury: Pubkey,
+        max_rake_bps: u16,
+    ) -> Result<()> {
+        require!(max_rake_bps <= MAX_RAKE_BPS, CardFlexError::BadAmount);
+        let g = &mut ctx.accounts.global;
+        g.authority = ctx.accounts.authority.key();
+        g.treasury = treasury;
+        g.max_rake_bps = max_rake_bps;
+        g.paused = false;
+        g.bump = ctx.bumps.global;
+        Ok(())
+    }
+
+    /// Changes treasury, rake cap or pause. A lower rake cap applies to
+    /// tables configured afterwards; pausing never blocks withdrawals.
+    pub fn update_global(
+        ctx: Context<UpdateGlobal>,
+        treasury: Pubkey,
+        max_rake_bps: u16,
+        paused: bool,
+    ) -> Result<()> {
+        require!(max_rake_bps <= MAX_RAKE_BPS, CardFlexError::BadAmount);
+        let g = &mut ctx.accounts.global;
+        g.treasury = treasury;
+        g.max_rake_bps = max_rake_bps;
+        g.paused = paused;
+        Ok(())
+    }
+
     pub fn create_table(ctx: Context<CreateTable>, table_id: u64, max_seats: u8) -> Result<()> {
+        require!(!ctx.accounts.global.paused, CardFlexError::Paused);
         require!(
             (2..=MAX_SEATS as u8).contains(&max_seats),
             CardFlexError::BadSeat
@@ -104,7 +138,10 @@ pub mod card_flex {
         let config = &mut ctx.accounts.config;
         require!(config.seated == 0, CardFlexError::TableLocked);
         require!(boot > 0, CardFlexError::BadAmount);
-        require!(rake_bps <= MAX_RAKE_BPS, CardFlexError::BadAmount);
+        require!(
+            rake_bps <= MAX_RAKE_BPS && rake_bps <= ctx.accounts.global.max_rake_bps,
+            CardFlexError::BadAmount
+        );
         require!(
             (REFUND_TIMEOUT_MIN_SECS..=REFUND_TIMEOUT_MAX_SECS).contains(&refund_timeout_secs),
             CardFlexError::BadTimeout
@@ -1753,6 +1790,10 @@ pub enum CardFlexError {
     ValidatorNotAllowed,
     #[msg("nothing left to claim for this seat")]
     NothingToClaim,
+    #[msg("only the program's upgrade authority may do this")]
+    NotUpgradeAuthority,
+    #[msg("the program is paused for new tables and buy-ins")]
+    Paused,
     #[msg("action sequence number is stale")]
     StaleAction,
     #[msg("unknown action")]

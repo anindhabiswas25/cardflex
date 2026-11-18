@@ -8,7 +8,7 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, loadDiscriminators, loadPayer, makeIx, send, tokenFor, teeConn,
-  waitFor, log, w, r, u8, u64, RT, GAME, PHASE, ACTION,
+  waitFor, log, w, r, u8, u64, RT, GAME, PHASE, ACTION, GLOBAL, ensureGlobal,
 } from "./common.mjs";
 
 // Every seat buys in for real (vault + seat ledgers, ADR 0004). The table is
@@ -34,16 +34,17 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
   ];
 
+  if (await ensureGlobal(base, ix, payer)) log("setup: created GlobalConfig (first run on this cluster)");
   log("setup: table, players, delegate");
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
+  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(GLOBAL), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
   const ledgers = players.map((_, s) => pda(Buffer.from("seat-ledger"), config.toBuffer(), u8(s)));
   {
     // configure_table(boot u64, rake_bps u16, rake_cap u64, refund_timeout_secs u32)
     const cfgData = Buffer.alloc(22);
     cfgData.writeBigUInt64LE(BigInt(boot), 0); cfgData.writeUInt16LE(rakeBps, 8);
     cfgData.writeBigUInt64LE(BigInt(rakeCap), 10); cfgData.writeUInt32LE(refundTimeout, 18);
-    await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime)], cfgData)], [authority]);
+    await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime), r(GLOBAL)], cfgData)], [authority]);
     for (let s = 0; s < seats; s++) {
       // Fund each wallet for its buy-in plus the seat-ledger rent.
       await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: buyIn + 5_000_000 })], [payer]);

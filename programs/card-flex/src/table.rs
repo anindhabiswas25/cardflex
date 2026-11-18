@@ -34,6 +34,7 @@ pub const SALT_SEED: &[u8] = b"salt";
 pub const HAND_LOG_SEED: &[u8] = b"hand-log";
 pub const VAULT_SEED: &[u8] = b"table-vault";
 pub const LEDGER_SEED: &[u8] = b"seat-ledger";
+pub const GLOBAL_SEED: &[u8] = b"global";
 /// ADR 0004: bounds for the per-table refund timeout.
 pub const REFUND_TIMEOUT_MIN_SECS: u32 = 60;
 pub const REFUND_TIMEOUT_MAX_SECS: u32 = 86_400;
@@ -155,6 +156,23 @@ pub struct TableConfig {
     pub last_sync_time: i64,
     pub last_synced_seq: u64,
     pub vault_bump: u8,
+}
+
+/// Program-wide settings (ADR 0005 decision 7). Base layer, never delegated.
+#[account]
+#[derive(InitSpace)]
+pub struct GlobalConfig {
+    /// May change these settings. Set at init to the program's upgrade
+    /// authority (a multisig before mainnet).
+    pub authority: Pubkey,
+    /// Receives swept rake.
+    pub treasury: Pubkey,
+    /// Highest `rake_bps` a table may set (≤ `MAX_RAKE_BPS`).
+    pub max_rake_bps: u16,
+    /// Blocks new tables and new buy-ins. Never blocks cash-out, refunds or
+    /// rake sweeps.
+    pub paused: bool,
+    pub bump: u8,
 }
 
 /// Holds every lamport of the table (ADR 0002/0004). Never delegated.
@@ -581,7 +599,32 @@ pub struct CreateTable<'info> {
     pub vault: Box<Account<'info, TableVault>>,
     #[account(mut)]
     pub authority: Signer<'info>,
+    #[account(seeds = [GLOBAL_SEED], bump = global.bump)]
+    pub global: Box<Account<'info, GlobalConfig>>,
     pub system_program: Program<'info, System>,
+}
+
+/// `init_global`: once, signed by the program's upgrade authority (checked
+/// through the program's ProgramData account), so nobody can front-run it.
+#[derive(Accounts)]
+pub struct InitGlobal<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(init, payer = authority, space = 8 + GlobalConfig::INIT_SPACE, seeds = [GLOBAL_SEED], bump)]
+    pub global: Box<Account<'info, GlobalConfig>>,
+    #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ crate::CardFlexError::NotUpgradeAuthority)]
+    pub program: Program<'info, crate::program::CardFlex>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(authority.key()) @ crate::CardFlexError::NotUpgradeAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+    pub system_program: Program<'info, System>,
+}
+
+/// `update_global`: the global authority only.
+#[derive(Accounts)]
+pub struct UpdateGlobal<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut, seeds = [GLOBAL_SEED], bump = global.bump, has_one = authority)]
+    pub global: Box<Account<'info, GlobalConfig>>,
 }
 
 /// `configure_table`: authority sets boot, rake and timeout before anyone
@@ -593,6 +636,8 @@ pub struct ConfigureTable<'info> {
     pub config: Box<Account<'info, TableConfig>>,
     #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(seeds = [GLOBAL_SEED], bump = global.bump)]
+    pub global: Box<Account<'info, GlobalConfig>>,
 }
 
 /// `timeout_turn`: anyone, after the turn deadline. Seat hands of the dealt

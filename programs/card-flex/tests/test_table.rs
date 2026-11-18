@@ -1,6 +1,8 @@
 //! CF-006 base-layer table instructions (seating via `buy_in` since CF-020). PER parts (permissions, ephemeral
 //! accounts, deal) run on Devnet via `pnpm tablepoc`.
 
+mod common;
+
 use {
     anchor_lang::{
         prelude::Pubkey,
@@ -51,6 +53,7 @@ fn create(max_seats: u8) -> (Table, bool) {
         "/../deploy/card_flex.so"
     ));
     svm.add_program(card_flex::id(), bytes).unwrap();
+    common::setup_global(&mut svm);
     let authority = funded(&mut svm);
     let table_id: u64 = 7;
     let config = Pubkey::find_program_address(
@@ -88,6 +91,7 @@ fn create(max_seats: u8) -> (Table, bool) {
             vault,
             authority: authority.pubkey(),
             system_program: system_program::ID,
+            global: common::global_address(),
         }
         .to_account_metas(None),
     );
@@ -105,6 +109,7 @@ fn create(max_seats: u8) -> (Table, bool) {
             authority: authority.pubkey(),
             config,
             runtime,
+            global: common::global_address(),
         }
         .to_account_metas(None),
     );
