@@ -39,8 +39,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-040 | P7: `cf-verify` as WASM for the browser Verify page | Done (not committed): `crates/fairness-wasm` (277 KB, no imports) + `loadVerifier` in the SDK; same verdicts as the native CLI on 6 Devnet hands; tampering caught | `pnpm build:wasm`, `packages/client-sdk/test/verifier.test.ts` |
 | CF-041 | P7: admin backend (create/configure tables, pause, sweep rake) | Done (not committed): `cf-admin` CLI signing locally (no key-holding server); live on Devnet: create → open (15 PER steps) → status → strict reconcile → sweep → close | `pnpm admin -- …`, `pnpm test:admin` |
 | CF-050 | P8: program liveness: salt-round timeout (`cancel_salts`, absent players leave), permissionless `start_hand`, `undelegate_table` bumps `commit_seq` | Done locally (Devnet with CF-051) | `tests/test_table.rs` |
-| CF-051 | P8: keeper service (drives every phase, commit + sync per hand + heartbeat, indexes each hand before next_hand) | Next | |
-| CF-052 | P8: program slimming (drop test-only code from production builds, size) | Planned | |
+| CF-051 | P8: keeper service (drives every phase, commit + sync per hand + heartbeat, indexes each hand before next_hand) | Done: `services/keeper` (pure `decide` + executor, permissionless instructions only, PER read token); Devnet drill 7/7 | `pnpm keeper`, `pnpm keeper-drill`, `pnpm test:keeper` |
+| CF-052 | P8: program slimming (drop test-only code from production builds, size) | Next | |
 | CF-053 | P8: recovery abort path for a hand whose ephemeral state was lost (ADR 0004 #8) | Planned | |
 | CF-054 | P8: load test, 50 concurrent tables | Planned | |
 | CF-055 | P8: security review pass | Planned | |
@@ -49,6 +49,11 @@ starts, finishes or gets blocked. Newest entries first in the log.
 ## Open program items (P8)
 
 - (fixed in CF-050) `undelegate_table` now bumps `commit_seq`.
+
+- Keeper read identity: the keeper reads the runtime with the authority's
+  PER token (reads only; the authority can't read cards, salts or the seed).
+  Better: a keeper key that is a member of the runtime permission only, so no
+  authority-derived credential leaves the operator machine (CF-055).
 
 ## Blockers and asks for the team
 
@@ -66,6 +71,16 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-051: keeper. `services/keeper`: a pure `decide(runtime)`
+  picks the one permissionless step for each phase (start, cancel stalled
+  salts, request VRF, cancel a missing callback, deal, grant Side Show views,
+  time out a slow player, reveal; on REVEALED index the hand, revoke views,
+  next_hand, then one commit + sync; heartbeat and departed-seat syncs when
+  idle). It never takes a player's own step. Devnet drill (`pnpm
+  keeper-drill`) 7/7 on the CF-050 build: an absent bot got 3 strikes in
+  99 s and was made to leave; the keeper synced it and it cashed out its full
+  buy-in; then 3 hands played to the end unattended, each indexed by the
+  keeper before next_hand (closes the indexer gap) and VALID; vault exact.
 - 2026-11-19 — CF-050 fix (security review): permissionless `start_hand`
   plus "miss one salt round and you're out" let anyone evict present but
   briefly slow players. Now a missed round only cancels the hand and counts

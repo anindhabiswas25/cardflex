@@ -87,6 +87,25 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  services/keeper:
+    dependencies:
+      '@card-flex/api':
+        specifier: workspace:*
+        version: link:../api
+      '@card-flex/client-sdk':
+        specifier: workspace:*
+        version: link:../../packages/client-sdk
+      '@solana/web3.js':
+        specifier: 1.98.0
+        version: 1.98.0(bufferutil@4.2.0)(utf-8-validate@6.0.6)
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
 packages:
 
   '@babel/runtime@7.29.14':

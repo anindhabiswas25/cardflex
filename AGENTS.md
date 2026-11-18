@@ -64,6 +64,8 @@ pnpm check:rules         # rules v1 vectors, independent Python
 pnpm test:sdk            # client SDK tests (rebuilds the WASM verifier first)
 pnpm test:api            # indexer + API tests (offline, real Devnet hand records)
 pnpm api                 # run the Devnet indexer + API on :4000 (CARDFLEX_DB, PORT, POLL_MS)
+pnpm keeper              # CF-051 keeper (CARDFLEX_PER_TOKEN from `pnpm admin -- token`, CARDFLEX_KEEPER_KEY, CARDFLEX_DB)
+pnpm keeper-drill        # Devnet: keeper runs a table unattended with bots, incl. an absent player
 pnpm admin -- table create --boot 25000 --rake-bps 250 --rake-cap 10000   # CF-041 operator CLI (see services/admin/src/cli.ts)
 pnpm reconcile -- --table <config> [--strict]   # CF-034 vault reconciliation on devnet
 pnpm money -- --region <label>   # CF-035 P6 money drill: live join/leave/cash-out/rake, reconciled each step
@@ -91,6 +93,7 @@ packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), 
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
 services/api/          CF-018 Devnet indexer + read-only HTTP API (ADR 0006)
 services/admin/        CF-041 cf-admin operator CLI (signs locally; never a key-holding server)
+services/keeper/       CF-051 keeper: decide.ts (pure, tested per phase) + keeper.ts (executor)
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region
 scripts/               check-toolchain.sh

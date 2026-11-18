@@ -6,6 +6,10 @@
 //   cf-admin global show
 //   cf-admin global set [--treasury <pk>] [--max-rake-bps N] [--pause | --unpause]
 //   cf-admin tables
+//   cf-admin token                    PER read token for the keeper (reads only; valid ~30 days).
+//                                     It reads what the authority can read in PER: the runtime (public
+//                                     game state). Never cards, salts or the dealer seed (G1 suite).
+//                                     Rotate it; CF-055 tracks giving the keeper its own read identity.
 //   cf-admin table create --boot <lamports> [--rake-bps N] [--rake-cap <lamports>] [--seats 6] [--refund-timeout 3600] [--id N]
 //   cf-admin table open <config>      delegate to the TEE + create permissions, dealer, seat hands, salts
 //   cf-admin table status <config>
@@ -87,6 +91,12 @@ async function main() {
     };
     console.log("global ->", { treasury: next.treasury.toBase58(), maxRakeBps: next.maxRakeBps, paused: next.paused });
     await send(base, [updateGlobal(signer().publicKey, next)], signer(), "update_global");
+    return;
+  }
+  if (area === "token") {
+    const { token, expiresAt } = await perLogin(signer(), perUrl);
+    console.log(token);
+    console.error(`PER read token for ${signer().publicKey.toBase58()}, valid until ${new Date(expiresAt).toISOString()}. Give it to the keeper as CARDFLEX_PER_TOKEN; it can read, never sign.`);
     return;
   }
   if (area === "tables") {

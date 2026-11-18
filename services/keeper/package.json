@@ -1,0 +1,22 @@
+{
+  "name": "@card-flex/keeper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CF-051: keeper that drives Card Flex tables through every phase with permissionless instructions only.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "drill": "node test/drill.ts"
+  },
+  "dependencies": {
+    "@card-flex/api": "workspace:*",
+    "@card-flex/client-sdk": "workspace:*",
+    "@solana/web3.js": "1.98.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}

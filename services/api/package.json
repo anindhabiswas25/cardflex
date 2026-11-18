@@ -16,5 +16,10 @@
   "devDependencies": {
     "@types/node": "24.19.2",
     "typescript": "5.9.3"
+  },
+  "exports": {
+    ".": "./src/main.ts",
+    "./indexer": "./src/indexer.ts",
+    "./store": "./src/store.ts"
   }
 }
