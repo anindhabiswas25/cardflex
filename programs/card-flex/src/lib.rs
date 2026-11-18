@@ -1035,6 +1035,10 @@ pub mod card_flex {
             .map_err(|_| CardFlexError::BadStacks)?;
         runtime.game = GameState::from_hand(&hand);
         runtime.action_seq = 0;
+        runtime.turn_deadline = Clock::get()?
+            .unix_timestamp
+            .checked_add(TURN_SECS)
+            .ok_or(CardFlexError::Overflow)?;
         Ok(())
     }
 
@@ -1044,7 +1048,7 @@ pub mod card_flex {
     /// `teen-patti-core`; on settlement the stacks and rake are written back
     /// and the hand becomes `HAND_COMPLETE`.
     pub fn act(ctx: Context<Act>, action: u8, amount: u64, expected_seq: u64) -> Result<()> {
-        use teen_patti_core::game::{Action, Event};
+        use teen_patti_core::game::Action;
         let runtime_key = ctx.accounts.runtime.key();
         let runtime = &mut ctx.accounts.runtime;
         require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
@@ -1068,69 +1072,46 @@ pub mod card_flex {
             },
             _ => return err!(CardFlexError::IllegalAction),
         };
-        let oracle = read_hand_ranks(runtime, runtime_key, ctx.remaining_accounts)?;
-        let mut hand = runtime.game.to_hand();
-        let before = hand.table_total();
-        let entry = teen_patti_core::game::encode_action(seat, action, &hand)
-            .ok_or(CardFlexError::BadBet)?;
-        let pending_ss = (runtime.game.phase == 1)
-            .then_some((runtime.game.ss_requester, runtime.game.ss_target));
-        let event = hand.apply(seat, action, &oracle).map_err(rule_error)?;
-        // CF-022: an accepted Side Show lets the two players see each other's
-        // cards (granted by `side_show_view`, at most 2 viewers per hand).
-        if let (Event::SideShowResolved { .. }, Some((a, b))) = (event, pending_ss) {
-            if runtime.side_show_hand_no != runtime.hand_no {
-                runtime.side_show_viewers = [0; MAX_SEATS];
-                runtime.side_show_hand_no = runtime.hand_no;
-            }
-            let fits = |v: u8| v.count_ones() < (MAX_HAND_READERS - 1) as u32;
-            let (va, vb) = (
-                runtime.side_show_viewers[a as usize],
-                runtime.side_show_viewers[b as usize],
-            );
-            if fits(va) && fits(vb) {
-                runtime.side_show_viewers[a as usize] |= 1 << b;
-                runtime.side_show_viewers[b as usize] |= 1 << a;
-            }
-        }
-        // CF-021: append to the public log tail (index = action_seq).
-        let i = runtime.action_seq as usize;
+        apply_game_action(
+            runtime,
+            runtime_key,
+            &ctx.accounts.hand_log.to_account_info(),
+            seat,
+            action,
+            ctx.remaining_accounts,
+        )
+    }
+
+    /// Turn timer (CF-023, rules v1 §3: 25 s). After `turn_deadline` anyone
+    /// may call this: it applies `Timeout` for the player to act (= Pack) or
+    /// for a pending Side Show's target (= reject), through the same rules
+    /// engine and public log as `act`. A keeper cranks it; players need not.
+    pub fn timeout_turn(ctx: Context<TimeoutTurn>, expected_seq: u64) -> Result<()> {
+        let runtime_key = ctx.accounts.runtime.key();
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
         require!(
-            i < teen_patti_core::game::MAX_ACTIONS,
-            CardFlexError::Overflow
+            expected_seq == runtime.action_seq,
+            CardFlexError::StaleAction
         );
-        {
-            let info = ctx.accounts.hand_log.to_account_info();
-            let mut d = info.try_borrow_mut_data()?;
-            require!(d.len() >= HAND_LOG_LEN, CardFlexError::Overflow);
-            let o = ACTION_LOG_OFFSET;
-            d[o..o + 8].copy_from_slice(&runtime.hand_no.to_le_bytes());
-            d[o + 8..o + 10].copy_from_slice(&((i + 1) as u16).to_le_bytes());
-            d[ACTION_LOG_ACTIONS + i] = entry;
-        }
-        runtime.game = GameState::from_hand(&hand);
-        runtime.action_seq = runtime
-            .action_seq
-            .checked_add(1)
-            .ok_or(CardFlexError::Overflow)?;
-        if let Event::HandOver(s) = event {
-            // Conservation: nothing created or lost (rules v1 §5).
-            require!(
-                hand.table_total() + s.rake == before,
-                CardFlexError::BadStacks
-            );
-            for i in 0..MAX_SEATS {
-                if hand.seats[i].dealt {
-                    runtime.stacks[i] = hand.seats[i].stack;
-                }
-            }
-            runtime.rake_owed = runtime
-                .rake_owed
-                .checked_add(s.rake)
-                .ok_or(CardFlexError::Overflow)?;
-            runtime.phase = phase::HAND_COMPLETE;
-        }
-        Ok(())
+        require!(
+            Clock::get()?.unix_timestamp >= runtime.turn_deadline,
+            CardFlexError::TooEarly
+        );
+        let g = &runtime.game;
+        let seat = if g.phase == 1 {
+            g.ss_target
+        } else {
+            g.order[g.turn as usize]
+        };
+        apply_game_action(
+            runtime,
+            runtime_key,
+            &ctx.accounts.hand_log.to_account_info(),
+            seat,
+            teen_patti_core::game::Action::Timeout,
+            ctx.remaining_accounts,
+        )
     }
 
     /// Cancels a hand whose VRF callback hasn't arrived within
@@ -1505,6 +1486,89 @@ fn update_hand_readers<'info>(
         },
     }
     .invoke_signed(&[runtime_seeds, hand_seeds])?;
+    Ok(())
+}
+
+/// One rules-engine step for `act` and `timeout_turn`: apply, record Side
+/// Show viewers, append to the public log, reset the turn timer, and settle
+/// when the hand ends. On error nothing changes.
+#[inline(never)]
+fn apply_game_action(
+    runtime: &mut TableRuntime,
+    runtime_key: Pubkey,
+    hand_log: &AccountInfo,
+    seat: u8,
+    action: teen_patti_core::game::Action,
+    seat_hands: &[AccountInfo],
+) -> Result<()> {
+    use teen_patti_core::game::{Action, Event};
+    let oracle = read_hand_ranks(runtime, runtime_key, seat_hands)?;
+    let mut hand = runtime.game.to_hand();
+    let before = hand.table_total();
+    let entry =
+        teen_patti_core::game::encode_action(seat, action, &hand).ok_or(CardFlexError::BadBet)?;
+    let pending_ss =
+        (runtime.game.phase == 1).then_some((runtime.game.ss_requester, runtime.game.ss_target));
+    let event = hand.apply(seat, action, &oracle).map_err(rule_error)?;
+    // CF-022: an accepted Side Show lets the two players see each other's
+    // cards (granted by `side_show_view`, at most 2 viewers per hand).
+    if let (Event::SideShowResolved { .. }, Some((a, b))) = (event, pending_ss) {
+        if runtime.side_show_hand_no != runtime.hand_no {
+            runtime.side_show_viewers = [0; MAX_SEATS];
+            runtime.side_show_hand_no = runtime.hand_no;
+        }
+        let fits = |v: u8| v.count_ones() < (MAX_HAND_READERS - 1) as u32;
+        let (va, vb) = (
+            runtime.side_show_viewers[a as usize],
+            runtime.side_show_viewers[b as usize],
+        );
+        if fits(va) && fits(vb) {
+            runtime.side_show_viewers[a as usize] |= 1 << b;
+            runtime.side_show_viewers[b as usize] |= 1 << a;
+        }
+    }
+    // CF-021: append to the public log tail (index = action_seq).
+    let i = runtime.action_seq as usize;
+    require!(
+        i < teen_patti_core::game::MAX_ACTIONS,
+        CardFlexError::Overflow
+    );
+    {
+        let mut d = hand_log.try_borrow_mut_data()?;
+        require!(d.len() >= HAND_LOG_LEN, CardFlexError::Overflow);
+        let o = ACTION_LOG_OFFSET;
+        d[o..o + 8].copy_from_slice(&runtime.hand_no.to_le_bytes());
+        d[o + 8..o + 10].copy_from_slice(&((i + 1) as u16).to_le_bytes());
+        d[ACTION_LOG_ACTIONS + i] = entry;
+    }
+    runtime.game = GameState::from_hand(&hand);
+    runtime.action_seq = runtime
+        .action_seq
+        .checked_add(1)
+        .ok_or(CardFlexError::Overflow)?;
+    if let Event::HandOver(s) = event {
+        // Conservation: nothing created or lost (rules v1 §5).
+        require!(
+            hand.table_total() + s.rake == before,
+            CardFlexError::BadStacks
+        );
+        for i in 0..MAX_SEATS {
+            if hand.seats[i].dealt {
+                runtime.stacks[i] = hand.seats[i].stack;
+            }
+        }
+        runtime.rake_owed = runtime
+            .rake_owed
+            .checked_add(s.rake)
+            .ok_or(CardFlexError::Overflow)?;
+        runtime.phase = phase::HAND_COMPLETE;
+    }
+    if action != Action::See {
+        runtime.turn_deadline = Clock::get()?
+            .unix_timestamp
+            .checked_add(TURN_SECS)
+            .ok_or(CardFlexError::Overflow)?;
+    }
     Ok(())
 }
 

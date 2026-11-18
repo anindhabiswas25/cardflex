@@ -153,6 +153,22 @@ try {
     check("side show", "session3 still cannot read hand1 or hand2", [false, false], [await canRead(sessionConns[3], t.hands[1]), await canRead(sessionConns[3], t.hands[2])]);
     check("side show", "session1 still cannot read hand0", false, await canRead(sessionConns[1], t.hands[0]));
 
+    // ---- CF-023: turn timer (25 s) on the PER clock ----
+    log("CF-023 turn timeout (waits for one 25 s turn)");
+    {
+      const d = await t.readRuntime();
+      const deadline = Number(d.readBigInt64LE(RT.turn_deadline));
+      const toAct = d[GAME.order + d[GAME.turn]];
+      check("timeout", "timeout before the deadline rejected", true, await rejected(tee, [t.timeoutIx(d, stranger)], [stranger]));
+      const waitMs = Math.max(0, deadline * 1000 - Date.now()) + 2_000;
+      report.timeout_wait_ms = waitMs;
+      await sleep(waitMs);
+      await send(tee, [t.timeoutIx(await t.readRuntime(), stranger)], [stranger], { skipPreflight: true }); // permissionless
+      const after = await waitFor(async () => { const e = await t.readRuntime(); return e && e.readBigUInt64LE(RT.action_seq) > d.readBigUInt64LE(RT.action_seq) ? e : null; }, 15_000, 100);
+      check("timeout", "timed-out player is packed", 0, after.value ? after.value[GAME.seats + GAME.seat_len * toAct + 1] : -1);
+      check("timeout", "next turn gets a fresh deadline", true, !!after.value && Number(after.value.readBigInt64LE(RT.turn_deadline)) > deadline);
+    }
+
     // ---- CF-012: reveal and independent verification ----
     log("CF-012 reveal_hand + cf-verify");
     const shown = [];

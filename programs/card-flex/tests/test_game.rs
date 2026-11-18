@@ -146,6 +146,7 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         game: Default::default(),
         side_show_viewers: [0; MAX_SEATS],
         side_show_hand_no: 0,
+        turn_deadline: 0,
         bump,
     };
     let mut data = Vec::new();
@@ -573,7 +574,11 @@ fn runtime_byte_offsets() {
     assert_eq!(d.len(), 8 + TableRuntime::INIT_SPACE);
     assert_eq!(&d[1140..1146], &rt.side_show_viewers);
     assert_eq!(u64_at(1146), rt.side_show_hand_no);
-    assert_eq!(d[1154], rt.bump, "bump follows the side show fields");
+    assert_eq!(
+        i64::from_le_bytes(d[1154..1162].try_into().unwrap()),
+        rt.turn_deadline
+    );
+    assert_eq!(d[1162], rt.bump, "bump follows turn_deadline");
 }
 
 /// Keeps `HL` in `packages/probes/src/common.mjs` in sync with `HandLog`.
@@ -705,5 +710,134 @@ fn side_show_viewers_come_only_from_an_accepted_side_show() {
     assert!(
         !e.contains("NoSideShowPending") && !e.contains("BadReaders") && !e.contains("WrongPhase"),
         "{e}"
+    );
+}
+
+fn now(t: &Table) -> i64 {
+    t.svm
+        .get_sysvar::<anchor_lang::prelude::Clock>()
+        .unix_timestamp
+}
+
+fn warp_to(t: &mut Table, unix: i64) {
+    let mut c = t.svm.get_sysvar::<anchor_lang::prelude::Clock>();
+    c.unix_timestamp = unix;
+    c.slot += 1;
+    t.svm.set_sysvar(&c);
+}
+
+fn timeout(t: &mut Table) -> Result<u64, String> {
+    let seq = t.runtime().action_seq;
+    let mut metas = card_flex::accounts::TimeoutTurn {
+        payer: t.payer.pubkey(),
+        runtime: t.runtime,
+        hand_log: t.hand_log,
+    }
+    .to_account_metas(None);
+    metas.extend(t.hands.iter().map(|h| AccountMeta::new_readonly(*h, false)));
+    let ix = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::TimeoutTurn { expected_seq: seq }.data(),
+        metas,
+    );
+    let payer = t.payer.insecure_clone();
+    send(&mut t.svm, &[ix], &[&payer])
+}
+
+/// CF-023: the turn timer. Too early fails; after 25 s anyone times out the
+/// player to act (= Pack) or a Side Show target (= reject); See doesn't
+/// reset the timer; the last timeout ends the hand like a Pack would.
+#[test]
+fn turn_timeout_packs_or_rejects_after_the_deadline() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..3].copy_from_slice(&[100 * BOOT; 3]);
+    let mut t = dealt_table(3, stacks, [5; 32], (0, 0));
+    let rt = t.runtime();
+    let start = now(&t);
+    assert_eq!(
+        rt.turn_deadline,
+        start + TURN_SECS,
+        "timer starts at the deal"
+    );
+    assert!(timeout(&mut t).unwrap_err().contains("TooEarly"));
+    warp_to(&mut t, start + TURN_SECS - 1);
+    assert!(timeout(&mut t).unwrap_err().contains("TooEarly"));
+    // See by the player to act doesn't buy time.
+    t.act(0, Action::See).unwrap();
+    assert_eq!(t.runtime().turn_deadline, start + TURN_SECS);
+    warp_to(&mut t, start + TURN_SECS);
+    timeout(&mut t).unwrap();
+    let rt = t.runtime();
+    assert!(!rt.game.seats[0].active, "timeout = pack");
+    assert_eq!(rt.game.to_hand().to_act(), 1);
+    let t1 = now(&t);
+    assert_eq!(
+        rt.turn_deadline,
+        t1 + TURN_SECS,
+        "next player gets a fresh 25 s"
+    );
+    // A stale sequence number fails even after the deadline.
+    warp_to(&mut t, t1 + TURN_SECS);
+    let seq = t.runtime().action_seq;
+    let mut metas = card_flex::accounts::TimeoutTurn {
+        payer: t.payer.pubkey(),
+        runtime: t.runtime,
+        hand_log: t.hand_log,
+    }
+    .to_account_metas(None);
+    metas.extend(t.hands.iter().map(|h| AccountMeta::new_readonly(*h, false)));
+    let stale = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::TimeoutTurn {
+            expected_seq: seq + 1,
+        }
+        .data(),
+        metas,
+    );
+    let payer = t.payer.insecure_clone();
+    assert!(send(&mut t.svm, &[stale], &[&payer])
+        .unwrap_err()
+        .contains("StaleAction"));
+    // Seat 1 times out too: seat 2 is the last player and wins.
+    timeout(&mut t).unwrap();
+    let rt = t.runtime();
+    assert_eq!(rt.phase, phase::HAND_COMPLETE);
+    assert_eq!((rt.game.end_reason, rt.game.winners), (0, 1 << 2));
+    // The log shows two Timeouts (code 6) after the See.
+    let d = t.svm.get_account(&t.hand_log).unwrap().data;
+    let (_, n) = action_log_header(&d);
+    let log = &d[ACTION_LOG_ACTIONS..ACTION_LOG_ACTIONS + n as usize];
+    assert_eq!(
+        log.iter().map(|b| (b >> 1) & 7).collect::<Vec<_>>(),
+        vec![0, 6, 6]
+    );
+    assert!(timeout(&mut t).unwrap_err().contains("WrongPhase"));
+}
+
+#[test]
+fn timeout_rejects_a_pending_side_show_for_its_target() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..3].copy_from_slice(&[100 * BOOT; 3]);
+    let mut t = dealt_table(3, stacks, [6; 32], (0, 0));
+    t.act(0, Action::Chaal { amount: BOOT }).unwrap();
+    t.act(1, Action::See).unwrap();
+    t.act(1, Action::Chaal { amount: 2 * BOOT }).unwrap();
+    t.act(2, Action::See).unwrap();
+    t.act(2, Action::SideShowRequest).unwrap();
+    assert_eq!(t.runtime().game.phase, 1);
+    let deadline = t.runtime().turn_deadline;
+    warp_to(&mut t, deadline);
+    timeout(&mut t).unwrap();
+    let rt = t.runtime();
+    assert_eq!(rt.game.phase, 0, "Side Show rejected");
+    assert_eq!(rt.side_show_viewers, [0; MAX_SEATS], "no view on a timeout");
+    assert!(
+        rt.game.seats.iter().take(3).all(|s| s.active),
+        "nobody packed"
+    );
+    assert_eq!(
+        rt.game.to_hand().to_act(),
+        0,
+        "turn passes after the requester"
     );
 }

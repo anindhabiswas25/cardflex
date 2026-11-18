@@ -177,6 +177,10 @@ Planned crates and apps are listed in PRD §7.
   converts with `GameState::{from_hand,to_hand}`. Tables must be configured
   (`configure_table(boot, rake_bps, rake_cap, refund_timeout)`) before a hand;
   seats only via `buy_in` (40–200 boots). `poc_join` and `end_hand` are gone.
+- Turn timer (CF-023): `TableRuntime.turn_deadline` (unix s), `TURN_SECS = 25`;
+  `timeout_turn(expected_seq)` is permissionless after it. `act` and
+  `timeout_turn` share `apply_game_action` in lib.rs; put new game effects
+  there, not in either instruction.
 - The action log is a raw tail of `HandLog` (`ACTION_LOG_OFFSET`), not a Borsh
   field: a 1,600-byte array in the struct overflows the 4 KB SBF stack.
   Byte offsets for JS are pinned by tests in `tests/test_game.rs`

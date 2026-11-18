@@ -41,6 +41,8 @@ pub const REFUND_TIMEOUT_DEFAULT_SECS: u32 = 3_600;
 /// Rules v1 §6: buy-in between 40 and 200 boots.
 pub const MIN_BUY_IN_BOOTS: u64 = 40;
 pub const MAX_BUY_IN_BOOTS: u64 = 200;
+/// Rules v1 §3: seconds a player has to act before anyone may time them out.
+pub const TURN_SECS: i64 = 25;
 /// Highest rake the program accepts: 10% of a won pot.
 pub const MAX_RAKE_BPS: u16 = 1_000;
 
@@ -273,6 +275,9 @@ pub struct TableRuntime {
     pub side_show_viewers: [u8; MAX_SEATS],
     /// Hand the viewers belong to.
     pub side_show_hand_no: u64,
+    /// CF-023: unix time after which `timeout_turn` may act for the player to
+    /// act (or the Side Show target). Reset by every action except See.
+    pub turn_deadline: i64,
     pub bump: u8,
 }
 
@@ -575,6 +580,17 @@ pub struct ConfigureTable<'info> {
     pub config: Box<Account<'info, TableConfig>>,
     #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
+}
+
+/// `timeout_turn`: anyone, after the turn deadline. Seat hands of the dealt
+/// seats follow in `remaining_accounts`, in dealing order (as for `act`).
+#[derive(Accounts)]
+pub struct TimeoutTurn<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
+    pub hand_log: Box<Account<'info, HandLog>>,
 }
 
 /// `side_show_view`: updates the reader lists of two seat hands after an

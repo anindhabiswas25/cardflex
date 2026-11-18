@@ -53,7 +53,7 @@ Amounts are lamports. "Stake" is the current bet in **blind terms**.
 | Pot limit ⚑ | When the pot reaches 1,024 × boot after a bet, all active players show; the best hand wins (ties split) |
 | No all-in ⚑ | A bet larger than the stack is refused; the player must pack |
 | Pack | Leaves the hand; if one player remains, they win without showing |
-| Timeout ⚑ | Acts as Pack for the player to act (25 s per turn; the crank arrives in P5) |
+| Timeout ⚑ | 25 s per turn (`TURN_SECS`, PER unix clock); after it anyone may call `timeout_turn`: Pack for the player to act, reject for a pending Side Show target. Every action except See restarts the timer (CF-023) |
 | Turn order | Next active seat in dealing order |
 
 ## 4. Show and Side Show

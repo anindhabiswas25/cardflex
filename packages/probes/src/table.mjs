@@ -119,6 +119,13 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     }
     return (await readRuntime(conn))[RT.phase];
   }
+  // CF-023: anyone may time out the player to act after turn_deadline.
+  const timeoutIx = (d, payer) => {
+    const n = d[GAME.n];
+    const order = [...d.subarray(GAME.order, GAME.order + n)];
+    return ix("timeout_turn", [r(payer.publicKey, true), w(runtime), w(handLog), ...order.map((k) => r(hands[k]))],
+      u64(d.readBigUInt64LE(RT.action_seq)));
+  };
   // CF-022: grant (after an accepted Side Show) or revoke (after the hand)
   // the mutual view of two seat hands. Permissionless.
   const sideShowViewIx = (a, b, grant, payer) => ix("side_show_view", [
@@ -126,5 +133,5 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     w(hands[b]), w(permissionPdaFromAccount(hands[b])), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
   ], Buffer.concat([u8(a), u8(b), u8(grant ? 1 : 0)]));
 
-  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx };
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx, timeoutIx };
 }
