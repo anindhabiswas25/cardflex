@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P0 — Tooling and probes.** Update this file whenever a ticket
+Current phase: **P0 — Tooling and probes** (all P0 tickets done except CF-003 other regions; P1 can start). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -11,7 +11,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-002 | PRD v1.2 with decisions D1–D10 | Done | commit `7038c6c`, `Card_Flex_Devnet_PRD_MagicBlock_v1.2.md` |
 | CF-003 | Latency, access and attestation probe | In progress: probe built, `dev-machine-1` measured; other regions pending | `packages/probes/`, `docs/findings/cf-003-devnet-access.md` |
 | CF-004 | Minimal program on devnet-tee: delegate, write, commit, undelegate; measure write latency | Done | `programs/card-flex` probe_* instructions, `packages/probes/src/roundtrip.mjs`, `docs/findings/cf-004-devnet-roundtrip.md` |
-| CF-005 | ADR: every account marked base / delegated / ephemeral-only | Next | PRD §15.2 is the input |
+| CF-005 | ADR: every account marked base / delegated / ephemeral-only | Done | `docs/adr/0002-account-lifecycle.md`; PRD v1.2 amendment 1 |
+| CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission (tests ADR 0002 assumption A1) | Next | starts phase P1 |
 
 ## Blockers and asks for the team
 
@@ -26,6 +27,10 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-005 done (ADR 0002). Secret accounts are ephemeral-only and
+  never committed; TableRuntime + HandLog delegated, committed per hand;
+  money follows committed state via base `sync_hand`; refunded tables ignore
+  late commits. PRD v1.2 amended. New open questions for MagicBlock.
 - 2026-11-18 — CF-004 done. Program deployed to devnet; base -> PER -> base
   round trip passes. Others see a write in 86–92 ms p50 but 436–518 ms p95
   (target 250 ms); the public ER has the same p50 and a worse tail. Privacy

@@ -74,6 +74,12 @@ Other corrections:
 -   Definition of Done item 14 ("identify the dealer as non-TEE") is
     replaced; it contradicted the PER design.
 -   Release timing is gate-driven, not date-driven (§33).
+-   **Amendment 1 (ADR 0002, CF-005):** account lifecycle. Secret accounts
+    (`DealerState`, `SaltAccount`, `SeatHand`) are ephemeral-only and never
+    committed. `HandRecord` and `HandSecrets` merge into a delegated
+    `HandLog`. Money follows committed state through a base-layer
+    `sync_hand`, and a refunded table ignores later commits instead of
+    "rejecting" them. ADR 0002 overrides this document where they differ.
 -   In unchanged sections kept from v1.1, "game" means one **hand**, and
     "deposit/withdrawal/game balance" means **buy-in/cash-out/table stack**.
 
@@ -239,13 +245,14 @@ MagicBlock VRF                                      Card Flex program
     writer of table, hand, dealer and salt state.
 -   V1 uses one PER environment and no ordinary public ER. Hidden data is
     never placed in an account without an explicit permission list.
--   Only the accounts needed for live play are delegated: `TableRuntime`,
-    `SeatHand`, `SaltAccount`, `DealerState`, `HandSecrets`.
+-   Only `TableRuntime` and `HandLog` are delegated. `DealerState`,
+    `SaltAccount` and `SeatHand` are ephemeral-only accounts inside PER and
+    are never committed (ADR 0002).
 -   State returns to the base layer by commit after each hand and by
     commit-and-undelegate when a table closes.
 -   If PER is unavailable, the table pauses. After the configured timeout,
     anyone can trigger `emergency_refund`, which pays seats from the last
-    committed stacks.
+    synced stacks.
 
 ## 5.1.2 MagicBlock integration references
 
@@ -451,8 +458,9 @@ wallet transaction, and can always get their money back from the base layer.
     stack.
 -   Live stacks are fields in `TableRuntime` inside PER. They change with
     every bet and pot; no lamports move during play.
--   After each hand, the program commits `TableRuntime` and the hand record
-    to the base layer. `SeatLedger` stacks update from that commit.
+-   After each hand, the program commits `TableRuntime` and `HandLog` to
+    the base layer. The permissionless base instruction `sync_hand` then
+    updates `SeatLedger` stacks from the committed state (ADR 0002).
 
 ## 10.3 Amounts
 
@@ -493,10 +501,11 @@ floating point.
 
 If no hand commit has arrived for `refund_timeout_secs` (proposed 900
 seconds, stored in `GlobalConfig`) while a table is active, anyone can call
-`emergency_refund`. It marks the table refunded and pays every seat its last
-committed stack. The interrupted hand was never committed, so its boots and
-bets are returned automatically. Once a table is refunded, later commits
-from PER are rejected.
+`emergency_refund`. It sets `TableConfig.status = REFUNDED` and pays every
+seat its last synced stack. The interrupted hand was never synced, so its
+boots and bets are returned automatically. Commits from PER can still land
+afterwards, but `sync_hand` ignores them for a refunded table, so they can't
+move money (ADR 0002).
 
 # 11. Teen Patti Rules
 
@@ -720,8 +729,9 @@ attestation checks, full public reveal, stake caps and the refund path.
 7.  **Play** under §11. Side Show temporarily grants the two players read
     access to each other's `SeatHand`, then revokes it.
 8.  **Reveal.** At settlement the program copies `vrf_output`, all salts
-    and the action log hash into `HandSecrets` (public) and commits the hand
-    record to the base layer.
+    and the action log hash into `HandLog` (public) and commits it with
+    `TableRuntime` to the base layer. The ephemeral secret accounts are
+    reset for the next hand and are never committed.
 9.  **Verify.** Anyone recomputes `hand_ctx`, every `c_i`, the seed, the
     deck, the Merkle root, the deal, the action replay, the ranking, the
     pot, rake and stacks, and compares them with the committed record.
@@ -882,8 +892,9 @@ PDA derivation test vectors are shared between Rust and `client-sdk`.
 ## 15.4 Instructions
 
 Base layer: `initialize_config`, `update_config`, `set_pause`,
-`create_table`, `buy_in`, `delegate_table`, `cash_out`, `emergency_refund`,
-`close_table`.
+`create_table`, `buy_in`, `delegate_table`, `sync_hand`, `cash_out`,
+`emergency_refund`, `close_table`. Account placement and lifecycle: ADR 0002,
+which supersedes the §15.2 table where they differ.
 
 PER: `setup_permissions`, `join_seat`, `start_hand`, `submit_salt`,
 `request_shuffle`, `deal_callback` (VRF), `blind`, `see`, `chaal`, `pack`,
@@ -902,7 +913,7 @@ Exact accounts, signers and arguments are defined in the Anchor IDL.
 -   A seat is taken once; seat indices are unique.
 -   Committed stacks + rake + rent = vault lamports.
 -   Cash-out pays only the recorded payout address, once.
--   Commits after `emergency_refund` are rejected.
+-   `sync_hand` ignores commits for a refunded table.
 -   PDAs, owners and signers are checked on every instruction; arithmetic
     is checked.
 
@@ -1209,7 +1220,7 @@ waits for one player.
     state.
 3.  If no commit arrives within `refund_timeout_secs`, anyone calls
     `emergency_refund` on the base layer (§10.7).
-4.  A refunded table never resumes; its later commits are rejected.
+4.  A refunded table never resumes; `sync_hand` ignores its later commits.
 5.  An incident record is created.
 
 # 26. Security Requirements

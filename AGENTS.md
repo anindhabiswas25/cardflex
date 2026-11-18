@@ -19,7 +19,8 @@ Solana base layer. Players buy in to a table, play hands with session keys
    lists decisions D1–D10. v1.1 is history only; don't build from it.
 3. `Card_Flex_Delivery_Plan.md` — phases P0–P9, gates G1–G3, ticket backlog
    (CF-xxx), risks, open questions for MagicBlock.
-4. `docs/adr/` — architecture decisions. ADR 0001 = pinned toolchain.
+4. `docs/adr/` — architecture decisions. ADR 0001 = pinned toolchain,
+   ADR 0002 = account lifecycle (amends the PRD).
 5. `docs/findings/` — measured facts from tickets (e.g. CF-003 latency and
    attestation).
 6. `Card_Flex_MagicBlock_Implementation_Research_v1.2.md` — background
@@ -99,4 +100,9 @@ Planned crates and apps are listed in PRD §7.
   and about 0.5 s p95 on Devnet. Run `pnpm roundtrip -- --region <label>`.
 - Permission flag bits: AUTHORITY 1, TX_LOGS 2, TX_BALANCES 4, TX_MESSAGE 8,
   ACCOUNT_SIGNATURES 16.
+- Account placement (ADR 0002): base = GlobalConfig, TableConfig, TableVault,
+  SeatLedger; delegated = TableRuntime, HandLog (committed per hand, never
+  hold secrets); ephemeral-only = DealerState, SaltAccount, SeatHand (never
+  committed). A commit publishes account data in plaintext; always
+  delegate with `commit_frequency_ms = u32::MAX`.
 - MagicBlock IDs and endpoints: PRD §5.1.2 and ADR 0001.
