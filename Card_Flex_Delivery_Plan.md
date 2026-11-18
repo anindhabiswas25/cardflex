@@ -156,7 +156,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | CF-012 | Independent verifier v1 (CLI) | FAIR | 7–8 | P0 | Done (2026-11-18): G2 passed; docs/findings/cf-012-verifier-g2.md |
 | CF-013 | Recovery: PER kill drills, pause state, `emergency_refund` on base | PROG | 8–10 | P0 | Done (2026-11-18): G3 recommended GO (conditional); docs/findings/cf-013-recovery.md |
 | CF-014 | Teen Patti rules v1 sign-off (section 8) | PM | 3 | P1 | Not started |
-| CF-015 | `teen-patti-core` crate with property tests | FAIR | 3–10 | P1 | Not started |
+| CF-015 | `teen-patti-core` crate with property tests | FAIR | 3–10 | P1 | Done (2026-11-18): docs/spec/teen-patti-rules-v1.md; awaiting CF-014 sign-off |
 | CF-016 | Client: session keys + PER auth token + TDX attestation check | CLIENT | 6–9 | P1 | Not started |
 | CF-017 | Table UI skeleton on WS account subscriptions | CLIENT | 8–10 | P1 | Not started |
 | CF-018 | Lobby, matchmaking and history indexer | BACK | 8–10 | P2 | Not started |

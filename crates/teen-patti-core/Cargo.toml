@@ -1,0 +1,11 @@
+[package]
+name = "teen-patti-core"
+version = "0.1.0"
+description = "Teen Patti rules v1: hand ranking, betting state machine, settlement (no_std)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+card-types = { path = "../card-types" }

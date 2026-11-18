@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P3 done, G3 awaiting sign-off → P4 (rules engine).** G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P4 (rules engine).** G3 signed off as GO (conditional) by the user on 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -20,7 +20,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-011 | Shuffle, deal and Merkle root in-program from the seed; compute units; remove test deck from the real path | Done: Devnet 39/39 ×2, all cards verified vs public root; 56–86k CU; salt-substitution + stuck-VRF fixes | `deal_hand`/`cancel_hand`, `tests/test_deal.rs`, `docs/findings/cf-011-deal.md` |
 | CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Done: Devnet hand revealed, read with no token, `cf-verify` VALID (PER and base-layer copies); 10,000 random hands VALID + tampers caught. **G2 passed** (one location) | `crates/fairness-verifier`, `reveal_hand`, `docs/findings/cf-012-verifier-g2.md` |
 | CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Done: Devnet outage drill 20/20 (pull-based refunds, validator pinned); local restart drill: state survives and hand continues; local commits blocked by an Agave 3.1 vs MagicBlock 4.0 tx-format mismatch. **G3 recommended GO (conditional), awaiting PM sign-off** | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery`, `scripts/restart-drill.sh` |
-| CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | Next (P4) | PM decision |
+| CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | **Waiting on PM**: checklist in `docs/spec/teen-patti-rules-v1.md` §7 (⚑ rows) | PM decision |
+| CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done (pending sign-off of ⚑ choices): 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
 
 ## Blockers and asks for the team
 
@@ -33,13 +34,18 @@ starts, finishes or gets blocked. Newest entries first in the log.
 - Ask MagicBlock about the write-latency tail on Devnet (CF-004) and missed
   `accountSubscribe` updates for ephemeral accounts (CF-006).
 - Sign off rules v1 (PRD §11.3; CF-014).
-- Sign off gate G3 (recommendation in `docs/findings/cf-013-recovery.md`).
 - Approve (or not) an Agave 4.x `solana-test-validator` for the local stack only,
   to test commits after a validator restart.
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
 
 ## Log
 
+- 2026-11-18 — User signed off G3 as GO (conditional) and approved a separate
+  Agave 4.x for the local stack only (no pin change). P4 started:
+  `teen-patti-core` (no_std) with hand ranking (exact category counts over
+  all 22,100 hands, A-2-3 second), blind/seen betting, See, Pack, Show, Side
+  Show, timeouts, chaal and pot limits, rake and split pots; random-play
+  conservation over 20,000 hands. Rules spec with a sign-off checklist.
 - 2026-11-18 — CF-013 done. Security fixes: validator pinned to MagicBlock's
   TEE validator; refunds are pull-based per seat (claim_refund); min buy-in
   >= rent minimum. Devnet outage drill 20/20. Local restart drill: delegated

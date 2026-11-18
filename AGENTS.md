@@ -74,6 +74,7 @@ programs/card-flex/    Anchor program: table.rs = accounts/layouts; lib.rs = ins
 crates/card-types/     frozen canonical card encoding (no_std)
 crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/spec/
 crates/fairness-verifier/  offline verifier lib + `cf-verify <record.json>` CLI
+crates/teen-patti-core/    rules v1: ranking + betting state machine (no_std); spec in docs/spec/teen-patti-rules-v1.md
 packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), tablepoc.mjs
                        (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011);
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
