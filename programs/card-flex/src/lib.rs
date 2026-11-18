@@ -473,10 +473,9 @@ pub mod card_flex {
         )
     }
 
-    /// Replaces the reader list of a seat's hand (CF-007; the mechanism Side
-    /// Show uses: grant the opponent's session key, then restore). At most 3
-    /// readers; an empty list is rejected because its meaning is ambiguous in
-    /// the docs (ADR 0002 / PRD §15.2).
+    /// Resets a seat hand's reader list to its own session key (CF-007).
+    /// Revoke only since CF-022: grants come only from an accepted Side Show
+    /// (`side_show_view`), never from the operator or a player's choice.
     pub fn set_hand_readers(
         ctx: Context<SetHandReaders>,
         seat: u8,
@@ -487,66 +486,98 @@ pub mod card_flex {
             runtime.occupied & (1 << seat) != 0,
             CardFlexError::SeatEmpty
         );
-        // Security review: the operator must never be able to read a hand.
-        // Readers are always the seat's own session key plus at most one other
-        // seated player's session key (the Side Show opponent). The table
-        // authority, wallets and outside keys are rejected.
-        // A grant also needs the hand owner's session key to sign (consent).
-        // TODO(P5): add game-state checks (Side Show requested by a valid
-        // counterparty, accepted, then revoked automatically at resolution).
         let own = runtime.session_keys[seat as usize];
         require!(
-            !readers.is_empty() && readers.len() <= 2 && readers[0] == own,
+            readers.len() == 1 && readers[0] == own,
             CardFlexError::BadReaders
         );
-        if let Some(other) = readers.get(1) {
-            require!(
-                *other != own
-                    && *other != runtime.authority
-                    && runtime.seated().any(|i| runtime.session_keys[i] == *other),
-                CardFlexError::BadReaders
-            );
-            // Granting needs the hand owner's consent: their session key signs.
-            let owner = ctx
-                .accounts
-                .owner_session
-                .as_ref()
-                .ok_or(CardFlexError::OwnerConsentMissing)?;
-            require_keys_eq!(owner.key(), own, CardFlexError::OwnerConsentMissing);
-        }
-        let granting = readers.len() == 2;
-        let (runtime_key, config, bump) = (runtime.key(), runtime.config, runtime.bump);
-        let (hand, hand_bump) = Pubkey::find_program_address(
-            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
-            &crate::ID,
+        ctx.accounts.runtime.grants &= !(1 << seat);
+        let a = &ctx.accounts;
+        update_hand_readers(
+            &a.runtime,
+            seat,
+            &a.target,
+            &a.permission,
+            &a.ephemeral_vault,
+            &a.magic_program,
+            &a.permission_program,
+            readers,
+        )
+    }
+
+    /// CF-022: Side Show view. `grant`: after an accepted Side Show between
+    /// `seat_a` and `seat_b` in the current hand, each may read the other's
+    /// hand (reader list = own session + this hand's Side Show opponents).
+    /// Only the game can create the pair, so neither the operator nor a
+    /// player can choose a viewer. `!grant`: once the hand is no longer being
+    /// played, reset both lists to the owner only (needed before the next
+    /// `start_hand`). Permissionless: anyone may crank it.
+    pub fn side_show_view(
+        ctx: Context<SideShowView>,
+        seat_a: u8,
+        seat_b: u8,
+        grant: bool,
+    ) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        require!(
+            seat_a != seat_b
+                && (seat_a as usize) < MAX_SEATS
+                && (seat_b as usize) < MAX_SEATS
+                && runtime.occupied & (1 << seat_a) != 0
+                && runtime.occupied & (1 << seat_b) != 0,
+            CardFlexError::BadReaders
         );
-        require_keys_eq!(ctx.accounts.target.key(), hand, CardFlexError::BadSeatHand);
-        if granting {
-            ctx.accounts.runtime.grants |= 1 << seat;
+        let readers_of = |s: u8| -> Vec<Pubkey> {
+            let mut v = vec![runtime.session_keys[s as usize]];
+            if grant {
+                let viewers = runtime.side_show_viewers[s as usize];
+                v.extend(
+                    (0..MAX_SEATS)
+                        .filter(|j| viewers & (1 << j) != 0)
+                        .map(|j| runtime.session_keys[j]),
+                );
+            }
+            v
+        };
+        if grant {
+            require!(
+                runtime.phase == phase::DEALT
+                    && runtime.side_show_hand_no == runtime.hand_no
+                    && runtime.side_show_viewers[seat_a as usize] & (1 << seat_b) != 0,
+                CardFlexError::NoSideShowPending
+            );
         } else {
-            ctx.accounts.runtime.grants &= !(1 << seat);
+            require!(runtime.phase != phase::DEALT, CardFlexError::WrongPhase);
         }
-        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, config.as_ref(), &[bump]];
-        let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
-        let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
-        UpdateEphemeralPermissionCpi {
-            payer: ctx.accounts.runtime.to_account_info(),
-            permissioned_account: ctx.accounts.target.to_account_info(),
-            permission: ctx.accounts.permission.to_account_info(),
-            vault: ctx.accounts.ephemeral_vault.to_account_info(),
-            magic_program: ctx.accounts.magic_program.to_account_info(),
-            permission_program: ctx.accounts.permission_program.to_account_info(),
-            authority: ctx.accounts.target.to_account_info(),
-            authority_is_signer: false,
-            args: EphemeralMembersArgs {
-                is_private: true,
-                members: readers
-                    .into_iter()
-                    .map(|pubkey| Member { flags, pubkey })
-                    .collect(),
-            },
+        let (ra, rb) = (readers_of(seat_a), readers_of(seat_b));
+        let bits = (1u8 << seat_a) | (1u8 << seat_b);
+        let a = &ctx.accounts;
+        update_hand_readers(
+            &a.runtime,
+            seat_a,
+            &a.hand_a,
+            &a.permission_a,
+            &a.ephemeral_vault,
+            &a.magic_program,
+            &a.permission_program,
+            ra,
+        )?;
+        update_hand_readers(
+            &a.runtime,
+            seat_b,
+            &a.hand_b,
+            &a.permission_b,
+            &a.ephemeral_vault,
+            &a.magic_program,
+            &a.permission_program,
+            rb,
+        )?;
+        let runtime = &mut ctx.accounts.runtime;
+        if grant {
+            runtime.grants |= bits;
+        } else {
+            runtime.grants &= !bits;
         }
-        .invoke_signed(&[runtime_seeds, hand_seeds])?;
         Ok(())
     }
 
@@ -694,6 +725,9 @@ pub mod card_flex {
         let runtime = &mut ctx.accounts.runtime;
         require!(runtime.locked, CardFlexError::TableNotLocked);
         require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+        // Security: a reader grant from the last hand must be revoked first,
+        // or the old viewer could read this seat's new cards.
+        require!(runtime.grants == 0, CardFlexError::GrantActive);
         // Rules v1 §1: a seat whose stack is below the boot isn't dealt in.
         // A table must be configured (boot set) before any hand.
         let boot = runtime.boot;
@@ -1039,7 +1073,26 @@ pub mod card_flex {
         let before = hand.table_total();
         let entry = teen_patti_core::game::encode_action(seat, action, &hand)
             .ok_or(CardFlexError::BadBet)?;
+        let pending_ss = (runtime.game.phase == 1)
+            .then_some((runtime.game.ss_requester, runtime.game.ss_target));
         let event = hand.apply(seat, action, &oracle).map_err(rule_error)?;
+        // CF-022: an accepted Side Show lets the two players see each other's
+        // cards (granted by `side_show_view`, at most 2 viewers per hand).
+        if let (Event::SideShowResolved { .. }, Some((a, b))) = (event, pending_ss) {
+            if runtime.side_show_hand_no != runtime.hand_no {
+                runtime.side_show_viewers = [0; MAX_SEATS];
+                runtime.side_show_hand_no = runtime.hand_no;
+            }
+            let fits = |v: u8| v.count_ones() < (MAX_HAND_READERS - 1) as u32;
+            let (va, vb) = (
+                runtime.side_show_viewers[a as usize],
+                runtime.side_show_viewers[b as usize],
+            );
+            if fits(va) && fits(vb) {
+                runtime.side_show_viewers[a as usize] |= 1 << b;
+                runtime.side_show_viewers[b as usize] |= 1 << a;
+            }
+        }
         // CF-021: append to the public log tail (index = action_seq).
         let i = runtime.action_seq as usize;
         require!(
@@ -1407,6 +1460,51 @@ fn create_permission_with<'info>(
         },
     }
     .invoke_signed(signer_seeds)?;
+    Ok(())
+}
+
+/// Replaces a seat hand's reader list (permission CPI signed by the runtime
+/// and hand PDAs). Callers decide the readers; this only checks the PDA.
+#[allow(clippy::too_many_arguments)]
+fn update_hand_readers<'info>(
+    runtime: &Account<'info, TableRuntime>,
+    seat: u8,
+    target: &UncheckedAccount<'info>,
+    permission: &UncheckedAccount<'info>,
+    vault: &UncheckedAccount<'info>,
+    magic_program: &UncheckedAccount<'info>,
+    permission_program: &UncheckedAccount<'info>,
+    readers: Vec<Pubkey>,
+) -> Result<()> {
+    require!(
+        !readers.is_empty() && readers.len() <= MAX_HAND_READERS,
+        CardFlexError::BadReaders
+    );
+    let runtime_key = runtime.key();
+    let (hand, hand_bump) =
+        Pubkey::find_program_address(&[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]], &crate::ID);
+    require_keys_eq!(target.key(), hand, CardFlexError::BadSeatHand);
+    let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+    let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
+    let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+    UpdateEphemeralPermissionCpi {
+        payer: runtime.to_account_info(),
+        permissioned_account: target.to_account_info(),
+        permission: permission.to_account_info(),
+        vault: vault.to_account_info(),
+        magic_program: magic_program.to_account_info(),
+        permission_program: permission_program.to_account_info(),
+        authority: target.to_account_info(),
+        authority_is_signer: false,
+        args: EphemeralMembersArgs {
+            is_private: true,
+            members: readers
+                .into_iter()
+                .map(|pubkey| Member { flags, pubkey })
+                .collect(),
+        },
+    }
+    .invoke_signed(&[runtime_seeds, hand_seeds])?;
     Ok(())
 }
 

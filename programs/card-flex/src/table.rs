@@ -268,6 +268,11 @@ pub struct TableRuntime {
     /// Bumped by every accepted `act`; callers pass the value they expect.
     pub action_seq: u64,
     pub game: GameState,
+    /// CF-022: `side_show_viewers[s]` bit j = seat j's session may read seat
+    /// s's hand this hand (granted by an accepted Side Show only).
+    pub side_show_viewers: [u8; MAX_SEATS],
+    /// Hand the viewers belong to.
+    pub side_show_hand_no: u64,
     pub bump: u8,
 }
 
@@ -572,6 +577,36 @@ pub struct ConfigureTable<'info> {
     pub runtime: Box<Account<'info, TableRuntime>>,
 }
 
+/// `side_show_view`: updates the reader lists of two seat hands after an
+/// accepted Side Show (grant) or after the hand (revoke). Permissionless.
+#[derive(Accounts)]
+pub struct SideShowView<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    /// CHECK: seat hand PDA of `seat_a`, checked in the handler.
+    #[account(mut)]
+    pub hand_a: UncheckedAccount<'info>,
+    /// CHECK: permission PDA of `hand_a`.
+    #[account(mut, seeds = [PERMISSION_SEED, hand_a.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
+    pub permission_a: UncheckedAccount<'info>,
+    /// CHECK: seat hand PDA of `seat_b`, checked in the handler.
+    #[account(mut)]
+    pub hand_b: UncheckedAccount<'info>,
+    /// CHECK: permission PDA of `hand_b`.
+    #[account(mut, seeds = [PERMISSION_SEED, hand_b.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
+    pub permission_b: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(address = PERMISSION_PROGRAM_ID)]
+    pub permission_program: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(mut, address = EPHEMERAL_VAULT_ID)]
+    pub ephemeral_vault: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
 /// `act`: one player action, signed by the seat's session key. Seat hands of
 /// every dealt seat follow in `remaining_accounts`, in dealing order (the
 /// program compares hands for Show, Side Show and the pot limit).
@@ -721,7 +756,6 @@ pub struct SetHandReaders<'info> {
     /// CHECK: fixed address.
     #[account(address = MAGIC_PROGRAM_ID)]
     pub magic_program: UncheckedAccount<'info>,
-    pub owner_session: Option<Signer<'info>>,
 }
 
 /// `start_hand`: authority starts the salt round for the next hand.

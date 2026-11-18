@@ -92,18 +92,39 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     return ix("act", [r(players[s].session.publicKey, true), w(runtime), w(handLog), ...order.map((k) => r(hands[k]))],
       Buffer.concat([u8(code), u64(BigInt(amount)), u64(d.readBigUInt64LE(RT.action_seq))]));
   };
+  // Sends one action for seat s and waits until the runtime shows it.
+  // amount "min" / "double" = the minimum legal bet or twice it.
+  async function act(s, code, amount = 0n, conn = tee) {
+    const d = await readRuntime(conn);
+    if (amount === "min" || amount === "double") {
+      const stake = d.readBigUInt64LE(GAME.stake);
+      const seen = d[GAME.seats + GAME.seat_len * s + 2] === 1;
+      amount = (seen ? 2n * stake : stake) * (amount === "double" ? 2n : 1n);
+    }
+    const seq = d.readBigUInt64LE(RT.action_seq);
+    await send(conn, [actIx(d, s, code, amount)], [players[s].session], { skipPreflight: true });
+    const after = await waitFor(async () => { const e = await readRuntime(conn); return e && e.readBigUInt64LE(RT.action_seq) > seq ? e : null; }, 15_000, 100);
+    if (!after.value) throw new Error(`act seat ${s} code ${code} not applied`);
+    return after.value;
+  }
   // Ends a dealt hand the only way the program allows: through the game.
-  // Whoever is to act packs until one player is left (CF-021).
+  // Whoever is to act (or must answer a Side Show) packs / rejects until one
+  // player is left (CF-021).
   async function packOut(conn = tee) {
-    for (let i = 0; i < 2 * seats; i++) {
+    for (let i = 0; i < 3 * seats; i++) {
       const d = await readRuntime(conn);
       if (d[RT.phase] !== PHASE.DEALT) return d[RT.phase];
-      const s = d[GAME.order + d[GAME.turn]];
-      await send(conn, [actIx(d, s, ACTION.PACK)], [players[s].session], { skipPreflight: true });
-      await waitFor(async () => { const e = await readRuntime(conn); return e && e.readBigUInt64LE(RT.action_seq) > d.readBigUInt64LE(RT.action_seq) ? e : null; }, 15_000, 100);
+      if (d[GAME.phase] === 1) { await act(d[GAME.ss_target], ACTION.SIDE_SHOW_RESPOND, 0n, conn); continue; }
+      await act(d[GAME.order + d[GAME.turn]], ACTION.PACK, 0n, conn);
     }
     return (await readRuntime(conn))[RT.phase];
   }
+  // CF-022: grant (after an accepted Side Show) or revoke (after the hand)
+  // the mutual view of two seat hands. Permissionless.
+  const sideShowViewIx = (a, b, grant, payer) => ix("side_show_view", [
+    r(payer.publicKey, true), w(runtime), w(hands[a]), w(permissionPdaFromAccount(hands[a])),
+    w(hands[b]), w(permissionPdaFromAccount(hands[b])), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
+  ], Buffer.concat([u8(a), u8(b), u8(grant ? 1 : 0)]));
 
-  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, packOut };
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx };
 }

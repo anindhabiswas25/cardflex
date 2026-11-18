@@ -239,3 +239,53 @@ fn session_key_cannot_be_authority_or_any_wallet() {
     );
     assert!(join(&mut t, &b, 1, Pubkey::new_unique()));
 }
+
+/// CF-022 security fix: a seat whose hand reader grant is still live (a Side
+/// Show viewer from the last hand) blocks `start_hand`, or the old viewer
+/// could read the new cards.
+#[test]
+fn start_hand_refuses_a_live_reader_grant() {
+    use anchor_lang::AccountSerialize;
+    let (mut t, ok) = create(2);
+    assert!(ok);
+    let wallets: Vec<Keypair> = (0..2).map(|_| funded(&mut t.svm)).collect();
+    for (s, w) in wallets.iter().enumerate() {
+        assert!(join(&mut t, w, s as u8, Pubkey::new_unique()));
+    }
+    let set = |t: &mut Table, grants: u8| {
+        let mut acc = t.svm.get_account(&t.runtime).unwrap();
+        let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+        rt.locked = true; // as delegate_table leaves it
+        rt.grants = grants;
+        let mut data = Vec::new();
+        rt.try_serialize(&mut data).unwrap();
+        data.resize(acc.data.len(), 0);
+        acc.data = data;
+        t.svm.set_account(t.runtime, acc).unwrap();
+    };
+    let start = |t: &mut Table| {
+        let ix = Instruction::new_with_bytes(
+            card_flex::id(),
+            &card_flex::instruction::StartHand {}.data(),
+            card_flex::accounts::StartHand {
+                authority: t.authority.pubkey(),
+                config: t.config,
+                runtime: t.runtime,
+            }
+            .to_account_metas(None),
+        );
+        t.svm.expire_blockhash();
+        let a = t.authority.insecure_clone();
+        let msg = Message::new_with_blockhash(&[ix], Some(&a.pubkey()), &t.svm.latest_blockhash());
+        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[&a]).unwrap();
+        t.svm
+            .send_transaction(tx)
+            .map_err(|e| e.meta.logs.join("\n"))
+    };
+    set(&mut t, 1 << 1);
+    let e = start(&mut t).unwrap_err();
+    assert!(e.contains("GrantActive"), "{e}");
+    set(&mut t, 0);
+    start(&mut t).expect("no live grant: the hand starts");
+    assert_eq!(runtime(&t).phase, card_flex::table::phase::SALTS_PENDING);
+}

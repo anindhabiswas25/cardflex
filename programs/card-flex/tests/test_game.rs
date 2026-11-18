@@ -144,6 +144,8 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         rake_owed: 0,
         action_seq: 0,
         game: Default::default(),
+        side_show_viewers: [0; MAX_SEATS],
+        side_show_hand_no: 0,
         bump,
     };
     let mut data = Vec::new();
@@ -569,7 +571,9 @@ fn runtime_byte_offsets() {
     assert_eq!(u64_at(1071), 3 * BOOT, "pot");
     assert_eq!(d[1079], 0, "phase betting");
     assert_eq!(d.len(), 8 + TableRuntime::INIT_SPACE);
-    assert_eq!(d[1140], rt.bump, "bump follows game");
+    assert_eq!(&d[1140..1146], &rt.side_show_viewers);
+    assert_eq!(u64_at(1146), rt.side_show_hand_no);
+    assert_eq!(d[1154], rt.bump, "bump follows the side show fields");
 }
 
 /// Keeps `HL` in `packages/probes/src/common.mjs` in sync with `HandLog`.
@@ -602,4 +606,104 @@ fn hand_log_byte_offsets() {
     assert_eq!(u64_at(896), 0x0707);
     assert_eq!(u64_at(944), 0x0808);
     assert_eq!(d[952], 7, "bump");
+}
+
+fn ssv(t: &mut Table, a: u8, b: u8, grant: bool) -> Result<u64, String> {
+    let ix = side_show_view_ix(t, a, b, grant);
+    let payer = t.payer.insecure_clone();
+    send(&mut t.svm, &[ix], &[&payer])
+}
+
+fn side_show_view_ix(t: &Table, a: u8, b: u8, grant: bool) -> Instruction {
+    let perm = |h: &Pubkey| {
+        Pubkey::find_program_address(
+            &[
+                ephemeral_rollups_sdk::access_control::structs::PERMISSION_SEED,
+                h.as_ref(),
+            ],
+            &ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID,
+        )
+        .0
+    };
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::SideShowView {
+            seat_a: a,
+            seat_b: b,
+            grant,
+        }
+        .data(),
+        card_flex::accounts::SideShowView {
+            payer: t.payer.pubkey(),
+            runtime: t.runtime,
+            hand_a: t.hands[a as usize],
+            permission_a: perm(&t.hands[a as usize]),
+            hand_b: t.hands[b as usize],
+            permission_b: perm(&t.hands[b as usize]),
+            permission_program: ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID,
+            ephemeral_vault: ephemeral_rollups_sdk::consts::EPHEMERAL_VAULT_ID,
+            magic_program: ephemeral_rollups_sdk::consts::MAGIC_PROGRAM_ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-022: only an accepted Side Show creates a viewer pair; nothing else
+/// (no request alone, no reject, no other pair) can be granted, and revoking
+/// waits until the hand is no longer being played. The permission CPI itself
+/// runs on Devnet (privacy suite); here we check state and every guard.
+#[test]
+fn side_show_viewers_come_only_from_an_accepted_side_show() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..4].copy_from_slice(&[100 * BOOT; 4]);
+    let mut t = dealt_table(4, stacks, [9; 32], (0, 0));
+    let err = |r: Result<u64, String>, name: &str| {
+        let e = r.unwrap_err();
+        assert!(e.contains(name), "expected {name}: {e}");
+    };
+    // Nothing granted yet.
+    err(ssv(&mut t, 1, 2, true), "NoSideShowPending");
+    // Revoke while the hand is being played is refused.
+    err(ssv(&mut t, 1, 2, false), "WrongPhase");
+    // Seat 0 bets; seats 1 and 2 see and bet; seat 2 asks seat 1; seat 1 rejects.
+    t.act(0, Action::Chaal { amount: BOOT }).unwrap();
+    t.act(1, Action::See).unwrap();
+    t.act(1, Action::Chaal { amount: 2 * BOOT }).unwrap();
+    t.act(2, Action::See).unwrap();
+    t.act(2, Action::SideShowRequest).unwrap();
+    assert_eq!(
+        t.runtime().side_show_viewers,
+        [0; MAX_SEATS],
+        "a request alone grants nothing"
+    );
+    t.act(1, Action::SideShowRespond { accept: false }).unwrap();
+    assert_eq!(
+        t.runtime().side_show_viewers,
+        [0; MAX_SEATS],
+        "a rejected Side Show grants nothing"
+    );
+    err(ssv(&mut t, 1, 2, true), "NoSideShowPending");
+    // Next round: seat 3 bets, seat 0 packs, seat 1 bets, seat 2 asks again, seat 1 accepts.
+    t.act(3, Action::Chaal { amount: BOOT * 2 }).unwrap();
+    t.act(0, Action::Pack).unwrap();
+    let stake = t.runtime().game.stake;
+    t.act(1, Action::Chaal { amount: 2 * stake }).unwrap();
+    t.act(2, Action::SideShowRequest).unwrap();
+    t.act(1, Action::SideShowRespond { accept: true }).unwrap();
+    let rt = t.runtime();
+    assert_eq!(rt.side_show_viewers[1], 1 << 2);
+    assert_eq!(rt.side_show_viewers[2], 1 << 1);
+    assert_eq!(rt.side_show_hand_no, rt.hand_no);
+    assert_eq!((rt.side_show_viewers[0], rt.side_show_viewers[3]), (0, 0));
+    // Only that pair: other pairs and the operator's choice are refused.
+    err(ssv(&mut t, 1, 3, true), "NoSideShowPending");
+    err(ssv(&mut t, 0, 2, true), "NoSideShowPending");
+    err(ssv(&mut t, 2, 2, true), "BadReaders");
+    // The granting pair passes every guard and reaches the permission CPI
+    // (absent in LiteSVM, so the call fails there, not on a guard).
+    let e = ssv(&mut t, 1, 2, true).unwrap_err();
+    assert!(
+        !e.contains("NoSideShowPending") && !e.contains("BadReaders") && !e.contains("WrongPhase"),
+        "{e}"
+    );
 }

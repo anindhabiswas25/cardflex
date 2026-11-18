@@ -67,7 +67,7 @@ Amounts are lamports. "Stake" is the current bet in **blind terms**.
 | Side Show response | The target accepts or rejects; a timeout counts as reject |
 | Side Show result | On accept the lower hand packs; on a tie the **requester** packs |
 | After Side Show | The turn passes to the player after the requester |
-| Privacy | During Side Show the two players may read each other's hand (CF-007 `set_hand_readers`, owner consent); P5 drives this from these rules |
+| Privacy | After an **accepted** Side Show the two players may read each other's hand: `act` records the pair, and the permissionless `side_show_view` adds each one's session key to the other's reader list (at most 2 viewers per hand per seat). Revoked by `side_show_view(grant = false)` after the hand; `start_hand` refuses while any grant is live. No other way to grant exists (CF-022) |
 
 ## 5. Settlement
 

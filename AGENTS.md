@@ -141,8 +141,10 @@ Planned crates and apps are listed in PRD §7.
 - `pnpm verify` rebuilds `target/deploy/card_flex.so` WITHOUT the test-deck
   feature; rebuild with `pnpm build:program:devnet-poc` before deploying to
   devnet.
-- Hand readers are ONLY the seat's session key (+ one seated opponent for
-  Side Show, with the owner's session key co-signing). Session keys can
+- Hand readers are ONLY the seat's session key, plus Side Show opponents of
+  the current hand, granted ONLY by `side_show_view` after `act` recorded an
+  accepted Side Show (`TableRuntime.side_show_viewers`; ≤ 2 per seat).
+  `set_hand_readers` is revoke-only. `start_hand` refuses while `grants != 0`. Session keys can
   never be the authority, a wallet, another session or a table address. Never add an instruction path that lets the authority, backend
   or a wallet become a reader; the privacy suite checks this.
 - Fairness bytes are frozen: any change to `crates/fairness-core` output

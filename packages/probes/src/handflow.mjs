@@ -12,7 +12,7 @@ import { randomBytes } from "node:crypto";
 import { Keypair, PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY } from "@solana/web3.js";
 import {
   PROGRAM_ID, repoRoot, send, rejected, waitFor, sleep, log, ms, w, r, u8, u64, authFailures,
-  RT, PHASE, HAND, HL, saltCommitment, vrfCallerSeed, verifyCard, teeConn, tokenFor, handRecordFromLog,
+  RT, PHASE, HAND, HL, GAME, ACTION, saltCommitment, vrfCallerSeed, verifyCard, teeConn, tokenFor, handRecordFromLog,
 } from "./common.mjs";
 import { spawnSync } from "node:child_process";
 import { setupTable } from "./table.mjs";
@@ -130,6 +130,29 @@ try {
     check("deal", "18 distinct cards", n * 3, seen.size);
     check("privacy", "session1 cannot read seat 0's hand", null, await sessionConns[1].getAccountInfo(t.hands[0]));
 
+    // ---- CF-022: a real Side Show (seat 2 asks seat 1, seat 1 accepts) ----
+    log("CF-022 Side Show in a real hand");
+    const canRead = async (c, k) => { try { return !!(await c.getAccountInfo(k)); } catch { return false; } };
+    await t.act(0, ACTION.CHAAL, "min");
+    await t.act(1, ACTION.SEE);
+    await t.act(1, ACTION.CHAAL, "min");
+    await t.act(2, ACTION.SEE);
+    check("side show", "view grant before any Side Show rejected", true, await rejected(tee, [t.sideShowViewIx(1, 2, true, stranger)], [stranger]));
+    await t.act(2, ACTION.SIDE_SHOW);
+    check("side show", "view grant while the Side Show is pending rejected", true, await rejected(tee, [t.sideShowViewIx(1, 2, true, stranger)], [stranger]));
+    const afterSs = await t.act(1, ACTION.SIDE_SHOW_RESPOND, 1n);
+    const packedSeat = [1, 2].find((s) => afterSs[GAME.seats + GAME.seat_len * s + 1] === 0);
+    check("side show", "accepted Side Show packs exactly one of the pair", true, packedSeat !== undefined);
+    check("side show", "view grant for another pair rejected", true, await rejected(tee, [t.sideShowViewIx(1, 3, true, stranger)], [stranger]));
+    check("side show", "revoke while the hand is played rejected", true, await rejected(tee, [t.sideShowViewIx(1, 2, false, stranger)], [stranger]));
+    await send(tee, [t.sideShowViewIx(1, 2, true, stranger)], [stranger], { skipPreflight: true }); // permissionless
+    const g1 = await waitFor(async () => (await canRead(sessionConns[1], t.hands[2])) || null, 10_000);
+    const g2 = await waitFor(async () => (await canRead(sessionConns[2], t.hands[1])) || null, 10_000);
+    check("side show", "session1 reads hand2 after the accepted Side Show", true, !!g1.value, `took ${g1.ms} ms`);
+    check("side show", "session2 reads hand1 after the accepted Side Show", true, !!g2.value, `took ${g2.ms} ms`);
+    check("side show", "session3 still cannot read hand1 or hand2", [false, false], [await canRead(sessionConns[3], t.hands[1]), await canRead(sessionConns[3], t.hands[2])]);
+    check("side show", "session1 still cannot read hand0", false, await canRead(sessionConns[1], t.hands[0]));
+
     // ---- CF-012: reveal and independent verification ----
     log("CF-012 reveal_hand + cf-verify");
     const shown = [];
@@ -149,6 +172,10 @@ try {
       check("game", "stranger cannot act", true, await rejected(tee, [strangerAct], [stranger]));
     }
     check("game", "hand ends only through the game (packs)", PHASE.HAND_COMPLETE, await t.packOut());
+    await send(tee, [t.sideShowViewIx(1, 2, false, stranger)], [stranger], { skipPreflight: true });
+    const rv = await waitFor(async () => !(await canRead(sessionConns[1], t.hands[2])) || null, 10_000);
+    check("side show", "view revoked after the hand (session1 loses hand2)", true, !!rv.value, `took ${rv.ms} ms`);
+    check("side show", "owners keep their own hands after revoke", [true, true], [await canRead(sessionConns[1], t.hands[1]), await canRead(sessionConns[2], t.hands[2])]);
     check("integrity", "closing a salt account before the reveal rejected", true, await rejected(tee, [ix("close_salt", t.perKeys(saltAccs[0]), u8(0))], [authority]));
     await send(tee, [revealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless once complete
     check("reveal", "second reveal rejected", true, await rejected(tee, [revealIx(authority)], [authority]));

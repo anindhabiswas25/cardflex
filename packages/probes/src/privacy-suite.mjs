@@ -46,11 +46,15 @@ const perKeys = (target, signer = authority) => [
   r(signer.publicKey, true), w(runtime), w(target), w(permissionPdaFromAccount(target)),
   r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
 ];
-// owner = the hand owner's session keypair when consenting to a grant; absent
-// optional accounts are passed as the program id (Anchor convention).
+// set_hand_readers is revoke-only since CF-022 (owner = an extra signer, to
+// show that even the hand owner's consent can't create a grant).
 const setReaders = (seat, readers, signer = authority, owner = null) =>
-  ix("set_hand_readers", [...perKeys(hands[seat], signer), owner ? r(owner.publicKey, true) : r(PROGRAM_ID)],
+  ix("set_hand_readers", [...perKeys(hands[seat], signer), ...(owner ? [r(owner.publicKey, true)] : [])],
     Buffer.concat([u8(seat), vecPubkeys(readers)]));
+const sideShowView = (a, b, grant, payer) => ix("side_show_view", [
+  r(payer.publicKey, true), w(runtime), w(hands[a]), w(permissionPdaFromAccount(hands[a])),
+  w(hands[b]), w(permissionPdaFromAccount(hands[b])), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
+], Buffer.concat([u8(a), u8(b), u8(grant ? 1 : 0)]));
 
 const report = { probe: "CF-007", version: 1, region, started_at: new Date().toISOString(), program: PROGRAM_ID.toBase58(), checks: [] };
 const check = (group, name, expected, actual, note) => {
@@ -237,26 +241,18 @@ try {
     check("enumeration", `${who} transactions touching hand0 are redacted`, false, leaked, `${sigs.length} signatures listed${res.error ? `, rpc error: ${res.error.message}` : ""}`);
   }
 
-  // ---------------- G1-4: Side Show grant and revoke ----------------
-  log("G1-4 Side Show: grant hand0 to session1, then revoke");
-  check("side show", "grant without owner consent rejected", true, await rejected(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey])], [authority]));
-  check("side show", "grant signed by the wrong session rejected", true, await rejected(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey], authority, players[1].session)], [authority, players[1].session]));
-  await send(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey], authority, players[0].session)], [authority, players[0].session], { skipPreflight: true });
-  const granted = await waitFor(async () => canRead(conn.session1, hands[0]), 10_000);
-  check("side show", "session1 can read hand0 after grant", true, !!granted.value, `took ${granted.ms} ms`);
-  check("side show", "session2 still cannot read hand0", false, await canRead(conn.session2, hands[0]));
-  check("side show", "session0 still reads hand0", true, await canRead(conn.session0, hands[0]));
-  // Security review: rotating a key that holds a grant would leave it readable.
-  {
-    const rot = ix("rotate_session", [
-      r(players[1].wallet.publicKey, true), w(runtime), w(hands[1]), w(permissionPdaFromAccount(hands[1])),
-      w(permissionPdaFromAccount(runtime)), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
-    ], Buffer.concat([u8(1), Keypair.generate().publicKey.toBuffer()]));
-    check("side show", "rotation blocked while a grant is active", true, await rejected(tee, [rot], [players[1].wallet]));
-  }
+  // ---------------- G1-4: no grant outside the game ----------------
+  // CF-022: a hand is readable by another player only after an accepted Side
+  // Show in a real hand (tested in pnpm handflow). Every other path fails.
+  log("G1-4 grants only through the game");
+  const two = [players[0].session.publicKey, players[1].session.publicKey];
+  check("side show", "authority grant via set_hand_readers rejected", true, await rejected(tee, [setReaders(0, two)], [authority]));
+  check("side show", "grant with the owner's consent rejected (revoke-only)", true, await rejected(tee, [setReaders(0, two, authority, players[0].session)], [authority, players[0].session]));
+  check("side show", "side_show_view grant without an accepted Side Show rejected", true, await rejected(tee, [sideShowView(0, 1, true, stranger)], [stranger]));
+  check("side show", "side_show_view grant by the authority rejected", true, await rejected(tee, [sideShowView(0, 1, true, authority)], [authority]));
+  check("side show", "session1 cannot read hand0", false, await canRead(conn.session1, hands[0]));
   await send(tee, [setReaders(0, [players[0].session.publicKey])], [authority], { skipPreflight: true });
-  const revoked = await waitFor(async () => !(await canRead(conn.session1, hands[0])), 10_000);
-  check("side show", "session1 loses hand0 after revoke (same token)", true, !!revoked.value, `took ${revoked.ms} ms`);
+  check("side show", "session0 still reads hand0 after a revoke-only reset", true, await canRead(conn.session0, hands[0]));
 
   // ---------------- G1-6: session rotation, old token reuse ----------------
   log("G1-6 seat 2's wallet rotates its session key; old token must stop working");

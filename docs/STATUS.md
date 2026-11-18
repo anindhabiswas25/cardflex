@@ -24,8 +24,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done: 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
 | CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Done locally (Devnet run in CF-025): `act`; differential test vs host engine over random hands; ≤ 49k CU per action; `poc_join` removed (seats only via `buy_in`) | `programs/card-flex/tests/test_game.rs` |
 | CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Done locally (Devnet run in CF-025): `end_hand` removed; public action log in `HandLog`; `cf-verify` replays the game (`cf-hand-record/2`) | `docs/spec/teen-patti-rules-v1.md` §7 |
-| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Next | |
-| CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Planned | |
+| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Done locally (Devnet run in CF-025): `side_show_view`; `set_hand_readers` revoke-only; fix: `start_hand` refuses a live grant | `programs/card-flex/tests/test_game.rs`, `pnpm handflow` |
+| CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Next | |
 | CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Planned | |
 | CF-025 | P5: six-player full game on Devnet, verified end to end | Planned | |
 
@@ -45,6 +45,14 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-022 (local): Side Show view is driven by the game only.
+  An accepted Side Show records the pair; permissionless `side_show_view`
+  grants the mutual view and revokes it after the hand. `set_hand_readers`
+  is now revoke-only (no operator or consent-based grants). Security fix:
+  `start_hand` used to ignore live grants, so a previous Side Show viewer
+  could have read the seat's next hand; it now fails with `GrantActive`.
+  Privacy suite G1-4 rewritten (grants outside the game rejected); the real
+  Side Show runs in `pnpm handflow`.
 - 2026-11-19 — CF-020/021 (local): the program plays hands with
   `teen-patti-core`. `act` (session key, sequence number) bets, packs, shows
   and side-shows; settlement writes stacks and rake and is the only way to
