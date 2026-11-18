@@ -1,0 +1,554 @@
+{
+  "probe": "CF-003",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T11:05:54.953Z",
+  "samples_per_method": 30,
+  "node": "v24.21.0",
+  "endpoints": [
+    {
+      "id": "tee",
+      "role": "MagicBlock PER (TEE)",
+      "url": "https://devnet-tee.magicblock.app",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "git-commit": "651e147",
+          "solana-core": "4.0.0",
+          "feature-set": 3718597879,
+          "magicblock-core": "1.1.1"
+        }
+      },
+      "attestation": {
+        "sdk_verify": {
+          "ok": true,
+          "ms": 1632.6
+        },
+        "own": {
+          "ok": true,
+          "quote_fetch_ms": 119.3,
+          "total_ms": 789.6,
+          "tcb_status": "UpToDate",
+          "advisory_ids": [],
+          "report_data_matches_challenge": true,
+          "measurements": {
+            "mr_td": "c1ee9c16e3afc506cfe042c5b846a368528f3b37618eafb27469bc114cf914e9222c91618470e7f2b28ac360968270a5",
+            "rt_mr0": "c1f1f2bff33b16d1469134987fcdf0ea3bd9707350cc70e73f086c635a5fc4e96e0d214a7f775608e64d251382f20564",
+            "rt_mr1": "5a5e062f119b848c291cb75630504c185d8646799be42ad5941566efde1643d0e1029c34b7011d865e389980e9ef6a00",
+            "rt_mr2": "b90b887df3fa1fe071052ddd250f4d5175066b3182394942162ec92e62e1649fbdc20b3bc65fe2f4b473a48602ef3073",
+            "rt_mr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      },
+      "auth": {
+        "ok": true,
+        "ms": 188,
+        "lifetime_hours": 720,
+        "lifetime_source": "jwt exp",
+        "error": null
+      },
+      "access_with_token": {
+        "reachable": true,
+        "status": 200,
+        "version": {
+          "magicblock-core": "1.1.1",
+          "git-commit": "651e147",
+          "solana-core": "4.0.0",
+          "feature-set": 3718597879
+        }
+      },
+      "latency": [
+        {
+          "method": "getHealth",
+          "cold_ms": 82.2,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 70.2,
+            "p50": 76.9,
+            "p95": 90.1,
+            "max": 197
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getSlot",
+          "cold_ms": 72.6,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 70.9,
+            "p50": 76.8,
+            "p95": 83.6,
+            "max": 86.9
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": 81.5,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 70.2,
+            "p50": 77.5,
+            "p95": 85,
+            "max": 85.3
+          },
+          "failures": [],
+          "failure_count": 0
+        }
+      ],
+      "websocket": {
+        "url": "wss://devnet-tee.magicblock.app?token=<redacted>",
+        "connect_ms": 76.7,
+        "first_notification_ms": 151.4,
+        "slot_interval_ms": {
+          "n": 785,
+          "min": 0.1,
+          "p50": 10.1,
+          "p95": 13.7,
+          "max": 21
+        },
+        "notifications": 786,
+        "error": null
+      }
+    },
+    {
+      "id": "er-as",
+      "role": "MagicBlock ER Asia",
+      "url": "https://devnet-as.magicblock.app",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "git-commit": "651e147",
+          "solana-core": "4.0.0",
+          "magicblock-core": "1.1.1",
+          "feature-set": 3718597879
+        }
+      },
+      "latency": [
+        {
+          "method": "getHealth",
+          "cold_ms": 224,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 72.9,
+            "p50": 76.4,
+            "p95": 84.3,
+            "max": 89
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getSlot",
+          "cold_ms": 74.2,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 74.1,
+            "p50": 76.6,
+            "p95": 84.3,
+            "max": 91.9
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": 74.3,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 72.5,
+            "p50": 76.3,
+            "p95": 86.6,
+            "max": 88.8
+          },
+          "failures": [],
+          "failure_count": 0
+        }
+      ],
+      "websocket": {
+        "url": "wss://devnet-as.magicblock.app",
+        "connect_ms": 79,
+        "first_notification_ms": 157.3,
+        "slot_interval_ms": {
+          "n": 783,
+          "min": 0,
+          "p50": 9.9,
+          "p95": 13.7,
+          "max": 70.7
+        },
+        "notifications": 784,
+        "error": null
+      }
+    },
+    {
+      "id": "er-eu",
+      "role": "MagicBlock ER Europe",
+      "url": "https://devnet-eu.magicblock.app",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "git-commit": "651e147",
+          "feature-set": 3718597879,
+          "magicblock-core": "1.1.1",
+          "solana-core": "4.0.0"
+        }
+      },
+      "latency": [
+        {
+          "method": "getHealth",
+          "cold_ms": 660,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 172.3,
+            "p50": 186.3,
+            "p95": 207.7,
+            "max": 207.8
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getSlot",
+          "cold_ms": 173.8,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 173.1,
+            "p50": 187.8,
+            "p95": 207.4,
+            "max": 211.2
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": 205.1,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 172,
+            "p50": 185.8,
+            "p95": 226.9,
+            "max": 241.4
+          },
+          "failures": [],
+          "failure_count": 0
+        }
+      ],
+      "websocket": {
+        "url": "wss://devnet-eu.magicblock.app",
+        "connect_ms": 171.6,
+        "first_notification_ms": 354.3,
+        "slot_interval_ms": {
+          "n": 751,
+          "min": 0,
+          "p50": 9.9,
+          "p95": 14.7,
+          "max": 224.1
+        },
+        "notifications": 752,
+        "error": null
+      }
+    },
+    {
+      "id": "er-us",
+      "role": "MagicBlock ER US",
+      "url": "https://devnet-us.magicblock.app",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "core": "2.0.0",
+          "solana-core": "4.2.2",
+          "feature-set": 565236538,
+          "git-commit": "9456c18"
+        }
+      },
+      "latency": [
+        {
+          "method": "getHealth",
+          "cold_ms": 784.8,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 257.7,
+            "p50": 261.3,
+            "p95": 270.9,
+            "max": 275.5
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getSlot",
+          "cold_ms": 260,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 257.4,
+            "p50": 260.1,
+            "p95": 269.4,
+            "max": 269.6
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": 262.3,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 257,
+            "p50": 260.6,
+            "p95": 268.8,
+            "max": 270.1
+          },
+          "failures": [],
+          "failure_count": 0
+        }
+      ],
+      "websocket": {
+        "url": "wss://devnet-us.magicblock.app",
+        "connect_ms": 257.7,
+        "first_notification_ms": 520.7,
+        "slot_interval_ms": {
+          "n": 748,
+          "min": 0,
+          "p50": 9.2,
+          "p95": 19.6,
+          "max": 618.9
+        },
+        "notifications": 749,
+        "error": null
+      }
+    },
+    {
+      "id": "router",
+      "role": "MagicBlock router",
+      "url": "https://devnet-router.magicblock.app",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "context": {
+            "slot": 1102451358,
+            "apiVersion": "3.1.5"
+          },
+          "value": {
+            "blockhash": "FxBeu6ma5HtmTk7GfJtDM5Kc41cVwqHwMLW3LsMoMDKK",
+            "lastValidBlockHeight": 1102451508
+          }
+        }
+      },
+      "latency": [
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": 87,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 83,
+            "p50": 91.3,
+            "p95": 341,
+            "max": 376.2
+          },
+          "failures": [],
+          "failure_count": 0
+        }
+      ],
+      "websocket": {
+        "skipped": "not supported by this endpoint"
+      }
+    },
+    {
+      "id": "base-mb",
+      "role": "Solana devnet via MagicBlock",
+      "url": "https://rpc.magicblock.app/devnet",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "feature-set": 1591744305,
+          "solana-core": "4.5.0-beta.0"
+        }
+      },
+      "latency": [
+        {
+          "method": "getHealth",
+          "cold_ms": 113,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 97.6,
+            "p50": 118.2,
+            "p95": 1040.3,
+            "max": 1299.1
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getSlot",
+          "cold_ms": 107.6,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 99.4,
+            "p50": 118.7,
+            "p95": 443.9,
+            "max": 828.2
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": 98.8,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 99.2,
+            "p50": 102.2,
+            "p95": 131.3,
+            "max": 187.3
+          },
+          "failures": [],
+          "failure_count": 0
+        }
+      ],
+      "websocket": {
+        "url": "wss://rpc.magicblock.app/devnet",
+        "connect_ms": 302.9,
+        "first_notification_ms": 460.7,
+        "slot_interval_ms": {
+          "n": 31,
+          "min": 49.1,
+          "p50": 200.5,
+          "p95": 436.3,
+          "max": 462.4
+        },
+        "notifications": 32,
+        "error": null
+      }
+    },
+    {
+      "id": "base-solana",
+      "role": "Solana devnet public RPC",
+      "url": "https://api.devnet.solana.com",
+      "access": {
+        "reachable": true,
+        "status": 200,
+        "error": null,
+        "version": {
+          "feature-set": 1591744305,
+          "solana-core": "4.5.0-beta.0"
+        }
+      },
+      "latency": [
+        {
+          "method": "getHealth",
+          "cold_ms": 81.2,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 30,
+            "min": 76.1,
+            "p50": 81.1,
+            "p95": 88.1,
+            "max": 123.4
+          },
+          "failures": [],
+          "failure_count": 0
+        },
+        {
+          "method": "getSlot",
+          "cold_ms": 84.4,
+          "cold_status": 200,
+          "warm_ms": {
+            "n": 7,
+            "min": 79,
+            "p50": 84,
+            "p95": 122.9,
+            "max": 122.9
+          },
+          "failures": [
+            {
+              "status": 429,
+              "error": "Connection rate limits exceeded"
+            },
+            {
+              "status": 429,
+              "error": "Connection rate limits exceeded"
+            },
+            {
+              "status": 429,
+              "error": "Connection rate limits exceeded"
+            }
+          ],
+          "failure_count": 23
+        },
+        {
+          "method": "getLatestBlockhash",
+          "cold_ms": null,
+          "cold_status": 429,
+          "warm_ms": {
+            "n": 10,
+            "min": 75.7,
+            "p50": 236.1,
+            "p95": 658.3,
+            "max": 658.3
+          },
+          "failures": [
+            {
+              "status": 429,
+              "error": "Connection rate limits exceeded"
+            },
+            {
+              "status": 429,
+              "error": "Connection rate limits exceeded"
+            },
+            {
+              "status": 429,
+              "error": "Connection rate limits exceeded"
+            }
+          ],
+          "failure_count": 20
+        }
+      ],
+      "websocket": {
+        "url": "wss://api.devnet.solana.com",
+        "connect_ms": 200.4,
+        "first_notification_ms": 399.6,
+        "slot_interval_ms": {
+          "n": 30,
+          "min": 38.3,
+          "p50": 200.3,
+          "p95": 473.6,
+          "max": 711.4
+        },
+        "notifications": 31,
+        "error": null
+      }
+    }
+  ],
+  "finished_at": "2026-11-18T11:08:24.319Z"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@card-flex/probes",
+  "private": true,
+  "type": "module",
+  "description": "CF-003: latency, access and attestation probes for MagicBlock endpoints",
+  "scripts": {
+    "probe": "node src/probe.mjs"
+  },
+  "dependencies": {
+    "@magicblock-labs/ephemeral-rollups-sdk": "0.17.3",
+    "@phala/dcap-qvl": "0.3.9",
+    "@solana/web3.js": "1.98.0",
+    "tweetnacl": "1.0.3"
+  }
+}
