@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Result:** 134 of 134 checks passed in 2 of 2 runs on Devnet PER from
-  `dev-machine-1`.
+  `dev-machine-1`; 144 of 144 after the security fix below.
 - **G1 status: provisionally passed.** It becomes final after the suite passes
   from every target region, plus one run on a different day. The PM signs off.
 - **Code:** `packages/probes/src/privacy-suite.mjs` (`pnpm privacy-suite --
@@ -56,6 +56,25 @@ player 0's wallet.
    effect within about 0.1–0.2 s, and the removed key's token keeps working
    for everything else but loses that account. This confirms the CF-003
    design (session key as reader, rotated at stand-up).
+
+## Security review follow-up: the operator could grant itself access (fixed)
+
+The automated security review found that `set_hand_readers` accepted **any**
+reader list, so the table authority could add its own key and read a hand.
+That broke "the operator can't see cards". Fixed:
+
+- Readers must be `[seat's own session key]` or `[own key, one other seated
+  player's session key]` (Side Show). The authority, wallets, outside keys,
+  lists without the owner, and 3-entry lists are rejected (`BadReaders`).
+- Session rotation moved to a new instruction, `rotate_session`. Only the
+  seat's wallet may call it; it rebuilds both the hand's reader list and the
+  runtime's member list.
+- Rerun on Devnet: **144/144** (rotation 6/6 and authorization 14/14 include
+  the new attack checks; the authority still can't read hand 0).
+- **Remaining gap, owned by P5:** the authority still chooses *which* seated
+  opponent gets Side Show access. In P5, Side Show must be driven by game
+  state: the requester asks, the counterparty accepts, the program grants
+  exactly that pair and restores owner-only access automatically.
 
 ## G1 criteria (PRD v1.2 §13.6) against the evidence
 

@@ -184,6 +184,42 @@ pub struct TablePer<'info> {
     pub magic_program: UncheckedAccount<'info>,
 }
 
+/// `rotate_session`: signed by the seat's wallet inside PER.
+#[derive(Accounts)]
+pub struct RotateSession<'info> {
+    pub wallet: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Account<'info, TableRuntime>,
+    /// CHECK: the seat hand PDA, checked in the handler.
+    #[account(mut)]
+    pub hand: UncheckedAccount<'info>,
+    /// CHECK: permission PDA of `hand`.
+    #[account(
+        mut,
+        seeds = [PERMISSION_SEED, hand.key().as_ref()],
+        bump,
+        seeds::program = PERMISSION_PROGRAM_ID,
+    )]
+    pub hand_permission: UncheckedAccount<'info>,
+    /// CHECK: permission PDA of `runtime`.
+    #[account(
+        mut,
+        seeds = [PERMISSION_SEED, runtime.key().as_ref()],
+        bump,
+        seeds::program = PERMISSION_PROGRAM_ID,
+    )]
+    pub runtime_permission: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(address = PERMISSION_PROGRAM_ID)]
+    pub permission_program: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(mut, address = EPHEMERAL_VAULT_ID)]
+    pub ephemeral_vault: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
 /// `poc_deal`: dealer state + one seat hand per occupied seat in
 /// `remaining_accounts`, in seat order.
 #[derive(Accounts)]

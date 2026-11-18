@@ -31,6 +31,10 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — Security fix: `set_hand_readers` can no longer add the operator
+  or any non-seat key; readers = own session key + at most one seated
+  opponent. New `rotate_session` (seat wallet only). Suite 144/144 on Devnet.
+  Open for P5: Side Show must be game-state driven, not authority-chosen.
 - 2026-11-18 — CF-007 done from dev-machine-1: privacy suite 134/134 in 2/2
   runs (matrix, encodings, getProgramAccounts, signatures, subscriptions,
   Side Show grant/revoke, session rotation, unauthorized calls, base layer).

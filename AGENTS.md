@@ -131,6 +131,9 @@ Planned crates and apps are listed in PRD §7.
 - `pnpm verify` rebuilds `target/deploy/card_flex.so` WITHOUT the test-deck
   feature; rebuild with `pnpm build:program:devnet-poc` before deploying to
   devnet.
+- Hand readers are ONLY the seat's session key (+ one seated opponent for
+  Side Show). Never add an instruction path that lets the authority, backend
+  or a wallet become a reader; the privacy suite checks this.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

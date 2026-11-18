@@ -243,15 +243,28 @@ pub mod card_flex {
     /// readers; an empty list is rejected because its meaning is ambiguous in
     /// the docs (ADR 0002 / PRD §15.2).
     pub fn set_hand_readers(ctx: Context<TablePer>, seat: u8, readers: Vec<Pubkey>) -> Result<()> {
-        require!(
-            !readers.is_empty() && readers.len() <= MAX_HAND_READERS,
-            CardFlexError::BadReaders
-        );
         let runtime = &ctx.accounts.runtime;
         require!(
             runtime.occupied & (1 << seat) != 0,
             CardFlexError::SeatEmpty
         );
+        // Security review: the operator must never be able to read a hand.
+        // Readers are always the seat's own session key plus at most one other
+        // seated player's session key (the Side Show opponent). The table
+        // authority, wallets and outside keys are rejected.
+        // TODO(P5): drive Side Show from game state (request + accept between
+        // the right seats) instead of the authority choosing the opponent.
+        let own = runtime.session_keys[seat as usize];
+        require!(
+            !readers.is_empty() && readers.len() <= 2 && readers[0] == own,
+            CardFlexError::BadReaders
+        );
+        if let Some(other) = readers.get(1) {
+            require!(
+                *other != own && runtime.seated().any(|i| runtime.session_keys[i] == *other),
+                CardFlexError::BadReaders
+            );
+        }
         let runtime_key = runtime.key();
         let (hand, hand_bump) = Pubkey::find_program_address(
             &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
@@ -279,6 +292,90 @@ pub mod card_flex {
             },
         }
         .invoke_signed(&[runtime_seeds, hand_seeds])?;
+        Ok(())
+    }
+
+    /// The seat's wallet replaces its session key (e.g. a lost or expired
+    /// key). Rebuilds the seat hand's reader list and the runtime's member list
+    /// so the old key loses access at once.
+    pub fn rotate_session(
+        ctx: Context<RotateSession>,
+        seat: u8,
+        new_session: Pubkey,
+    ) -> Result<()> {
+        let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+        // Update state in a scope so the mutable borrow ends before the CPIs.
+        let (runtime_key, config, bump, runtime_members) = {
+            let runtime = &mut ctx.accounts.runtime;
+            require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+            require!(
+                runtime.occupied & (1 << seat) != 0,
+                CardFlexError::SeatEmpty
+            );
+            require_keys_eq!(
+                runtime.wallets[seat as usize],
+                ctx.accounts.wallet.key(),
+                CardFlexError::NotSeatOwner
+            );
+            require!(
+                !runtime
+                    .seated()
+                    .any(|i| runtime.session_keys[i] == new_session),
+                CardFlexError::BadReaders
+            );
+            runtime.session_keys[seat as usize] = new_session;
+            let mut members = vec![Member {
+                flags,
+                pubkey: runtime.authority,
+            }];
+            members.extend(runtime.seated().map(|i| Member {
+                flags,
+                pubkey: runtime.session_keys[i],
+            }));
+            (runtime.key(), runtime.config, runtime.bump, members)
+        };
+        let (hand, hand_bump) = Pubkey::find_program_address(
+            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
+            &crate::ID,
+        );
+        require_keys_eq!(ctx.accounts.hand.key(), hand, CardFlexError::BadSeatHand);
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, config.as_ref(), &[bump]];
+        let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+
+        UpdateEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: ctx.accounts.hand.to_account_info(),
+            permission: ctx.accounts.hand_permission.to_account_info(),
+            vault: ctx.accounts.ephemeral_vault.to_account_info(),
+            magic_program: ctx.accounts.magic_program.to_account_info(),
+            permission_program: ctx.accounts.permission_program.to_account_info(),
+            authority: ctx.accounts.hand.to_account_info(),
+            authority_is_signer: false,
+            args: EphemeralMembersArgs {
+                is_private: true,
+                members: vec![Member {
+                    flags,
+                    pubkey: new_session,
+                }],
+            },
+        }
+        .invoke_signed(&[runtime_seeds, hand_seeds])?;
+        UpdateEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: runtime_info.clone(),
+            permission: ctx.accounts.runtime_permission.to_account_info(),
+            vault: ctx.accounts.ephemeral_vault.to_account_info(),
+            magic_program: ctx.accounts.magic_program.to_account_info(),
+            permission_program: ctx.accounts.permission_program.to_account_info(),
+            authority: runtime_info.clone(),
+            authority_is_signer: false,
+            args: EphemeralMembersArgs {
+                is_private: true,
+                members: runtime_members,
+            },
+        }
+        .invoke_signed(&[runtime_seeds])?;
         Ok(())
     }
 
@@ -629,8 +726,10 @@ pub enum CardFlexError {
     TableNotLocked,
     #[msg("test deck is disabled in this build")]
     TestDeckDisabled,
-    #[msg("reader list must have 1 to 3 entries")]
+    #[msg("readers must be the seat's session key plus at most one seated opponent")]
     BadReaders,
+    #[msg("signer does not own this seat")]
+    NotSeatOwner,
 }
 
 #[derive(Accounts)]
