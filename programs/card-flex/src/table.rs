@@ -30,6 +30,30 @@ pub const RUNTIME_SEED: &[u8] = b"table-runtime";
 pub const SEAT_HAND_SEED: &[u8] = b"seat-hand";
 pub const DEALER_SEED: &[u8] = b"dealer";
 
+pub const SALT_SEED: &[u8] = b"salt";
+pub const SALT_TAG: &[u8; 8] = b"CFSALT02";
+/// tag(8) + runtime(32) + seat(1) + hand_no(8) + salt(32)
+pub const SALT_LEN: u32 = 81;
+/// Teen Patti rules version bound into the hand context (PRD §11).
+pub const RULES_VERSION: u16 = 1;
+
+/// SHA-256 for `fairness-core`: the `sol_sha256` syscall on-chain, software
+/// on the host. Same bytes either way (checked against the CF-Fairness v2
+/// vectors in tests).
+pub struct SolSha256;
+impl fairness_core::Sha256 for SolSha256 {
+    fn hashv(parts: &[&[u8]]) -> [u8; 32] {
+        solana_sha256_hasher::hashv(parts).to_bytes()
+    }
+}
+
+/// Hand phases (PRD §11.4). P2 adds VRF_PENDING and DEALT in CF-010/011.
+pub mod phase {
+    pub const IDLE: u8 = 0;
+    pub const SALTS_PENDING: u8 = 1;
+    pub const SALTS_DONE: u8 = 2;
+}
+
 pub const SEAT_HAND_TAG: &[u8; 8] = b"CFSEATHD";
 pub const DEALER_TAG: &[u8; 8] = b"CFDEALER";
 /// tag(8) + runtime(32) + seat(1) + hand_no(8) + cards(3)
@@ -48,7 +72,8 @@ pub const fn ephemeral_budget() -> u64 {
     let dealer =
         ephemeral_rent(DEALER_LEN) + ephemeral_rent(EphemeralPermission::size_of(1) as u32);
     let runtime_permission = ephemeral_rent(EphemeralPermission::size_of(MAX_SEATS + 1) as u32);
-    seat * MAX_SEATS as u64 + dealer + runtime_permission
+    let salt = ephemeral_rent(SALT_LEN) + ephemeral_rent(EphemeralPermission::size_of(1) as u32);
+    (seat + salt) * MAX_SEATS as u64 + dealer + runtime_permission
 }
 
 #[account]
@@ -78,6 +103,17 @@ pub struct TableRuntime {
     pub locked: bool,
     /// Bit i set = seat i's hand currently has a second (Side Show) reader.
     pub grants: u8,
+    /// CF-Fairness v2 state for the current hand (public, never secret).
+    pub phase: u8,
+    pub hand_ctx: [u8; 32],
+    pub roster_hash: [u8; 32],
+    /// Bit i set = seat i has submitted its salt this hand.
+    pub salts_in: u8,
+    /// Seats in dealing order for this hand, `dealing_count` entries.
+    pub dealing_order: [u8; MAX_SEATS],
+    pub dealing_count: u8,
+    /// `c_i` per seat index (spec §3); zero until submitted.
+    pub salt_commitments: [[u8; 32]; MAX_SEATS],
     pub bump: u8,
 }
 
@@ -234,6 +270,27 @@ pub struct SetHandReaders<'info> {
     #[account(address = MAGIC_PROGRAM_ID)]
     pub magic_program: UncheckedAccount<'info>,
     pub owner_session: Option<Signer<'info>>,
+}
+
+/// `start_hand`: authority starts the salt round for the next hand.
+#[derive(Accounts)]
+pub struct StartHand<'info> {
+    pub authority: Signer<'info>,
+    #[account(seeds = [TABLE_SEED, authority.key().as_ref(), &config.table_id.to_le_bytes()], bump = config.bump, has_one = authority)]
+    pub config: Account<'info, TableConfig>,
+    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump, has_one = authority, has_one = config)]
+    pub runtime: Account<'info, TableRuntime>,
+}
+
+/// `submit_salt`: signed by the seat's session key.
+#[derive(Accounts)]
+pub struct SubmitSalt<'info> {
+    pub session: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Account<'info, TableRuntime>,
+    /// CHECK: ephemeral salt PDA, checked by seeds, owner and tag.
+    #[account(mut, owner = crate::ID)]
+    pub salt: UncheckedAccount<'info>,
 }
 
 /// `rotate_session`: signed by the seat's wallet inside PER.

@@ -57,7 +57,7 @@ pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
 pnpm roundtrip -- --region <label> [--target tee|er-as]   # CF-004 devnet round trip (spends devnet SOL)
 pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet
-pnpm privacy-suite -- --region <label>   # CF-007 G1 suite, 134 checks (needs devnet-poc build deployed)
+pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (needs devnet-poc build deployed)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -140,6 +140,13 @@ Planned crates and apps are listed in PRD §7.
 - Fairness bytes are frozen: any change to `crates/fairness-core` output
   fails `cargo test` (vectors) and `pnpm check:fairness` (independent
   Python). Only change them with a protocol version bump + new ADR.
+- Secrets in instruction data: the transaction must also write an account
+  whose permission has NO human member (like SaltAccount); then it is
+  redacted to everyone. Without that, members of other touched accounts may
+  see the data (CF-009).
+- `packages/probes/src/common.mjs` has a JS implementation of the
+  CF-Fairness v2 hashes and the TableRuntime byte offsets (`RT`); keep the
+  offsets in sync when TableRuntime changes.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

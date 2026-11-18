@@ -15,7 +15,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | Done: six-player privacy matrix passes 2/2 on Devnet; WS delivery unreliable | `programs/card-flex/src/table.rs`, `pnpm tablepoc`, `docs/findings/cf-006-six-player-table.md`, `docs/findings/cf-006-a1-ephemeral-privacy.md` |
 | CF-007 | Privacy probe suite for G1 | Done from `dev-machine-1`: 134/134 checks, 2/2 runs. **G1 provisionally passed**; needs other regions + a second day | `pnpm privacy-suite`, `docs/findings/cf-007-privacy-suite-g1.md` |
 | CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | Done | `crates/fairness-core`, `docs/spec/cf-fairness-v2.md`, `docs/spec/vectors/`, `scripts/check_fairness_vectors.py`, ADR 0003 |
-| CF-009 | Salt round: private `submit_salt` into SaltAccount, public commitment | Next (P2) | spec §3; G1 re-check with real salts |
+| CF-009 | Salt round: private `submit_salt` into SaltAccount, public commitment | Done: suite 231/231 (2/2 runs) incl. salts; salt tx redacted to everyone | `open_salt`/`start_hand`/`submit_salt`, `docs/findings/cf-009-salt-round.md` |
+| CF-010 | VRF request with caller_seed when SALTS_DONE; protected callback derives the seed | Next (P2) | spec §3–4; test ephemeral queue inside PER |
 
 ## Blockers and asks for the team
 
@@ -32,6 +33,11 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-009 done. Salt round on Devnet: on-chain hand_ctx and
+  commitments match an independent JS implementation; wrong signer, wrong
+  account and double submit rejected; salts unreadable by everyone (even the
+  submitter); salt transaction redacted to every identity. Privacy suite
+  231/231 in 2 runs. Program slot extended to 646,224 bytes.
 - 2026-11-18 — CF-008 done. `fairness-core` (no_std, SHA-256 injected)
   implements CF-Fairness v2; byte spec + 3 frozen vector cases; an
   independent Python implementation reproduces every value (in CI and

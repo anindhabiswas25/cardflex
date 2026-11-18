@@ -1,0 +1,107 @@
+{
+  "probe": "CF-007",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T14:08:07.285Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "checks": [
+    {
+      "group": "salts",
+      "name": "submit before start_hand rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "on-chain roster_hash matches spec (JS)",
+      "expected": "c00a626b0500070c7047306af3e6e169015d35e6615d18f32894dbf08df5f64c",
+      "actual": "c00a626b0500070c7047306af3e6e169015d35e6615d18f32894dbf08df5f64c",
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "on-chain hand_ctx matches spec (JS)",
+      "expected": "f87e1fd7199cafe4cb08ecaa1c824571922987eea71e2cc72242f74266f57ca9",
+      "actual": "f87e1fd7199cafe4cb08ecaa1c824571922987eea71e2cc72242f74266f57ca9",
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "phase SALTS_PENDING",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "session1 cannot submit for seat 0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "wallet0 cannot submit for seat 0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "seat 0 cannot write into seat 1's salt account",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "second submit for seat 0 rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "on-chain commitments match spec (JS)",
+      "expected": [
+        "fff095c7896f2c288546ad4366ec563194fc12e120320a113b80ad061dfbdad6",
+        "4b312feb3b792be5220c96170262e017283846d2e88f1af4ed94f5fe7498e7db",
+        "6a24e39bce338cbb0fff977260650fa73e67295c0dcb25bc87699a76ffe69daa",
+        "79ce7d3807cf018bf7d7876fe533819a874e39f7abb8c901e6fba844161e66b2",
+        "81ef1e7fee70e3fe6ceff8d890e6550446e4eebf46f2ae7afc0b31cb7e47205d",
+        "70ec2d2b48b0e1989969ffe281f86bebe53a43fd232dd4c28259cf7cac0f8c6e"
+      ],
+      "actual": [
+        "fff095c7896f2c288546ad4366ec563194fc12e120320a113b80ad061dfbdad6",
+        "4b312feb3b792be5220c96170262e017283846d2e88f1af4ed94f5fe7498e7db",
+        "6a24e39bce338cbb0fff977260650fa73e67295c0dcb25bc87699a76ffe69daa",
+        "79ce7d3807cf018bf7d7876fe533819a874e39f7abb8c901e6fba844161e66b2",
+        "81ef1e7fee70e3fe6ceff8d890e6550446e4eebf46f2ae7afc0b31cb7e47205d",
+        "70ec2d2b48b0e1989969ffe281f86bebe53a43fd232dd4c28259cf7cac0f8c6e"
+      ],
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "phase SALTS_DONE after six salts",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "runtime holds no raw salt bytes",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    }
+  ],
+  "hand_ctx": "f87e1fd7199cafe4cb08ecaa1c824571922987eea71e2cc72242f74266f57ca9",
+  "error": "TypeError [ERR_INVALID_ARG_TYPE]: The first argument must be of type string or an instance of Buffer, ArrayBuffer, or Array or an Array-like Object. Received undefined\n    at Buffer.from (node:buffer:364:9)\n    at file:///home/asus/Project/cardflex/packages/probes/src/privacy-suite.mjs:128:35\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+  "auth_transient_failures": [],
+  "passed": 11,
+  "failed": 0,
+  "ok": false,
+  "finished_at": "2026-11-18T14:08:28.874Z"
+}

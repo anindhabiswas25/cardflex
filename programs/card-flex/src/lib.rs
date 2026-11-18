@@ -409,6 +409,162 @@ pub mod card_flex {
         Ok(())
     }
 
+    // ---------- CF-009 salt round (PER) ----------
+
+    /// Creates the ephemeral `SaltAccount` for a seat. Its only permission
+    /// member is the `TableRuntime` PDA, so nobody (not even the player) can
+    /// read a salt back; only the program uses it (ADR 0002).
+    pub fn open_salt(ctx: Context<TablePer>, seat: u8) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        require!(
+            runtime.occupied & (1 << seat) != 0,
+            CardFlexError::SeatEmpty
+        );
+        let runtime_key = runtime.key();
+        let (salt, salt_bump) =
+            Pubkey::find_program_address(&[SALT_SEED, runtime_key.as_ref(), &[seat]], &crate::ID);
+        require_keys_eq!(ctx.accounts.target.key(), salt, CardFlexError::BadSalt);
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        let salt_seeds: &[&[u8]] = &[SALT_SEED, runtime_key.as_ref(), &[seat], &[salt_bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        EphemeralAccount::new(
+            &runtime_info,
+            &ctx.accounts.target,
+            &ctx.accounts.ephemeral_vault,
+        )
+        .with_signer_seeds(&[runtime_seeds, salt_seeds])
+        .create(SALT_LEN)?;
+        {
+            let mut data = ctx.accounts.target.try_borrow_mut_data()?;
+            data[..8].copy_from_slice(SALT_TAG);
+            data[8..40].copy_from_slice(runtime_key.as_ref());
+            data[40] = seat;
+        }
+        let members = vec![Member {
+            flags: 0,
+            pubkey: runtime_key,
+        }];
+        create_permission(
+            ctx.accounts,
+            &ctx.accounts.target.to_account_info(),
+            members,
+            &[runtime_seeds, salt_seeds],
+        )
+    }
+
+    /// Starts the salt round: fixes the dealing order and roster and computes
+    /// `hand_ctx` (CF-Fairness v2 spec §2). P1/P2: button fixed at seat 0, so
+    /// dealing order is seat order.
+    pub fn start_hand(ctx: Context<StartHand>) -> Result<()> {
+        let config_key = ctx.accounts.config.key();
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.locked, CardFlexError::TableNotLocked);
+        require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+        let seats: Vec<fairness_core::Seat> = runtime
+            .seated()
+            .map(|i| fairness_core::Seat {
+                index: i as u8,
+                wallet: runtime.wallets[i].to_bytes(),
+            })
+            .collect();
+        require!(seats.len() >= 2, CardFlexError::NotEnoughPlayers);
+        let roster = fairness_core::roster_hash::<SolSha256>(&seats);
+        let ctx_hash = fairness_core::hand_ctx::<SolSha256>(&fairness_core::HandContext {
+            program_id: crate::ID.to_bytes(),
+            table: config_key.to_bytes(),
+            hand_no: runtime.hand_no,
+            roster_hash: roster,
+            rules_version: RULES_VERSION,
+        });
+        runtime.dealing_order = [0; MAX_SEATS];
+        for (k, s) in seats.iter().enumerate() {
+            runtime.dealing_order[k] = s.index;
+        }
+        runtime.dealing_count = seats.len() as u8;
+        runtime.roster_hash = roster;
+        runtime.hand_ctx = ctx_hash;
+        runtime.salts_in = 0;
+        runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+        runtime.phase = phase::SALTS_PENDING;
+        Ok(())
+    }
+
+    /// A seat's session key submits its secret salt once per hand. The salt
+    /// goes to the private `SaltAccount`; only `c_i` (spec §3) is public.
+    pub fn submit_salt(ctx: Context<SubmitSalt>, seat: u8, salt: [u8; 32]) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(
+            runtime.phase == phase::SALTS_PENDING,
+            CardFlexError::WrongPhase
+        );
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        require!(
+            runtime.occupied & (1 << seat) != 0,
+            CardFlexError::SeatEmpty
+        );
+        require_keys_eq!(
+            runtime.session_keys[seat as usize],
+            ctx.accounts.session.key(),
+            CardFlexError::NotSeatOwner
+        );
+        require!(
+            runtime.salts_in & (1 << seat) == 0,
+            CardFlexError::SaltAlreadySubmitted
+        );
+        let runtime_key = runtime.key();
+        let (expected, _) =
+            Pubkey::find_program_address(&[SALT_SEED, runtime_key.as_ref(), &[seat]], &crate::ID);
+        require_keys_eq!(ctx.accounts.salt.key(), expected, CardFlexError::BadSalt);
+        {
+            let mut data = ctx.accounts.salt.try_borrow_mut_data()?;
+            require!(&data[..8] == SALT_TAG, CardFlexError::BadSalt);
+            data[41..49].copy_from_slice(&runtime.hand_no.to_le_bytes());
+            data[49..81].copy_from_slice(&salt);
+        }
+        runtime.salt_commitments[seat as usize] =
+            fairness_core::salt_commitment::<SolSha256>(&runtime.hand_ctx, seat, &salt);
+        runtime.salts_in |= 1 << seat;
+        let all = runtime.dealing_order[..runtime.dealing_count as usize]
+            .iter()
+            .fold(0u8, |m, s| m | (1 << s));
+        if runtime.salts_in == all {
+            runtime.phase = phase::SALTS_DONE;
+        }
+        Ok(())
+    }
+
+    /// Closes a seat's `SaltAccount` and its permission (before undelegate).
+    pub fn close_salt(ctx: Context<TablePer>, seat: u8) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        let runtime_key = runtime.key();
+        let (expected, bump) =
+            Pubkey::find_program_address(&[SALT_SEED, runtime_key.as_ref(), &[seat]], &crate::ID);
+        require_keys_eq!(ctx.accounts.target.key(), expected, CardFlexError::BadSalt);
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        let salt_seeds: &[&[u8]] = &[SALT_SEED, runtime_key.as_ref(), &[seat], &[bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        CloseEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: ctx.accounts.target.to_account_info(),
+            permission: ctx.accounts.permission.to_account_info(),
+            vault: ctx.accounts.ephemeral_vault.to_account_info(),
+            magic_program: ctx.accounts.magic_program.to_account_info(),
+            permission_program: ctx.accounts.permission_program.to_account_info(),
+            authority: ctx.accounts.target.to_account_info(),
+            authority_is_signer: false,
+        }
+        .invoke_signed(&[runtime_seeds, salt_seeds])?;
+        EphemeralAccount::new(
+            &runtime_info,
+            &ctx.accounts.target,
+            &ctx.accounts.ephemeral_vault,
+        )
+        .with_signer_seeds(&[runtime_seeds])
+        .close()?;
+        Ok(())
+    }
+
     /// Deals the P1 **test deck** (not random). `remaining_accounts` = the
     /// seat hands of every occupied seat, in seat order.
     pub fn poc_deal(ctx: Context<PocDeal>) -> Result<()> {
@@ -768,6 +924,12 @@ pub enum CardFlexError {
     GrantActive,
     #[msg("the hand owner's session key must sign a grant")]
     OwnerConsentMissing,
+    #[msg("wrong or missing salt account")]
+    BadSalt,
+    #[msg("not allowed in the current hand phase")]
+    WrongPhase,
+    #[msg("salt already submitted for this hand")]
+    SaltAlreadySubmitted,
 }
 
 #[derive(Accounts)]

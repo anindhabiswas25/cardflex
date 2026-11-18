@@ -18,8 +18,9 @@ import {
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, repoRoot, loadDiscriminators, loadPayer, makeIx, send, rejected,
   tokenFor, authFailures, teeConn, teeUrl, rawRpc, waitFor, sleep, log, ms, w, r, u8, u64, vecPubkeys,
-  testDeck, dealPositions,
+  testDeck, dealPositions, rosterHash, handCtx, saltCommitment, RT,
 } from "./common.mjs";
+import { randomBytes } from "node:crypto";
 
 const SEATS = 6;
 const args = process.argv.slice(2);
@@ -37,7 +38,8 @@ const [config] = PublicKey.findProgramAddressSync([Buffer.from("table"), authori
 const [runtime] = PublicKey.findProgramAddressSync([Buffer.from("table-runtime"), config.toBuffer()], PROGRAM_ID);
 const [dealer] = PublicKey.findProgramAddressSync([Buffer.from("dealer"), runtime.toBuffer()], PROGRAM_ID);
 const hands = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
-const secretKeys = new Set([dealer, ...hands].map(String));
+const saltAccs = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("salt"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
+const secretKeys = new Set([dealer, ...hands, ...saltAccs].map(String));
 const perKeys = (target, signer = authority) => [
   r(signer.publicKey, true), w(runtime), w(target), w(permissionPdaFromAccount(target)),
   r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
@@ -87,6 +89,71 @@ try {
   await send(tee, [ix("open_dealer", perKeys(dealer))], [authority], { skipPreflight: true });
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("open_seat_hand", perKeys(hands[s]), u8(s))], [authority], { skipPreflight: true });
 
+  // ---------------- CF-009: salt round ----------------
+  log("CF-009 salt round");
+  for (let s = 0; s < SEATS; s++) await send(tee, [ix("open_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true });
+  const salts = Array.from({ length: SEATS }, () => randomBytes(32));
+  const submit = (seat, signer, acc = saltAccs[seat], salt = salts[seat]) =>
+    ix("submit_salt", [r(signer.publicKey, true), w(runtime), w(acc)], Buffer.concat([u8(seat), salt]));
+  check("salts", "submit before start_hand rejected", true, await rejected(tee, [submit(0, players[0].session)], [players[0].session]));
+  await send(tee, [ix("start_hand", [r(authority.publicKey, true), r(config), w(runtime)])], [authority], { skipPreflight: true });
+  {
+    const rt = (await tee.getAccountInfo(runtime)).data;
+    const roster = rosterHash([0, 1, 2, 3, 4, 5], players.map((p) => p.wallet.publicKey));
+    const ctx = handCtx(PROGRAM_ID, config, 0n, roster, 1);
+    check("salts", "on-chain roster_hash matches spec (JS)", roster.toString("hex"), rt.subarray(RT.roster_hash, RT.roster_hash + 32).toString("hex"));
+    check("salts", "on-chain hand_ctx matches spec (JS)", ctx.toString("hex"), rt.subarray(RT.hand_ctx, RT.hand_ctx + 32).toString("hex"));
+    check("salts", "phase SALTS_PENDING", 1, rt[RT.phase]);
+    report.hand_ctx = ctx.toString("hex");
+  }
+  check("salts", "session1 cannot submit for seat 0", true, await rejected(tee, [submit(0, players[1].session)], [players[1].session]));
+  check("salts", "wallet0 cannot submit for seat 0", true, await rejected(tee, [submit(0, players[0].wallet)], [players[0].wallet]));
+  check("salts", "seat 0 cannot write into seat 1's salt account", true, await rejected(tee, [submit(0, players[0].session, saltAccs[1])], [players[0].session]));
+  const saltSigs = [];
+  for (let s = 0; s < SEATS; s++) saltSigs.push((await send(tee, [submit(s, players[s].session)], [players[s].session], { skipPreflight: true })).sig);
+  check("salts", "second submit for seat 0 rejected", true, await rejected(tee, [submit(0, players[0].session, saltAccs[0], randomBytes(32))], [players[0].session]));
+  {
+    const rt = (await tee.getAccountInfo(runtime)).data;
+    const ctx = Buffer.from(report.hand_ctx, "hex");
+    const got = Array.from({ length: SEATS }, (_, s) => rt.subarray(RT.salt_commitments + 32 * s, RT.salt_commitments + 32 * (s + 1)).toString("hex"));
+    check("salts", "on-chain commitments match spec (JS)", salts.map((x, s) => saltCommitment(ctx, s, x).toString("hex")), got);
+    check("salts", "phase SALTS_DONE after six salts", 2, rt[RT.phase]);
+    check("salts", "runtime holds no raw salt bytes", false, salts.some((x) => rt.includes(x)));
+  }
+  // The salt is in the instruction data. Other seats are members of the
+  // runtime permission (which the tx also writes): they must still not see it.
+  await sleep(1000);
+  // Ask in both encodings; redacted transactions may come back in a
+  // different shape, so decode whatever is returned.
+  const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const b58decode = (str) => {
+    let n = 0n;
+    for (const ch of str) { const v = B58.indexOf(ch); if (v < 0) return Buffer.alloc(0); n = n * 58n + BigInt(v); }
+    let hex = n.toString(16); if (hex.length % 2) hex = "0" + hex;
+    const lead = str.match(/^1*/)[0].length;
+    return Buffer.concat([Buffer.alloc(lead), n === 0n ? Buffer.alloc(0) : Buffer.from(hex, "hex")]);
+  };
+  const txSeesSalt = async (who, sig, salt) => {
+    const seen = [];
+    for (const encoding of ["base64", "json"]) {
+      const t = await rawRpc(teeUrl(tok[who]), "getTransaction", [sig, { encoding, maxSupportedTransactionVersion: 0 }]);
+      const tx = t.result?.transaction;
+      let raw = Buffer.alloc(0);
+      if (Array.isArray(tx)) raw = Buffer.from(tx[0] ?? "", "base64");
+      else if (tx?.message) raw = Buffer.concat((tx.message.instructions ?? []).map((i) => b58decode(i.data ?? "")));
+      seen.push({ encoding, returned: !!t.result, shape: Array.isArray(tx) ? "encoded" : tx ? "json" : "none", bytes: raw.length, has_salt: raw.includes(salt) });
+    }
+    return seen;
+  };
+  report.salt_tx_visibility = {};
+  for (const who of ["session1", "authority", "stranger", "no_token"]) {
+    const seen = await txSeesSalt(who, saltSigs[0], salts[0]);
+    report.salt_tx_visibility[who] = seen;
+    check("salts", `${who} cannot see seat 0's salt in its transaction`, false, seen.some((x) => x.has_salt),
+      seen.map((x) => `${x.encoding}:${x.shape}/${x.bytes}B`).join(" "));
+  }
+  report.salt_tx_visibility.session0_owner = await txSeesSalt("session0", saltSigs[0], salts[0]);
+
   // G1-5: strangers subscribed to every secret account during the deal.
   let strangerNotes = 0;
   const strangerSubs = [dealer, ...hands].map((k) => conn.stranger.onAccountChange(k, () => { strangerNotes++; }, { commitment: "processed" }));
@@ -112,10 +179,11 @@ try {
 
   // ---------------- G1-2: matrix + encodings ----------------
   log("G1-2 read matrix and encodings");
+  // Salts: nobody reads them back, not even the player who submitted one.
   const expectRead = (who, what) =>
     what === "runtime" ? who === "authority" || who.startsWith("session")
       : what.startsWith("hand") ? who === `session${what.slice(4)}` : false;
-  const targets = { runtime, dealer, ...Object.fromEntries(hands.map((h, s) => [`hand${s}`, h])) };
+  const targets = { runtime, dealer, ...Object.fromEntries(hands.map((h, s) => [`hand${s}`, h])), ...Object.fromEntries(saltAccs.map((a, s) => [`salt${s}`, a])) };
   for (const who of Object.keys(conn)) {
     for (const [what, key] of Object.entries(targets)) {
       check("matrix", `${who} getAccountInfo ${what}`, expectRead(who, what), await canRead(conn[who], key));
@@ -136,7 +204,10 @@ try {
   for (const who of ["stranger", "no_token", "session0", "authority"]) {
     const res = await rawRpc(teeUrl(tok[who]), "getProgramAccounts", [PROGRAM_ID.toBase58(), { encoding: "base64" }]);
     const listed = (res.result ?? []).map((x) => x.pubkey);
-    const secretsSeen = listed.filter((k) => secretKeys.has(k)).map((k) => (k === dealer.toBase58() ? "dealer" : `hand${hands.findIndex((h) => h.toBase58() === k)}`));
+    const label = (k) => k === dealer.toBase58() ? "dealer"
+      : hands.some((h) => h.toBase58() === k) ? `hand${hands.findIndex((h) => h.toBase58() === k)}`
+      : `salt${saltAccs.findIndex((a) => a.toBase58() === k)}`;
+    const secretsSeen = listed.filter((k) => secretKeys.has(k)).map(label);
     const allowed = who === "session0" ? ["hand0"] : [];
     check("enumeration", `${who} getProgramAccounts exposes only allowed secret accounts`, allowed.sort(), secretsSeen.filter((x) => !allowed.includes(x)).length ? secretsSeen.sort() : allowed.filter((x) => secretsSeen.includes(x)).sort(),
       res.error ? `rpc error: ${res.error.message}` : `listed ${listed.length} accounts, secret: ${JSON.stringify(secretsSeen)}`);
@@ -224,10 +295,11 @@ try {
   log("cleanup: close ephemerals, undelegate, base-layer check");
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("close_ephemeral", perKeys(hands[s]), Buffer.from([1, s]))], [authority], { skipPreflight: true });
   await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true });
+  for (let s = 0; s < SEATS; s++) await send(tee, [ix("close_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true });
   await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
   const home = await waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   check("base layer", "runtime back on base", true, !!home.value);
-  for (const k of [dealer, ...hands]) check("base layer", `${k.toBase58().slice(0, 6)}… absent on Solana`, null, await base.getAccountInfo(k));
+  for (const k of [dealer, ...hands, ...saltAccs]) check("base layer", `${k.toBase58().slice(0, 6)}… absent on Solana`, null, await base.getAccountInfo(k));
 } catch (e) {
   report.error = String(e.stack ?? e).slice(0, 600);
 }

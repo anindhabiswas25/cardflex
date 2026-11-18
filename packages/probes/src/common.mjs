@@ -109,3 +109,20 @@ export function testDeck(handNo) {
   return Array.from({ length: 52 }, (_, i) => (i + shift) % 52);
 }
 export const dealPositions = (k, n) => [k, k + n, k + 2 * n];
+
+// ---- CF-Fairness v2 (docs/spec/cf-fairness-v2.md), node:crypto only ----
+import { createHash } from "node:crypto";
+export const sha256 = (...parts) => { const h = createHash("sha256"); for (const p of parts) h.update(p); return h.digest(); };
+const le16 = (v) => { const b = Buffer.alloc(2); b.writeUInt16LE(v); return b; };
+export const rosterHash = (seats, wallets) =>
+  sha256(Buffer.from("CF_ROSTER_V2"), Buffer.from([seats.length]), ...seats.flatMap((s, i) => [Buffer.from([s]), wallets[i].toBuffer()]));
+export const handCtx = (programId, table, handNo, roster, rulesVersion) =>
+  sha256(Buffer.from("CF_CTX_V2"), programId.toBuffer(), table.toBuffer(), u64(handNo), roster, le16(rulesVersion), le16(2));
+export const saltCommitment = (ctx, seat, salt) => sha256(Buffer.from("CF_SALT_V2"), ctx, Buffer.from([seat]), salt);
+
+// TableRuntime byte offsets (8-byte Anchor discriminator first). Keep in sync
+// with programs/card-flex/src/table.rs.
+export const RT = {
+  occupied: 73, wallets: 74, sessions: 266, hand_no: 458, dealt: 466, locked: 467, grants: 468, phase: 469,
+  hand_ctx: 470, roster_hash: 502, salts_in: 534, dealing_order: 535, dealing_count: 541, salt_commitments: 542,
+};

@@ -27,6 +27,9 @@ poc-test-deck = []
 [dependencies]
 anchor-lang = { workspace = true }
 card-types = { path = "../../crates/card-types" }
+fairness-core = { path = "../../crates/fairness-core" }
+# sol_sha256 syscall on-chain; the sha2 feature gives a software fallback for host tests.
+solana-sha256-hasher = { version = "=3.1.0", features = ["sha2"] }
 # Pulled in now so CI proves the pinned Anchor + MagicBlock SDK combination builds.
 ephemeral-rollups-sdk = { workspace = true, features = ["anchor", "vrf", "access-control", "crank"] }
 
