@@ -36,6 +36,10 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — Security fix: reveal only after the hand is complete
+  (`HAND_COMPLETE`, set by interim authority-only `end_hand`; P5 replaces it
+  with showdown). Hands/salts/dealer can't be closed during play. Devnet:
+  hand flow 51/51, privacy suite 231/231, six-player pass.
 - 2026-11-18 — CF-012 done, **P2 complete, G2 passed** (one location).
   HandLog (public, delegated, committed) + reveal_hand; offline `cf-verify`
   CLI. Devnet: revealed hand verifies VALID from PER and from the Solana

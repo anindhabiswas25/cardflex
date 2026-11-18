@@ -339,6 +339,7 @@ fn ephemeral_accounts_frozen_while_a_hand_is_in_progress() {
         phase::SALTS_DONE,
         phase::VRF_PENDING,
         phase::SEEDED,
+        phase::DEALT,
     ] {
         set_phase(&mut t, p, 0);
         let rt = TableRuntime::try_deserialize(
@@ -494,6 +495,20 @@ fn revealed_hand_log_passes_the_independent_verifier() {
         &card_flex::instruction::RevealHand {}.data(),
         metas.clone(),
     );
+    // Security review: no reveal while the hand is being played.
+    assert!(custom_error(
+        &send(&mut t.svm, std::slice::from_ref(&reveal), &payer),
+        card_flex::CardFlexError::WrongPhase
+    ));
+    // Finish the hand (interim end_hand; P5: showdown), then reveal.
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    let mut rt2 = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+    rt2.phase = phase::HAND_COMPLETE;
+    let mut data = Vec::new();
+    rt2.try_serialize(&mut data).unwrap();
+    data.resize(acc.data.len(), 0);
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
     send(&mut t.svm, &[reveal], &payer).expect("reveal");
     // Reveal only once.
     let again = Instruction::new_with_bytes(

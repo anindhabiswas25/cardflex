@@ -162,8 +162,9 @@ Planned crates and apps are listed in PRD §7.
   Accounts struct with more than one of them, or the 4 KB SBF stack overflows
   ("Access violation in stack frame").
 - `HandLog` is PUBLIC by design (explicit `is_private = false` permission);
-  `reveal_hand` makes the deck derivable, so in P5 it must only run after
-  showdown. Hand record format: `cf-hand-record/1` (crates/fairness-verifier).
+  `reveal_hand` makes the deck derivable, so it requires `HAND_COMPLETE`;
+  today only the interim authority-only `end_hand` sets that, and P5 must
+  replace it with showdown logic. Hand record format: `cf-hand-record/1` (crates/fairness-verifier).
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

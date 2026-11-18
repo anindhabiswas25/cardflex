@@ -138,7 +138,12 @@ try {
       shown.push({ seat: s, cards: [...a.data.subarray(HAND.cards, HAND.cards + 3)] });
     }
     const revealIx = (payer) => ix("reveal_hand", [r(payer.publicKey, true), w(runtime), r(dealer), w(t.handLog), ...saltAccs.map((a) => r(a))]);
-    await send(tee, [revealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless
+    check("reveal", "reveal during play (DEALT) rejected", true, await rejected(tee, [revealIx(stranger)], [stranger]));
+    check("integrity", "closing a seat hand during play rejected", true, await rejected(tee, [ix("close_ephemeral", t.perKeys(t.hands[0]), Buffer.from([1, 0]))], [authority]));
+    const endIx = (signer) => ix("end_hand", [r(signer.publicKey, true), r(config), w(runtime)]);
+    check("reveal", "stranger cannot end the hand", true, await rejected(tee, [endIx(stranger)], [stranger]));
+    await send(tee, [endIx(authority)], [authority], { skipPreflight: true });
+    await send(tee, [revealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless once complete
     check("reveal", "second reveal rejected", true, await rejected(tee, [revealIx(authority)], [authority]));
     const noToken = teeConn(null);
     const logAcc = await waitFor(async () => { const a = await noToken.getAccountInfo(t.handLog); return a && a.data[HL.revealed] === 1 ? a : null; }, 15_000, 200);

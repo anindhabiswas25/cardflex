@@ -828,13 +828,29 @@ pub mod card_flex {
         )
     }
 
-    /// Publishes a dealt hand's seed inputs (spec §9) in `HandLog`: roster,
+    /// Marks a dealt hand as finished. Interim, authority-only stand-in for
+    /// the P5 showdown / last-player resolution, which will set
+    /// `HAND_COMPLETE` itself; until then no game is played on these tables.
+    /// TODO(P5): remove; only game logic may finish a hand.
+    pub fn end_hand(ctx: Context<StartHand>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
+        runtime.phase = phase::HAND_COMPLETE;
+        Ok(())
+    }
+
+    /// Publishes a finished hand's seed inputs (spec §9) in `HandLog`: roster,
     /// salts, VRF output, commitments and root. Permissionless. Salts are
     /// re-checked against their commitments. After this, anyone can rebuild
     /// the deck, so in P5 it runs only after showdown.
     pub fn reveal_hand(ctx: Context<RevealHand>) -> Result<()> {
         let runtime = &mut ctx.accounts.runtime;
-        require!(runtime.phase == phase::DEALT, CardFlexError::WrongPhase);
+        // Security review: revealing during play would let anyone rebuild
+        // every hand. Only a finished hand may be revealed.
+        require!(
+            runtime.phase == phase::HAND_COMPLETE,
+            CardFlexError::WrongPhase
+        );
         let runtime_key = runtime.key();
         let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
         require!(
@@ -945,8 +961,9 @@ pub mod card_flex {
             }
         }
         runtime.dealt = true;
-        // The test-deck hand counts as dealt, so cleanup is allowed afterwards.
-        runtime.phase = phase::DEALT;
+        // The test-deck hand isn't played, so it is complete at once and the
+        // POC scripts may clean up afterwards.
+        runtime.phase = phase::HAND_COMPLETE;
         Ok(())
     }
 

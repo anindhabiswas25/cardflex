@@ -70,10 +70,31 @@
 | Second shuffle impossible | CF-010/011: second request, second deal and late callback (hand-number bound) rejected; salts frozen mid-hand | met |
 | Compute cost per deal measured | CF-011: 56–86k CU | met |
 
+## Security review follow-up: no reveal during play (fixed)
+
+The background review found that `reveal_hand` was allowed, by anyone, as soon
+as a hand was `DEALT`. Publishing the salts and VRF output then would let
+everyone rebuild every hand mid-play. Fixed:
+
+- `reveal_hand` requires the new phase `HAND_COMPLETE`.
+- Only `end_hand` sets it: an interim, authority-only stand-in. P5 replaces
+  it with showdown / last-player resolution; no game is played on these
+  tables yet.
+- `DEALT` now counts as "hand in progress", so seat hands, salts and the
+  dealer state can't be closed during play.
+- The test-deck `poc_deal` goes straight to `HAND_COMPLETE` (it isn't
+  played).
+
+Devnet rerun: the hand flow passes 51/51, including reveal during play
+rejected, closing a hand during play rejected, and a stranger unable to end
+the hand. The privacy suite still passes 231/231; the six-player test
+passes.
+
 ## Not covered yet (later phases)
 
 - Showdown, ranking and payouts aren't in the record yet (P4/P5). The
   verifier checks the deal, not the winner.
 - A WASM build of the verifier for the browser (P7).
-- Reveal is currently allowed right after the deal. P5 moves it to after
-  showdown.
+- `end_hand` is an operator-only stand-in. P5 must make showdown or
+  last-player resolution the only way to reach `HAND_COMPLETE`, and remove
+  `end_hand`.

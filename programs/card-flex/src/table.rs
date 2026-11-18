@@ -62,8 +62,11 @@ pub mod phase {
     pub const SEEDED: u8 = 4;
     /// Deck shuffled from the seed, hands written, Merkle root public (CF-011).
     pub const DEALT: u8 = 5;
+    /// Hand finished; only now may it be revealed. Set by `end_hand` (P5:
+    /// by showdown / last-player resolution only).
+    pub const HAND_COMPLETE: u8 = 6;
     /// Seed inputs published in `HandLog` (spec §9, CF-012).
-    pub const REVEALED: u8 = 6;
+    pub const REVEALED: u8 = 7;
 }
 
 pub const SEAT_HAND_TAG: &[u8; 8] = b"CFSEATHD";
@@ -183,7 +186,11 @@ impl TableRuntime {
     pub fn hand_in_progress(&self) -> bool {
         matches!(
             self.phase,
-            phase::SALTS_PENDING | phase::SALTS_DONE | phase::VRF_PENDING | phase::SEEDED
+            phase::SALTS_PENDING
+                | phase::SALTS_DONE
+                | phase::VRF_PENDING
+                | phase::SEEDED
+                | phase::DEALT
         )
     }
 
