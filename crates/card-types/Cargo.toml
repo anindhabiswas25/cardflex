@@ -1,0 +1,10 @@
+[package]
+name = "card-types"
+version = "0.1.0"
+description = "Canonical card encoding shared by the Card Flex program, verifier and client"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

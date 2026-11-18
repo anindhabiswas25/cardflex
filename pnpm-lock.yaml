@@ -1,0 +1,172 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      '@magicblock-labs/ephemeral-validator':
+        specifier: 1.1.1
+        version: 1.1.1
+
+packages:
+
+  '@magicblock-labs/ephemeral-validator-darwin-arm64@1.1.1':
+    resolution: {integrity: sha512-0GjIWF5t6srJ5vxy4RBLjmCy29LuQdmpvFtau2alKdeFQ6lNuLtPQ6m1nMMT2rbv58sEDuzCZC016h0T6VjfdQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@magicblock-labs/ephemeral-validator-darwin-x64@1.1.1':
+    resolution: {integrity: sha512-0e6WSqITMxiyLuUxHuAUU4Cju/7Yj6XuZhNkxayMQT6Nve4haI5JKbqFjgBmYw1YmGUDjAPUloHCrhHnQqfFkQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@magicblock-labs/ephemeral-validator-linux-arm64@1.1.1':
+    resolution: {integrity: sha512-ebl/1jxgYPUntiu7rlxALZ5uoOhPPmuCkcCPJS3DA93/0K7gXB3cmTpGBvV9AT9ujsgSUKRWtkNTU6ZGuWpPaQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@magicblock-labs/ephemeral-validator-linux-x64@1.1.1':
+    resolution: {integrity: sha512-P4oAhnqkE+ZCMdcMfiyLfw4KwfsT4dhf2+kfMxz/h249vP1i4tEfAGU81XRlKSp+NOv86ZKZRK88F1DpqeB5xg==}
+    cpu: [x64]
+    os: [linux]
+
+  '@magicblock-labs/ephemeral-validator@1.1.1':
+    resolution: {integrity: sha512-PUOZWqd9vJbIt2YeOM7vndY2q0RGOIUSnUeuFut6YjQuUNT7yVCVt+093GFye9CJy1eV3XQd6a2cfY15+b259A==}
+    hasBin: true
+
+  '@magicblock-labs/query-filtering-service-darwin-arm64@0.1.3':
+    resolution: {integrity: sha512-gOuxYfwhc4GpYRCHyaghKn0yx4sNmylOeJfhfygFSTyqBEJZ2LGfedsu87ynhKtXpguGa6ECbEwBpHFR1byE3g==}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
+
+  '@magicblock-labs/query-filtering-service-darwin-x64@0.1.3':
+    resolution: {integrity: sha512-uPj5BIjy8dd6I8qKxan0OqnNADWk/ecYQcju6Hn/6/4nGHlUGYh2WLa1y9qh4CoroXZB/jZSptKXBwNWMaamrQ==}
+    cpu: [x64]
+    os: [darwin]
+    hasBin: true
+
+  '@magicblock-labs/query-filtering-service-linux-arm64@0.1.3':
+    resolution: {integrity: sha512-u+RmkhaOiotvVhK77Hci37CT3BZ7D2mDYXl0rb1x+WxTxFNeo/CnjBczIxUT0WzymCCzHlTWAC9J+kTGu5SG9g==}
+    cpu: [arm64]
+    os: [linux]
+    hasBin: true
+
+  '@magicblock-labs/query-filtering-service-linux-x64@0.1.3':
+    resolution: {integrity: sha512-pdwR+RnDBSlOL7bVIHQMPDRY+pIb0PAGeTynIVQyWczjxSEqZjZWVuqU8dRGVD4n/RDu1jsMgAnspIpxNlx3NQ==}
+    cpu: [x64]
+    os: [linux]
+    hasBin: true
+
+  '@magicblock-labs/rpc-router-darwin-arm64@0.0.1':
+    resolution: {integrity: sha512-l/zjqMxN5qST/pxGIYnY72EjnHiu4hF99tVcJG+7tUigNfPjn3XQ9U9x/t+p6kFtfvgprVbuY53VPB5e9O7YXQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@magicblock-labs/rpc-router-darwin-x64@0.0.1':
+    resolution: {integrity: sha512-ka9Yi8nwQ/dMloJ8OKYKQI1gKntGbiDplFS3sDi+frS/OhDxGE/ImwXUOGWZuUdRdGdKL8TIHbTKmk8l5FdusQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@magicblock-labs/rpc-router-linux-arm64@0.0.1':
+    resolution: {integrity: sha512-Z23lJw15d7/YxxoMK9gBZdnWdSw2qZP2V0h6+T3zrBWpbC+KYR48NG/0pyWrkRKWIqujak+eEoJvC/LEBfIKMg==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@magicblock-labs/rpc-router-linux-x64@0.0.1':
+    resolution: {integrity: sha512-pxCvYyuYnUalZjec8uSxjkxHs4FlvXt+NHxFzhfGppV/WQuk4fYpYv9A+LmPIMQvSXVXHqISnVzSblc3zyXeHA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@magicblock-labs/vrf-oracle-darwin-arm64@0.4.1':
+    resolution: {integrity: sha512-lelmZ7D7xzosnD3oL+1SsW6tMNj0ckb3+ishV3z9eOsFM7FWu6eNXMOAA0QT+SgCDyfVpLMgnGeKjKCzEXyzeA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@magicblock-labs/vrf-oracle-darwin-x64@0.4.1':
+    resolution: {integrity: sha512-KLITTvkjEyt5P4JcRmQ4LAnKowlv3znCdfuYBJy7CHfkilLR8ssy9osiCGJoyhnpXtFqmjDN/rM1IpUzab+YbQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@magicblock-labs/vrf-oracle-linux-arm64@0.4.1':
+    resolution: {integrity: sha512-cDA5wI3SsHAxkKGJW0tZNNWq/INf+a9DCBJidACLQ5tfyqegntsfmKI3xutADa986wSbVKPQD0VTXaDNyTWRig==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@magicblock-labs/vrf-oracle-linux-x64@0.4.1':
+    resolution: {integrity: sha512-XkcPFm/NbABiCHRz4h4jKR1hV5RC3t9stUB/6ecrfSjyWi0Eu2SlLVSw2MvXsQz2sZDMNOQB4LTSUHuBFv9IXg==}
+    cpu: [x64]
+    os: [linux]
+
+snapshots:
+
+  '@magicblock-labs/ephemeral-validator-darwin-arm64@1.1.1':
+    optional: true
+
+  '@magicblock-labs/ephemeral-validator-darwin-x64@1.1.1':
+    optional: true
+
+  '@magicblock-labs/ephemeral-validator-linux-arm64@1.1.1':
+    optional: true
+
+  '@magicblock-labs/ephemeral-validator-linux-x64@1.1.1':
+    optional: true
+
+  '@magicblock-labs/ephemeral-validator@1.1.1':
+    optionalDependencies:
+      '@magicblock-labs/ephemeral-validator-darwin-arm64': 1.1.1
+      '@magicblock-labs/ephemeral-validator-darwin-x64': 1.1.1
+      '@magicblock-labs/ephemeral-validator-linux-arm64': 1.1.1
+      '@magicblock-labs/ephemeral-validator-linux-x64': 1.1.1
+      '@magicblock-labs/query-filtering-service-darwin-arm64': 0.1.3
+      '@magicblock-labs/query-filtering-service-darwin-x64': 0.1.3
+      '@magicblock-labs/query-filtering-service-linux-arm64': 0.1.3
+      '@magicblock-labs/query-filtering-service-linux-x64': 0.1.3
+      '@magicblock-labs/rpc-router-darwin-arm64': 0.0.1
+      '@magicblock-labs/rpc-router-darwin-x64': 0.0.1
+      '@magicblock-labs/rpc-router-linux-arm64': 0.0.1
+      '@magicblock-labs/rpc-router-linux-x64': 0.0.1
+      '@magicblock-labs/vrf-oracle-darwin-arm64': 0.4.1
+      '@magicblock-labs/vrf-oracle-darwin-x64': 0.4.1
+      '@magicblock-labs/vrf-oracle-linux-arm64': 0.4.1
+      '@magicblock-labs/vrf-oracle-linux-x64': 0.4.1
+
+  '@magicblock-labs/query-filtering-service-darwin-arm64@0.1.3':
+    optional: true
+
+  '@magicblock-labs/query-filtering-service-darwin-x64@0.1.3':
+    optional: true
+
+  '@magicblock-labs/query-filtering-service-linux-arm64@0.1.3':
+    optional: true
+
+  '@magicblock-labs/query-filtering-service-linux-x64@0.1.3':
+    optional: true
+
+  '@magicblock-labs/rpc-router-darwin-arm64@0.0.1':
+    optional: true
+
+  '@magicblock-labs/rpc-router-darwin-x64@0.0.1':
+    optional: true
+
+  '@magicblock-labs/rpc-router-linux-arm64@0.0.1':
+    optional: true
+
+  '@magicblock-labs/rpc-router-linux-x64@0.0.1':
+    optional: true
+
+  '@magicblock-labs/vrf-oracle-darwin-arm64@0.4.1':
+    optional: true
+
+  '@magicblock-labs/vrf-oracle-darwin-x64@0.4.1':
+    optional: true
+
+  '@magicblock-labs/vrf-oracle-linux-arm64@0.4.1':
+    optional: true
+
+  '@magicblock-labs/vrf-oracle-linux-x64@0.4.1':
+    optional: true

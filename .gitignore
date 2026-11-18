@@ -1,0 +1,25 @@
+# Build output
+target/
+.anchor/
+test-ledger/
+magicblock-test-storage/
+.surfpool/
+**/*.rs.bk
+
+# JS
+node_modules/
+.next/
+dist/
+.turbo/
+
+# Secrets — never commit keys or real env files
+.env
+.env.*
+!.env.example
+*-keypair.json
+id.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

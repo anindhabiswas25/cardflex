@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Toolchain, build, lint, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load pinned versions
+        run: grep -E '^[A-Z_]+=' toolchain.env >> "$GITHUB_ENV"
+
+      # rustup reads rust-toolchain.toml, so this installs exactly RUST_VERSION.
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Cache Solana, Anchor and Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cache/solana
+            ~/.avm
+            ~/.cargo/bin/avm
+            ~/.cargo/bin/anchor
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: tools-${{ runner.os }}-sol${{ env.SOLANA_VERSION }}-anchor${{ env.ANCHOR_VERSION }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: tools-${{ runner.os }}-sol${{ env.SOLANA_VERSION }}-anchor${{ env.ANCHOR_VERSION }}-
+
+      - name: Install Solana CLI
+        run: |
+          if ! "$HOME/.local/share/solana/install/active_release/bin/solana" --version 2>/dev/null | grep -q "$SOLANA_VERSION"; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: |
+          if ! anchor --version 2>/dev/null | grep -q "$ANCHOR_VERSION"; then
+            cargo install --git https://github.com/solana-foundation/anchor avm --tag "v${ANCHOR_VERSION}" --locked --force
+            avm install "$ANCHOR_VERSION"
+            avm use "$ANCHOR_VERSION"
+          fi
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check toolchain pins
+        run: bash scripts/check-toolchain.sh
+
+      # The deploy keypair is a secret and is not in the repo. anchor build
+      # creates a throwaway one; the program id comes from declare_id!.
+      - name: Build program
+        run: anchor build
+
+      - name: Lint
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace

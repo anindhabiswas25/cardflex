@@ -1,0 +1,22 @@
+[toolchain]
+anchor_version = "1.1.2"
+solana_version = "3.1.10"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+card_flex = "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL"
+
+[programs.devnet]
+card_flex = "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test"
+
+[hooks]
