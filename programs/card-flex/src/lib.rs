@@ -427,6 +427,48 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// Reconciles the vault (ADR 0005 decision 8, PRD §10.4.1):
+    /// `vault = rent-exempt minimum + Σ synced_stack + (synced_rake − rake_swept)`.
+    /// Fails if the vault holds less (insolvent). `strict` also fails on any
+    /// surplus (lamports sent straight to the vault). Read-only; anyone.
+    pub fn check_vault(ctx: Context<CheckVault>, strict: bool) -> Result<()> {
+        let config = &ctx.accounts.config;
+        let config_key = config.key();
+        let seats: Vec<u8> = (0..MAX_SEATS as u8)
+            .filter(|s| config.seated & (1 << s) != 0)
+            .collect();
+        require!(
+            ctx.remaining_accounts.len() == seats.len(),
+            CardFlexError::BadLedger
+        );
+        let mut owed: u64 = 0;
+        for (&seat, acc) in seats.iter().zip(ctx.remaining_accounts) {
+            let (pda, _) = Pubkey::find_program_address(
+                &[LEDGER_SEED, config_key.as_ref(), &[seat]],
+                &crate::ID,
+            );
+            require_keys_eq!(acc.key(), pda, CardFlexError::BadLedger);
+            let ledger: Account<SeatLedger> = Account::try_from(acc)?;
+            owed = owed
+                .checked_add(ledger.synced_stack)
+                .ok_or(CardFlexError::Overflow)?;
+        }
+        let rake = config
+            .synced_rake
+            .checked_sub(config.rake_swept)
+            .ok_or(CardFlexError::Overflow)?;
+        let vault_info = ctx.accounts.vault.to_account_info();
+        let expected = Rent::get()?
+            .minimum_balance(vault_info.data_len())
+            .checked_add(owed)
+            .and_then(|x| x.checked_add(rake))
+            .ok_or(CardFlexError::Overflow)?;
+        let have = vault_info.lamports();
+        require!(have >= expected, CardFlexError::VaultShort);
+        require!(!strict || have == expected, CardFlexError::VaultSurplus);
+        Ok(())
+    }
+
     /// Pays rake to the treasury (ADR 0005 decision 6): only rake of hands
     /// that were committed and synced (`synced_rake`), each lamport once.
     /// Permissionless; allowed while paused and after a refund.
@@ -2081,6 +2123,8 @@ pub enum CardFlexError {
     ValidatorNotAllowed,
     #[msg("nothing left to claim for this seat")]
     NothingToClaim,
+    #[msg("vault holds more than the ledgers and rake account for")]
+    VaultSurplus,
     #[msg("the seat hasn't left in a synced commit yet")]
     NotLeft,
     #[msg("only the program's upgrade authority may do this")]

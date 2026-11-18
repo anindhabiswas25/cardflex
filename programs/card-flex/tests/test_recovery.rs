@@ -1182,3 +1182,147 @@ fn rake_is_swept_once_and_only_from_synced_results() {
     assert_eq!(d[561], c.ever_delegated as u8);
     assert_eq!((u64_at(562), u64_at(570)), (c.synced_rake, c.rake_swept));
 }
+
+fn check_vault_ix(t: &T, strict: bool) -> Instruction {
+    let c = config(t);
+    let mut metas = card_flex::accounts::CheckVault {
+        config: t.config,
+        vault: t.vault,
+    }
+    .to_account_metas(None);
+    metas.extend(
+        (0..MAX_SEATS as u8)
+            .filter(|s| c.seated & (1 << s) != 0)
+            .map(|s| AccountMeta::new_readonly(ledger(t, s), false)),
+    );
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::CheckVault { strict }.data(),
+        metas,
+    )
+}
+
+fn assert_reconciles(t: &mut T, step: &str) {
+    let payer = t.authority.insecure_clone();
+    let ix = check_vault_ix(t, true);
+    send_ix(vec![ix], &mut t.svm, &[&payer])
+        .unwrap_or_else(|e| panic!("vault doesn't reconcile after {step}: {e}"));
+}
+
+/// CF-034: the vault reconciles exactly after every money step of a table's
+/// life (ADR 0005 decision 8); a surplus fails only the strict check, a
+/// shortfall fails both.
+#[test]
+fn vault_reconciles_after_every_money_step() {
+    let mut t = setup(3);
+    let payer = t.authority.insecure_clone();
+    assert_reconciles(&mut t, "create");
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    buy_in(&mut t, 1, 2_000_000).unwrap();
+    let w2 = t.wallets[2].insecure_clone();
+    send_ix(vec![buy_in_ix(&t, 2, 1_500_000, &w2)], &mut t.svm, &[&w2]).unwrap(); // unjoined
+    assert_reconciles(&mut t, "buy-ins");
+    // A hand moves 200,000 from seat 1 to seat 0 with 5,000 rake.
+    commit(
+        &mut t,
+        1,
+        phase::REVEALED,
+        [1_195_000, 1_800_000, 0, 0, 0, 0],
+    );
+    set_rake_owed(&mut t, 5_000);
+    let ledgers = [ledger(&t, 0), ledger(&t, 1), ledger(&t, 2)];
+    send_ix(
+        vec![sync_ix(&t, Pubkey::new_unique(), &ledgers)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_reconciles(&mut t, "sync");
+    let treasury = GlobalConfig::try_deserialize(
+        &mut t
+            .svm
+            .get_account(&common::global_address())
+            .unwrap()
+            .data
+            .as_slice(),
+    )
+    .unwrap()
+    .treasury;
+    send_ix(
+        vec![sweep_ix(&t, payer.pubkey(), treasury)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_reconciles(&mut t, "sweep");
+    // Seat 0 leaves and cashes out.
+    let w0 = t.wallets[0].insecure_clone();
+    commit(&mut t, 2, phase::IDLE, [1_195_000, 1_800_000, 0, 0, 0, 0]);
+    set_rake_owed(&mut t, 5_000);
+    send_ix(vec![leave_ix(&t, 0, w0.pubkey())], &mut t.svm, &[&w0]).unwrap();
+    commit(&mut t, 3, phase::IDLE, [1_195_000, 1_800_000, 0, 0, 0, 0]);
+    set_rake_owed(&mut t, 5_000);
+    send_ix(
+        vec![sync_ix(&t, Pubkey::new_unique(), &ledgers)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    send_ix(
+        vec![cash_out_ix(&t, 0, payer.pubkey(), w0.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_reconciles(&mut t, "cash-out");
+    // Seat 2 takes its unjoined buy-in back.
+    send_ix(vec![cancel_ix(&t, 2, &w2)], &mut t.svm, &[&w2]).unwrap();
+    assert_reconciles(&mut t, "cancel");
+    // A donation: solvent, but the strict check reports the surplus.
+    let donor = Keypair::new();
+    t.svm.airdrop(&donor.pubkey(), 1_000_000_000).unwrap();
+    let mut acc = t.svm.get_account(&t.vault).unwrap();
+    acc.lamports += 7;
+    t.svm.set_account(t.vault, acc).unwrap();
+    let e = send_ix(vec![check_vault_ix(&t, true)], &mut t.svm, &[&payer]).unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::VaultSurplus)),
+        "{e}"
+    );
+    send_ix(vec![check_vault_ix(&t, false)], &mut t.svm, &[&payer]).unwrap();
+    // A shortfall fails both.
+    let mut acc = t.svm.get_account(&t.vault).unwrap();
+    acc.lamports -= 8;
+    t.svm.set_account(t.vault, acc).unwrap();
+    for strict in [true, false] {
+        let e = send_ix(vec![check_vault_ix(&t, strict)], &mut t.svm, &[&payer]).unwrap_err();
+        assert!(
+            e.contains(&code(card_flex::CardFlexError::VaultShort)),
+            "{e}"
+        );
+    }
+    let mut acc = t.svm.get_account(&t.vault).unwrap();
+    acc.lamports += 1;
+    t.svm.set_account(t.vault, acc).unwrap();
+    assert_reconciles(&mut t, "restored");
+    // Refund: the remaining seat claims; the vault still reconciles.
+    warp_secs(&mut t, 3_600);
+    send_ix(
+        vec![emergency_ix(&t, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    let w1 = t.wallets[1].pubkey();
+    send_ix(
+        vec![claim_ix(&t, payer.pubkey(), 1, w1)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_reconciles(&mut t, "refund claim");
+    // Missing or foreign ledgers are refused.
+    let mut ix = check_vault_ix(&t, true);
+    ix.accounts.pop();
+    assert!(send_ix(vec![ix], &mut t.svm, &[&payer]).is_err());
+}

@@ -61,6 +61,7 @@ pnpm handflow -- --region <label>   # salts -> VRF -> deal -> Side Show -> timeo
 pnpm game -- --region <label> [--hands N]   # CF-025 full six-player multi-hand game, every hand verified
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
 pnpm check:rules         # rules v1 vectors, independent Python
+pnpm reconcile -- --table <config> [--strict]   # CF-034 vault reconciliation on devnet
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
 pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, refund + claims (~3 min)
 bash scripts/restart-drill.sh   # local validator restart mid-hand (stop mb-stack first)

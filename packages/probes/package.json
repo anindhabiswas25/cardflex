@@ -8,6 +8,7 @@
     "privacy-suite": "node src/privacy-suite.mjs",
     "handflow": "node src/handflow.mjs",
     "game": "node src/game.mjs",
+    "reconcile": "node src/reconcile.mjs",
     "recovery": "node src/recovery.mjs"
   },
   "dependencies": {

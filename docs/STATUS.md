@@ -32,8 +32,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Done locally (Devnet in CF-035): `cancel_buy_in` for unjoined seats while not delegated; seat hands and salts opened for empty seats | `tests/test_recovery.rs` |
 | CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Done locally (Devnet in CF-035); also fixed two CF-031 review findings (seat bricking after cancel, stale-clone race) | `tests/test_recovery.rs`, ADR 0005 amendment |
 | CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Done locally (Devnet in CF-035) | `tests/test_recovery.rs` |
-| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Next | |
-| CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Planned | |
+| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Done locally (Devnet in CF-035): exact after every money step in LiteSVM | `tests/test_recovery.rs`, `packages/probes/src/reconcile.mjs` |
+| CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Next | |
 
 ## Blockers and asks for the team
 
@@ -51,6 +51,13 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-034 (local): `check_vault(strict)` — read-only,
+  permissionless; fails if the vault is short of rent + Σ synced stacks +
+  unswept rake, and with `strict` on any surplus. A LiteSVM test runs it
+  after every money step (buy-ins incl. unjoined, sync with rake, sweep,
+  leave + cash-out, cancel, emergency refund + claim): exact each time.
+  `pnpm reconcile -- --table <config> [--strict]` prints every term from
+  devnet and asks the program (simulated).
 - 2026-11-19 — CF-033 (local): `sync_hand` copies the committed
   `rake_owed` into `TableConfig.synced_rake` between hands (never lower);
   permissionless `sweep_rake` pays `synced_rake − rake_swept` to

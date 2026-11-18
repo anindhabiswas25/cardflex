@@ -779,6 +779,16 @@ pub struct JoinSeat<'info> {
     pub magic_program: Option<UncheckedAccount<'info>>,
 }
 
+/// `check_vault`: read-only reconciliation. Ledgers of every bought-in seat
+/// follow in `remaining_accounts`, in seat order (as for `sync_hand`).
+#[derive(Accounts)]
+pub struct CheckVault<'info> {
+    #[account(seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
+}
+
 /// `sweep_rake`: anyone moves synced rake from the vault to the treasury.
 #[derive(Accounts)]
 pub struct SweepRake<'info> {
