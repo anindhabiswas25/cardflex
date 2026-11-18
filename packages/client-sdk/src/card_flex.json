@@ -1,0 +1,5752 @@
+{
+  "address": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "metadata": {
+    "name": "card_flex",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Card Flex Teen Patti program (Solana base layer + MagicBlock PER)"
+  },
+  "instructions": [
+    {
+      "name": "act",
+      "docs": [
+        "One player action during betting (CF-020). Signed by the acting seat's",
+        "session key; `expected_seq` must equal the current `action_seq`, so a",
+        "stale or replayed action fails. Rules come only from",
+        "`teen-patti-core`; on settlement the stacks and rake are written back",
+        "and the hand becomes `HAND_COMPLETE`."
+      ],
+      "discriminator": [
+        114,
+        158,
+        229,
+        112,
+        242,
+        50,
+        227,
+        5
+      ],
+      "accounts": [
+        {
+          "name": "session",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_log",
+          "docs": [
+            "Public action log (CF-021)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "action",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "expected_seq",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "bench_deal",
+      "docs": [
+        "Compute-cost benchmark of the real deal path; touches no accounts."
+      ],
+      "discriminator": [
+        66,
+        44,
+        190,
+        63,
+        41,
+        24,
+        165,
+        3
+      ],
+      "accounts": [],
+      "args": [
+        {
+          "name": "hand_ctx",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "seats",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "buy_in",
+      "docs": [
+        "A wallet takes a seat and moves its buy-in into the table vault.",
+        "Base layer, before delegation (the runtime must still be owned by this",
+        "program, which Anchor checks). P6 adds re-buys and cash-out."
+      ],
+      "discriminator": [
+        126,
+        94,
+        133,
+        165,
+        163,
+        236,
+        161,
+        152
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger",
+          "writable": true
+        },
+        {
+          "name": "global",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "session_key",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "cancel_buy_in",
+      "docs": [
+        "Refunds a buy-in that never joined (ADR 0005). Only while the runtime",
+        "is on the base layer and owned by this program: then the base copy is",
+        "the truth, and no join in PER can race the refund, and only if the",
+        "table was never delegated. Signed by the recorded wallet (no one else",
+        "can cancel a player's buy-in); closes the ledger."
+      ],
+      "discriminator": [
+        151,
+        225,
+        191,
+        246,
+        40,
+        222,
+        108,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "runtime",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger",
+          "writable": true
+        },
+        {
+          "name": "wallet",
+          "docs": [
+            "The payout wallet recorded at buy-in (`has_one`) must sign."
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "ledger"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "cancel_hand",
+      "docs": [
+        "Cancels a hand whose VRF callback hasn't arrived within",
+        "`VRF_TIMEOUT_SLOTS`. Permissionless. The cancellation is counted",
+        "publicly, the hand number moves on (so a late callback is rejected and",
+        "the next hand has new salts), and nothing is rerolled silently.",
+        "Boots are returned with the money logic in P6."
+      ],
+      "discriminator": [
+        194,
+        143,
+        115,
+        116,
+        202,
+        210,
+        35,
+        183
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cash_out",
+      "docs": [
+        "Pays a seat that has left (ADR 0005 decision 4): its `synced_stack`,",
+        "set by `sync_hand` from the committed runtime, to the wallet recorded",
+        "at buy-in. Closes the ledger, so it can't be paid twice. Anyone may",
+        "submit it; it works while paused and after a refund."
+      ],
+      "discriminator": [
+        1,
+        110,
+        57,
+        58,
+        159,
+        157,
+        243,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger",
+          "writable": true
+        },
+        {
+          "name": "wallet",
+          "writable": true,
+          "relations": [
+            "ledger"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "check_vault",
+      "docs": [
+        "Reconciles the vault (ADR 0005 decision 8, PRD §10.4.1):",
+        "`vault = rent-exempt minimum + Σ synced_stack + (synced_rake − rake_swept)`.",
+        "Fails if the vault holds less (insolvent). `strict` also fails on any",
+        "surplus (lamports sent straight to the vault). Read-only; anyone."
+      ],
+      "discriminator": [
+        18,
+        17,
+        105,
+        182,
+        125,
+        121,
+        254,
+        240
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "strict",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "claim_refund",
+      "docs": [
+        "Pays one seat its last synced stack after `emergency_refund`, to the",
+        "wallet recorded at buy-in. Anyone may call it; each seat is",
+        "independent, so one failing payout can't lock the others."
+      ],
+      "discriminator": [
+        15,
+        16,
+        30,
+        161,
+        255,
+        228,
+        97,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          },
+          "relations": [
+            "ledger"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger",
+          "writable": true
+        },
+        {
+          "name": "wallet",
+          "writable": true,
+          "relations": [
+            "ledger"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_ephemeral",
+      "docs": [
+        "Closes an ephemeral account (dealer or a seat hand) and its permission,",
+        "returning rent to `TableRuntime`. Must run before `undelegate_table`."
+      ],
+      "discriminator": [
+        194,
+        178,
+        160,
+        143,
+        134,
+        181,
+        233,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": {
+            "option": "u8"
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_salt",
+      "docs": [
+        "Closes a seat's `SaltAccount` and its permission (before undelegate)."
+      ],
+      "discriminator": [
+        214,
+        113,
+        165,
+        12,
+        178,
+        5,
+        119,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "commit_hand",
+      "docs": [
+        "Commits `TableRuntime` and `HandLog` to the base layer without",
+        "undelegating. Anyone may call it (keeper heartbeat / end of hand)."
+      ],
+      "discriminator": [
+        92,
+        158,
+        144,
+        204,
+        19,
+        38,
+        244,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "configure_table",
+      "docs": [
+        "Sets buy-in limits and the refund timeout. Only before anyone has",
+        "bought in, so players always see the terms they joined under."
+      ],
+      "discriminator": [
+        31,
+        143,
+        200,
+        224,
+        253,
+        246,
+        104,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "global",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "boot",
+          "type": "u64"
+        },
+        {
+          "name": "rake_bps",
+          "type": "u16"
+        },
+        {
+          "name": "rake_cap",
+          "type": "u64"
+        },
+        {
+          "name": "refund_timeout_secs",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "create_table",
+      "discriminator": [
+        214,
+        142,
+        131,
+        250,
+        242,
+        83,
+        135,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "table_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "global",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "table_id",
+          "type": "u64"
+        },
+        {
+          "name": "max_seats",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "deal_hand",
+      "docs": [
+        "Shuffles from the private seed (spec §5–6), commits the deck with a",
+        "Merkle root (spec §7), and writes each seat's 3 cards, positions, leaf",
+        "salts and proofs into its private `SeatHand` (spec §8). Only the root",
+        "becomes public."
+      ],
+      "discriminator": [
+        196,
+        229,
+        67,
+        99,
+        84,
+        98,
+        63,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dealer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegate_table",
+      "docs": [
+        "Delegates `TableRuntime` to the TEE validator. Never auto-commits",
+        "(ADR 0002 rule 1)."
+      ],
+      "discriminator": [
+        161,
+        66,
+        67,
+        113,
+        58,
+        219,
+        238,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "name": "buffer_runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                52,
+                97,
+                169,
+                48,
+                44,
+                229,
+                82,
+                203,
+                12,
+                204,
+                149,
+                33,
+                135,
+                161,
+                144,
+                49,
+                29,
+                137,
+                60,
+                148,
+                81,
+                176,
+                120,
+                188,
+                31,
+                18,
+                236,
+                99,
+                100,
+                177,
+                128,
+                239
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer_hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hand_log"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                52,
+                97,
+                169,
+                48,
+                44,
+                229,
+                82,
+                203,
+                12,
+                204,
+                149,
+                33,
+                135,
+                161,
+                144,
+                49,
+                29,
+                137,
+                60,
+                148,
+                81,
+                176,
+                120,
+                188,
+                31,
+                18,
+                236,
+                99,
+                100,
+                177,
+                128,
+                239
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hand_log"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hand_log"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "validator",
+          "optional": true
+        },
+        {
+          "name": "owner_program",
+          "address": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "emergency_refund",
+      "docs": [
+        "ADR 0004 rule 5: after `refund_timeout_secs` without an accepted",
+        "sync, anyone switches the table to REFUNDED. No cooperation from PER",
+        "or the operator. Payouts are then claimed per seat (`claim_refund`)."
+      ],
+      "discriminator": [
+        188,
+        73,
+        52,
+        195,
+        137,
+        70,
+        180,
+        147
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_global",
+      "docs": [
+        "Creates `TableConfig` and `TableRuntime` and pre-funds the runtime",
+        "with the ephemeral rent it will spend inside PER.",
+        "Creates the program-wide settings once (ADR 0005). Only the program's",
+        "upgrade authority can sign it."
+      ],
+      "discriminator": [
+        44,
+        238,
+        77,
+        253,
+        76,
+        182,
+        192,
+        162
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "global",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "address": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "treasury",
+          "type": "pubkey"
+        },
+        {
+          "name": "max_rake_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "join_seat",
+      "docs": [
+        "Seats a bought-in ledger (ADR 0005 decision 2). Permissionless: the",
+        "ledger alone decides who sits and with what. Between hands only."
+      ],
+      "discriminator": [
+        163,
+        253,
+        32,
+        120,
+        247,
+        157,
+        181,
+        142
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger"
+        },
+        {
+          "name": "hand",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "hand_permission",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "runtime_permission",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "permission_program",
+          "optional": true
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "magic_program",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "leave_seat",
+      "docs": [
+        "A player asks to leave (ADR 0005 decision 3), signed by the seat's",
+        "session key or wallet. Between hands it applies at once; during a hand",
+        "the player finishes it and `next_hand` applies it."
+      ],
+      "discriminator": [
+        108,
+        242,
+        177,
+        6,
+        45,
+        227,
+        145,
+        142
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "next_hand",
+      "docs": [
+        "Moves to the next hand once this one is revealed (CF-024).",
+        "Permissionless. The button moves to the seat dealt first this hand;",
+        "`hand_no` goes up, so every account of the old hand (salts, seat",
+        "hands, VRF) is stale for the new one. Stacks stay as settled; a keeper",
+        "commits and syncs them (`commit_hand`, `sync_hand`) between hands."
+      ],
+      "discriminator": [
+        210,
+        75,
+        206,
+        0,
+        160,
+        226,
+        135,
+        4
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_dealer",
+      "docs": [
+        "Creates the ephemeral `DealerState`. Its only permission member is the",
+        "`TableRuntime` PDA, which can't sign, so no one can read it."
+      ],
+      "discriminator": [
+        55,
+        156,
+        203,
+        117,
+        190,
+        134,
+        21,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_hand_log_permission",
+      "docs": [
+        "Gives `HandLog` an explicit permission marking it **public** (ADR 0002:",
+        "never rely on the default for a delegated account)."
+      ],
+      "discriminator": [
+        204,
+        244,
+        103,
+        114,
+        28,
+        128,
+        91,
+        5
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_runtime_permission",
+      "docs": [
+        "Makes `TableRuntime` readable only by the table authority and the",
+        "seated session keys."
+      ],
+      "discriminator": [
+        161,
+        174,
+        0,
+        15,
+        40,
+        197,
+        120,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_salt",
+      "docs": [
+        "Creates the ephemeral `SaltAccount` for a seat. Its only permission",
+        "member is the `TableRuntime` PDA, so nobody (not even the player) can",
+        "read a salt back; only the program uses it (ADR 0002)."
+      ],
+      "discriminator": [
+        42,
+        214,
+        23,
+        234,
+        145,
+        190,
+        26,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "open_seat_hand",
+      "docs": [
+        "Creates the ephemeral `SeatHand` for an occupied seat, readable only by",
+        "that seat's session key."
+      ],
+      "discriminator": [
+        93,
+        147,
+        52,
+        233,
+        136,
+        108,
+        157,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "ping",
+      "discriminator": [
+        173,
+        0,
+        94,
+        236,
+        73,
+        133,
+        225,
+        153
+      ],
+      "accounts": [],
+      "args": []
+    },
+    {
+      "name": "poc_deal",
+      "docs": [
+        "Deals the P1 **test deck** (not random). `remaining_accounts` = the",
+        "seat hands of every occupied seat, in seat order."
+      ],
+      "discriminator": [
+        44,
+        207,
+        153,
+        8,
+        96,
+        53,
+        195,
+        41
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dealer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  110,
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  101,
+                  45,
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "base_account"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
+            }
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "request_shuffle",
+      "docs": [
+        "Requests MagicBlock VRF once every dealt seat has a salt. `caller_seed`",
+        "= `vrf_caller_seed(hand_ctx, c_0..c_n)` (spec §3), computed here."
+      ],
+      "discriminator": [
+        130,
+        20,
+        53,
+        22,
+        23,
+        102,
+        225,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dealer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "reveal_hand",
+      "docs": [
+        "Publishes a finished hand's seed inputs (spec §9) in `HandLog`: roster,",
+        "salts, VRF output, commitments and root. Permissionless. Salts are",
+        "re-checked against their commitments. After this, anyone can rebuild",
+        "the deck, so it runs only after the game has ended the hand."
+      ],
+      "discriminator": [
+        207,
+        208,
+        54,
+        80,
+        138,
+        93,
+        197,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dealer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "rotate_session",
+      "docs": [
+        "The seat's wallet replaces its session key (e.g. a lost or expired",
+        "key). Rebuilds the seat hand's reader list and the runtime's member list",
+        "so the old key loses access at once."
+      ],
+      "discriminator": [
+        105,
+        76,
+        255,
+        50,
+        28,
+        5,
+        13,
+        132
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand",
+          "writable": true
+        },
+        {
+          "name": "hand_permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hand"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "runtime_permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        },
+        {
+          "name": "new_session",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_hand_readers",
+      "docs": [
+        "Resets a seat hand's reader list to its own session key (CF-007).",
+        "Revoke only since CF-022: grants come only from an accepted Side Show",
+        "(`side_show_view`), never from the operator or a player's choice."
+      ],
+      "discriminator": [
+        212,
+        135,
+        158,
+        197,
+        66,
+        204,
+        25,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "target",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "target"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        },
+        {
+          "name": "readers",
+          "type": {
+            "vec": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "side_show_view",
+      "docs": [
+        "CF-022: Side Show view. `grant`: after an accepted Side Show between",
+        "`seat_a` and `seat_b` in the current hand, each may read the other's",
+        "hand (reader list = own session + this hand's Side Show opponents).",
+        "Only the game can create the pair, so neither the operator nor a",
+        "player can choose a viewer. `!grant`: once the hand is no longer being",
+        "played, reset both lists to the owner only (needed before the next",
+        "`start_hand`). Permissionless: anyone may crank it."
+      ],
+      "discriminator": [
+        122,
+        38,
+        236,
+        169,
+        219,
+        223,
+        108,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_a",
+          "writable": true
+        },
+        {
+          "name": "permission_a",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hand_a"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "hand_b",
+          "writable": true
+        },
+        {
+          "name": "permission_b",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hand_b"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat_a",
+          "type": "u8"
+        },
+        {
+          "name": "seat_b",
+          "type": "u8"
+        },
+        {
+          "name": "grant",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "start_hand",
+      "docs": [
+        "Starts the salt round: fixes the dealing order and roster and computes",
+        "`hand_ctx` (CF-Fairness v2 spec §2). Dealing order: clockwise from the",
+        "seat left of the button, seats with stack >= boot only (CF-024)."
+      ],
+      "discriminator": [
+        50,
+        173,
+        164,
+        52,
+        65,
+        42,
+        197,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config",
+            "runtime"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          },
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "submit_salt",
+      "docs": [
+        "A seat's session key submits its secret salt once per hand. The salt",
+        "goes to the private `SaltAccount`; only `c_i` (spec §3) is public."
+      ],
+      "discriminator": [
+        108,
+        208,
+        96,
+        174,
+        168,
+        85,
+        162,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "session",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "salt",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "sweep_rake",
+      "docs": [
+        "Pays rake to the treasury (ADR 0005 decision 6): only rake of hands",
+        "that were committed and synced (`synced_rake`), each lamport once.",
+        "Permissionless; allowed while paused and after a refund."
+      ],
+      "discriminator": [
+        8,
+        64,
+        18,
+        95,
+        96,
+        177,
+        71,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "global",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "global"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "sync_hand",
+      "docs": [
+        "Accepts newer committed runtime state (ADR 0004 rule 4): refreshes",
+        "the liveness clock, and between hands copies stacks into the ledgers."
+      ],
+      "discriminator": [
+        78,
+        106,
+        107,
+        64,
+        159,
+        99,
+        21,
+        125
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "runtime",
+          "docs": [
+            "delegation record are checked in the handler (ADR 0004)."
+          ]
+        },
+        {
+          "name": "delegation_record"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "timeout_turn",
+      "docs": [
+        "Turn timer (CF-023, rules v1 §3: 25 s). After `turn_deadline` anyone",
+        "may call this: it applies `Timeout` for the player to act (= Pack) or",
+        "for a pending Side Show's target (= reject), through the same rules",
+        "engine and public log as `act`. A keeper cranks it; players need not."
+      ],
+      "discriminator": [
+        196,
+        85,
+        152,
+        80,
+        75,
+        40,
+        131,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "expected_seq",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "undelegate_table",
+      "docs": [
+        "Commits `TableRuntime` and returns it to the base layer."
+      ],
+      "discriminator": [
+        130,
+        193,
+        124,
+        218,
+        83,
+        75,
+        188,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hand_log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  97,
+                  110,
+                  100,
+                  45,
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_global",
+      "docs": [
+        "Changes treasury, rake cap or pause. A lower rake cap applies to",
+        "tables configured afterwards; pausing never blocks withdrawals."
+      ],
+      "discriminator": [
+        90,
+        152,
+        240,
+        21,
+        199,
+        38,
+        72,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "global"
+          ]
+        },
+        {
+          "name": "global",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "treasury",
+          "type": "pubkey"
+        },
+        {
+          "name": "max_rake_bps",
+          "type": "u16"
+        },
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "vrf_deal",
+      "docs": [
+        "VRF callback. Only the scoped VRF identity can call it, and only while",
+        "the hand waits for randomness, so a second or stale fulfilment fails.",
+        "Derives `seed` (spec §4) from the VRF output and every salt, and stores",
+        "both in the private `DealerState`. The shuffle itself is CF-011."
+      ],
+      "discriminator": [
+        176,
+        88,
+        38,
+        29,
+        33,
+        119,
+        163,
+        51
+      ],
+      "accounts": [
+        {
+          "name": "vrf_program_identity",
+          "docs": [
+            "Scoped VRF identity PDA, bound to this program. Its presence as a signer proves",
+            "the callback was issued by the VRF program for this program."
+          ],
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dealer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "hand_no",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GlobalConfig",
+      "discriminator": [
+        149,
+        8,
+        156,
+        202,
+        160,
+        252,
+        176,
+        217
+      ]
+    },
+    {
+      "name": "HandLog",
+      "discriminator": [
+        43,
+        50,
+        73,
+        96,
+        33,
+        162,
+        102,
+        254
+      ]
+    },
+    {
+      "name": "SeatLedger",
+      "discriminator": [
+        96,
+        10,
+        227,
+        182,
+        63,
+        159,
+        59,
+        124
+      ]
+    },
+    {
+      "name": "TableConfig",
+      "discriminator": [
+        170,
+        18,
+        158,
+        124,
+        72,
+        3,
+        198,
+        193
+      ]
+    },
+    {
+      "name": "TableRuntime",
+      "discriminator": [
+        183,
+        169,
+        38,
+        197,
+        188,
+        181,
+        129,
+        119
+      ]
+    },
+    {
+      "name": "TableVault",
+      "discriminator": [
+        7,
+        14,
+        145,
+        251,
+        151,
+        162,
+        15,
+        125
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Overflow",
+      "msg": "counter overflow"
+    },
+    {
+      "code": 6001,
+      "name": "BadSecret",
+      "msg": "not a probe secret account"
+    },
+    {
+      "code": 6002,
+      "name": "BadSeat",
+      "msg": "seat index out of range"
+    },
+    {
+      "code": 6003,
+      "name": "SeatTaken",
+      "msg": "seat already taken"
+    },
+    {
+      "code": 6004,
+      "name": "SeatEmpty",
+      "msg": "seat is empty"
+    },
+    {
+      "code": 6005,
+      "name": "NotEnoughPlayers",
+      "msg": "need at least two seated players"
+    },
+    {
+      "code": 6006,
+      "name": "AlreadyDealt",
+      "msg": "hand already dealt"
+    },
+    {
+      "code": 6007,
+      "name": "BadSeatHand",
+      "msg": "wrong or missing seat hand account"
+    },
+    {
+      "code": 6008,
+      "name": "BadDealer",
+      "msg": "wrong dealer account"
+    },
+    {
+      "code": 6009,
+      "name": "TableLocked",
+      "msg": "table is locked; seats can't change"
+    },
+    {
+      "code": 6010,
+      "name": "TableNotLocked",
+      "msg": "table permissions are not set up yet"
+    },
+    {
+      "code": 6011,
+      "name": "TestDeckDisabled",
+      "msg": "test deck is disabled in this build"
+    },
+    {
+      "code": 6012,
+      "name": "BadReaders",
+      "msg": "readers must be the seat's session key plus at most one seated opponent"
+    },
+    {
+      "code": 6013,
+      "name": "NotSeatOwner",
+      "msg": "signer does not own this seat"
+    },
+    {
+      "code": 6014,
+      "name": "BadSessionKey",
+      "msg": "session key may not be the authority, a wallet, an existing session or a table address"
+    },
+    {
+      "code": 6015,
+      "name": "GrantActive",
+      "msg": "revoke the active Side Show grant first"
+    },
+    {
+      "code": 6016,
+      "name": "OwnerConsentMissing",
+      "msg": "the hand owner's session key must sign a grant"
+    },
+    {
+      "code": 6017,
+      "name": "BadSalt",
+      "msg": "wrong or missing salt account"
+    },
+    {
+      "code": 6018,
+      "name": "WrongPhase",
+      "msg": "not allowed in the current hand phase"
+    },
+    {
+      "code": 6019,
+      "name": "SaltAlreadySubmitted",
+      "msg": "salt already submitted for this hand"
+    },
+    {
+      "code": 6020,
+      "name": "BadQueue",
+      "msg": "not a MagicBlock VRF queue"
+    },
+    {
+      "code": 6021,
+      "name": "HandInProgress",
+      "msg": "a hand is in progress; ephemeral accounts can't change now"
+    },
+    {
+      "code": 6022,
+      "name": "StaleCallback",
+      "msg": "callback is for a different hand"
+    },
+    {
+      "code": 6023,
+      "name": "TooEarly",
+      "msg": "the VRF timeout has not passed yet"
+    },
+    {
+      "code": 6024,
+      "name": "BadHandLog",
+      "msg": "wrong hand log account"
+    },
+    {
+      "code": 6025,
+      "name": "ValidatorRequired",
+      "msg": "delegation must name the validator"
+    },
+    {
+      "code": 6026,
+      "name": "BadAmount",
+      "msg": "amount outside the table's buy-in limits"
+    },
+    {
+      "code": 6027,
+      "name": "BadTimeout",
+      "msg": "refund timeout outside allowed bounds"
+    },
+    {
+      "code": 6028,
+      "name": "TableNotActive",
+      "msg": "table is not active"
+    },
+    {
+      "code": 6029,
+      "name": "BadRuntime",
+      "msg": "not this table's committed runtime"
+    },
+    {
+      "code": 6030,
+      "name": "StaleCommit",
+      "msg": "commit is not newer than the last synced one"
+    },
+    {
+      "code": 6031,
+      "name": "BadLedger",
+      "msg": "wrong or missing seat ledger"
+    },
+    {
+      "code": 6032,
+      "name": "VaultShort",
+      "msg": "vault holds less than the refund"
+    },
+    {
+      "code": 6033,
+      "name": "ValidatorNotAllowed",
+      "msg": "validator is not MagicBlock's TEE validator"
+    },
+    {
+      "code": 6034,
+      "name": "NothingToClaim",
+      "msg": "nothing left to claim for this seat"
+    },
+    {
+      "code": 6035,
+      "name": "VaultSurplus",
+      "msg": "vault holds more than the ledgers and rake account for"
+    },
+    {
+      "code": 6036,
+      "name": "NotLeft",
+      "msg": "the seat hasn't left in a synced commit yet"
+    },
+    {
+      "code": 6037,
+      "name": "NotUpgradeAuthority",
+      "msg": "only the program's upgrade authority may do this"
+    },
+    {
+      "code": 6038,
+      "name": "Paused",
+      "msg": "the program is paused for new tables and buy-ins"
+    },
+    {
+      "code": 6039,
+      "name": "StaleAction",
+      "msg": "action sequence number is stale"
+    },
+    {
+      "code": 6040,
+      "name": "IllegalAction",
+      "msg": "unknown action"
+    },
+    {
+      "code": 6041,
+      "name": "BadStacks",
+      "msg": "stacks inconsistent with the rules"
+    },
+    {
+      "code": 6042,
+      "name": "NotYourTurn",
+      "msg": "not your turn"
+    },
+    {
+      "code": 6043,
+      "name": "NotActive",
+      "msg": "seat is not active in this hand"
+    },
+    {
+      "code": 6044,
+      "name": "BadBet",
+      "msg": "bet amount not allowed"
+    },
+    {
+      "code": 6045,
+      "name": "MustSee",
+      "msg": "blind turns used up: see your cards first"
+    },
+    {
+      "code": 6046,
+      "name": "InsufficientStack",
+      "msg": "stack can't cover the bet (no all-in): pack"
+    },
+    {
+      "code": 6047,
+      "name": "CannotShow",
+      "msg": "show not allowed now"
+    },
+    {
+      "code": 6048,
+      "name": "CannotSideShow",
+      "msg": "side show not allowed now"
+    },
+    {
+      "code": 6049,
+      "name": "SideShowPending",
+      "msg": "a side show is waiting for its target"
+    },
+    {
+      "code": 6050,
+      "name": "NoSideShowPending",
+      "msg": "no side show pending"
+    }
+  ],
+  "types": [
+    {
+      "name": "GameSeat",
+      "docs": [
+        "One seat of the on-chain copy of `teen_patti_core::game::Hand`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dealt",
+            "type": "bool"
+          },
+          {
+            "name": "active",
+            "type": "bool"
+          },
+          {
+            "name": "seen",
+            "type": "bool"
+          },
+          {
+            "name": "blind_turns",
+            "type": "u8"
+          },
+          {
+            "name": "stack",
+            "type": "u64"
+          },
+          {
+            "name": "contributed",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameState",
+      "docs": [
+        "On-chain copy of the rules engine's hand state (CF-020). Public: it holds",
+        "stacks, bets and turns, never cards."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "boot",
+            "type": "u64"
+          },
+          {
+            "name": "chaal_limit_boots",
+            "type": "u64"
+          },
+          {
+            "name": "pot_limit_boots",
+            "type": "u64"
+          },
+          {
+            "name": "max_blind_turns",
+            "type": "u8"
+          },
+          {
+            "name": "rake_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rake_cap",
+            "type": "u64"
+          },
+          {
+            "name": "seats",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "GameSeat"
+                  }
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "order",
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "n",
+            "type": "u8"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "stake",
+            "type": "u64"
+          },
+          {
+            "name": "pot",
+            "type": "u64"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "0 betting, 1 side show pending, 2 over."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "ss_requester",
+            "type": "u8"
+          },
+          {
+            "name": "ss_target",
+            "type": "u8"
+          },
+          {
+            "name": "end_reason",
+            "docs": [
+              "Settlement (valid when phase = 2): 0 last player, 1 show, 2 pot limit."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "winners",
+            "type": "u8"
+          },
+          {
+            "name": "payouts",
+            "type": {
+              "array": [
+                "u64",
+                6
+              ]
+            }
+          },
+          {
+            "name": "rake",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GlobalConfig",
+      "docs": [
+        "Program-wide settings (ADR 0005 decision 7). Base layer, never delegated."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "May change these settings. Set at init to the program's upgrade",
+              "authority (a multisig before mainnet)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Receives swept rake."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "max_rake_bps",
+            "docs": [
+              "Highest `rake_bps` a table may set (≤ `MAX_RAKE_BPS`)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "Blocks new tables and new buy-ins. Never blocks cash-out, refunds or",
+              "rake sweeps."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HandLog",
+      "docs": [
+        "Public record of the last revealed hand (ADR 0002 `HandLog`, spec §9).",
+        "Delegated with the runtime, committed back to Solana with it. Everything",
+        "here is public by design: it is what any verifier needs."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "runtime",
+            "type": "pubkey"
+          },
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "hand_no",
+            "type": "u64"
+          },
+          {
+            "name": "rules_version",
+            "type": "u16"
+          },
+          {
+            "name": "protocol_version",
+            "type": "u16"
+          },
+          {
+            "name": "dealing_count",
+            "type": "u8"
+          },
+          {
+            "name": "seats",
+            "docs": [
+              "Seat indices in dealing order."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "wallets",
+            "docs": [
+              "Wallets in dealing order."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                6
+              ]
+            }
+          },
+          {
+            "name": "salts",
+            "docs": [
+              "Salts in dealing order (revealed)."
+            ],
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "salt_commitments",
+            "docs": [
+              "Commitments in dealing order."
+            ],
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "hand_ctx",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "roster_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "vrf_caller_seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "vrf_output",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "merkle_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "revealed",
+            "type": "bool"
+          },
+          {
+            "name": "boot",
+            "docs": [
+              "Written at reveal: rules, starting stacks and the result, in dealing",
+              "order. The verifier replays `actions` from `start_stacks` on the",
+              "rebuilt deck and must arrive at exactly this result."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "rake_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rake_cap",
+            "type": "u64"
+          },
+          {
+            "name": "start_stacks",
+            "type": {
+              "array": [
+                "u64",
+                6
+              ]
+            }
+          },
+          {
+            "name": "end_reason",
+            "type": "u8"
+          },
+          {
+            "name": "winners",
+            "docs": [
+              "Bit i = seat index i won."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "payouts",
+            "type": {
+              "array": [
+                "u64",
+                6
+              ]
+            }
+          },
+          {
+            "name": "rake",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeatLedger",
+      "docs": [
+        "One per bought-in seat. `synced_stack` is the only amount the base layer",
+        "will ever pay out for this seat (ADR 0004)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "seat",
+            "type": "u8"
+          },
+          {
+            "name": "wallet",
+            "docs": [
+              "Payout address, fixed at buy-in."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "buy_in",
+            "type": "u64"
+          },
+          {
+            "name": "synced_stack",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "epoch",
+            "docs": [
+              "Sit-down this ledger belongs to; stacks are copied only between a",
+              "ledger and a runtime seat with the same epoch."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "session_key",
+            "docs": [
+              "Session key the player chose at buy-in; `join_seat` installs it."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "left",
+            "docs": [
+              "Set by `sync_hand` once the committed runtime shows the seat left."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TableConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "table_id",
+            "type": "u64"
+          },
+          {
+            "name": "max_seats",
+            "type": "u8"
+          },
+          {
+            "name": "runtime",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "validator",
+            "docs": [
+              "Validator the runtime was delegated to (checked by `sync_hand`)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "refund_timeout_secs",
+            "type": "u32"
+          },
+          {
+            "name": "min_buy_in",
+            "type": "u64"
+          },
+          {
+            "name": "max_buy_in",
+            "type": "u64"
+          },
+          {
+            "name": "seated",
+            "docs": [
+              "Bit i set = seat i has a `SeatLedger` (bought in)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "last_sync_time",
+            "docs": [
+              "Liveness clock: base-layer time of the last accepted `sync_hand`."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "last_synced_seq",
+            "type": "u64"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "seat_epochs",
+            "docs": [
+              "Sit-downs per seat; a new `SeatLedger` gets `seat_epochs[s] + 1`."
+            ],
+            "type": {
+              "array": [
+                "u32",
+                6
+              ]
+            }
+          },
+          {
+            "name": "wallets",
+            "docs": [
+              "Payout wallet of each seat with a ledger (duplicate-wallet check)."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                6
+              ]
+            }
+          },
+          {
+            "name": "sessions",
+            "docs": [
+              "Session key chosen at each seat's buy-in (collision check; a later",
+              "`rotate_session` in PER is checked there by `is_valid_new_session`)."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                6
+              ]
+            }
+          },
+          {
+            "name": "ever_delegated",
+            "docs": [
+              "Set by the first `delegate_table`. From then on PER may hold a clone",
+              "of any ledger, so `cancel_buy_in` is never allowed again."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "synced_rake",
+            "docs": [
+              "CF-033: `TableRuntime.rake_owed` as last synced (between hands)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "rake_swept",
+            "docs": [
+              "Rake already paid to the treasury."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TableRuntime",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_seats",
+            "type": "u8"
+          },
+          {
+            "name": "occupied",
+            "docs": [
+              "Bit i set = seat i occupied."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "wallets",
+            "type": {
+              "array": [
+                "pubkey",
+                6
+              ]
+            }
+          },
+          {
+            "name": "session_keys",
+            "docs": [
+              "Per-seat session keys; the only readers of each seat's hand."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                6
+              ]
+            }
+          },
+          {
+            "name": "hand_no",
+            "type": "u64"
+          },
+          {
+            "name": "dealt",
+            "type": "bool"
+          },
+          {
+            "name": "locked",
+            "docs": [
+              "Set once permissions are built; no seat changes afterwards."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "grants",
+            "docs": [
+              "Bit i set = seat i's hand currently has a second (Side Show) reader."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "CF-Fairness v2 state for the current hand (public, never secret)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "hand_ctx",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "roster_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "salts_in",
+            "docs": [
+              "Bit i set = seat i has submitted its salt this hand."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "dealing_order",
+            "docs": [
+              "Seats in dealing order for this hand, `dealing_count` entries."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "dealing_count",
+            "type": "u8"
+          },
+          {
+            "name": "salt_commitments",
+            "docs": [
+              "`c_i` per seat index (spec §3); zero until submitted."
+            ],
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    32
+                  ]
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "vrf_caller_seed",
+            "docs": [
+              "`caller_seed` sent with the VRF request (spec §3), public for audit."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "merkle_root",
+            "docs": [
+              "Deck commitment (spec §7), public once dealt."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "vrf_request_slot",
+            "docs": [
+              "Slot of the VRF request; `cancel_hand` is allowed after",
+              "`VRF_TIMEOUT_SLOTS` without a callback."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cancelled_hands",
+            "docs": [
+              "Hands cancelled at this table (public, for selective-abort monitoring)."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "stacks",
+            "docs": [
+              "Chip stacks per seat index, in lamports (ADR 0004; betting in P5)."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                6
+              ]
+            }
+          },
+          {
+            "name": "commit_seq",
+            "docs": [
+              "Bumped by every `commit_hand`; `sync_hand` accepts only newer ones."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "boot",
+            "type": "u64"
+          },
+          {
+            "name": "rake_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rake_cap",
+            "type": "u64"
+          },
+          {
+            "name": "rake_owed",
+            "docs": [
+              "Rake collected and not yet swept to the treasury (P6)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "action_seq",
+            "docs": [
+              "Bumped by every accepted `act`; callers pass the value they expect."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "game",
+            "type": {
+              "defined": {
+                "name": "GameState"
+              }
+            }
+          },
+          {
+            "name": "side_show_viewers",
+            "docs": [
+              "CF-022: `side_show_viewers[s]` bit j = seat j's session may read seat",
+              "s's hand this hand (granted by an accepted Side Show only)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          },
+          {
+            "name": "side_show_hand_no",
+            "docs": [
+              "Hand the viewers belong to."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "turn_deadline",
+            "docs": [
+              "CF-023: unix time after which `timeout_turn` may act for the player to",
+              "act (or the Side Show target). Reset by every action except See."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "button",
+            "docs": [
+              "CF-024: dealing starts with the first dealt seat after the button.",
+              "Starts at `max_seats - 1` (first hand deals from seat 0); `next_hand`",
+              "moves it to the seat that was dealt first."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seat_epoch",
+            "docs": [
+              "ADR 0005: epoch of the sit-down at each seat (0 = never joined)."
+            ],
+            "type": {
+              "array": [
+                "u32",
+                6
+              ]
+            }
+          },
+          {
+            "name": "leaving",
+            "docs": [
+              "CF-032: seats that asked to leave; applied between hands."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "departed",
+            "docs": [
+              "Seats that left; their final stack stays in `stacks` until the",
+              "matching ledger is cashed out and a new epoch joins."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TableVault",
+      "docs": [
+        "Holds every lamport of the table (ADR 0002/0004). Never delegated."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": []
+      }
+    }
+  ]
+}

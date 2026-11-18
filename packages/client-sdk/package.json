@@ -1,0 +1,28 @@
+{
+  "name": "@card-flex/client-sdk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CF-016: TypeScript client for the Card Flex program (PDAs, accounts, instructions, PER auth, attestation, fairness, rules v1)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "sync-idl": "cp ../../target/idl/card_flex.json src/card_flex.json",
+    "live": "node test/live.ts"
+  },
+  "dependencies": {
+    "@magicblock-labs/ephemeral-rollups-sdk": "0.17.3",
+    "@noble/hashes": "1.8.0",
+    "@phala/dcap-qvl": "0.3.9",
+    "@solana/web3.js": "1.98.0",
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}
