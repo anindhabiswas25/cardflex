@@ -94,7 +94,8 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
   };
   // Sends one action for seat s and waits until the runtime shows it.
   // amount "min" / "double" = the minimum legal bet or twice it.
-  async function act(s, code, amount = 0n, conn = tee) {
+  // preflight: simulate first, so an illegal action fails fast (throws).
+  async function act(s, code, amount = 0n, conn = tee, { preflight = false } = {}) {
     const d = await readRuntime(conn);
     if (amount === "min" || amount === "double") {
       const stake = d.readBigUInt64LE(GAME.stake);
@@ -102,7 +103,7 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
       amount = (seen ? 2n * stake : stake) * (amount === "double" ? 2n : 1n);
     }
     const seq = d.readBigUInt64LE(RT.action_seq);
-    await send(conn, [actIx(d, s, code, amount)], [players[s].session], { skipPreflight: true });
+    await send(conn, [actIx(d, s, code, amount)], [players[s].session], preflight ? { retries: 0 } : { skipPreflight: true });
     const after = await waitFor(async () => { const e = await readRuntime(conn); return e && e.readBigUInt64LE(RT.action_seq) > seq ? e : null; }, 15_000, 100);
     if (!after.value) throw new Error(`act seat ${s} code ${code} not applied`);
     return after.value;

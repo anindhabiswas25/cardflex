@@ -372,7 +372,10 @@ fn button_moves_and_dealing_order_follows_it() {
         (1, vec![2, 0, 1], 2),
         (2, vec![0, 1, 2], 3),
     ] {
-        patch_runtime(&mut t, |rt| rt.phase = phase::REVEALED);
+        patch_runtime(&mut t, |rt| {
+            rt.phase = phase::REVEALED;
+            rt.side_show_viewers[0] = 0b10;
+        });
         {
             let ix = next_hand_ix(&t, &anyone);
             send_signed(&mut t, ix, &[&anyone]).unwrap();
@@ -382,6 +385,7 @@ fn button_moves_and_dealing_order_follows_it() {
             (rt.button, rt.hand_no, rt.phase, rt.salts_in),
             (want_button, hand_no, phase::IDLE, 0)
         );
+        assert_eq!(rt.side_show_viewers, [0; 6], "viewers don't carry over");
         {
             let ix = start_hand_ix(&t);
             send_signed(&mut t, ix, &[&a]).unwrap();

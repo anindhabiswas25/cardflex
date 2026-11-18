@@ -56,7 +56,8 @@ pnpm verify              # all of the above, same order as CI
 pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
 pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (needs devnet-poc build deployed)
-pnpm handflow -- --region <label>   # P2: salts -> VRF -> deal -> reveal -> cf-verify (48 checks)
+pnpm handflow -- --region <label>   # salts -> VRF -> deal -> Side Show -> timeout -> reveal -> cf-verify (67 checks)
+pnpm game -- --region <label> [--hands N]   # CF-025 full six-player multi-hand game, every hand verified
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
 pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, refund + claims (~3 min)
@@ -75,7 +76,7 @@ crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/s
 crates/fairness-verifier/  offline verifier lib + `cf-verify <record.json>` CLI
 crates/teen-patti-core/    rules v1: ranking + betting state machine (no_std); spec in docs/spec/teen-patti-rules-v1.md
 packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), archive/tablepoc.mjs
-                       (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011);
+                       (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011), game.mjs (CF-025);
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region

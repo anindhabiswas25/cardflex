@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P5 (game program).** P4 done; rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P5 done (2026-11-19) → next P6 (money).** Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -22,12 +22,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Done: Devnet outage drill 20/20 (pull-based refunds, validator pinned); local restart drill: state survives and hand continues; local commits blocked by an Agave 3.1 vs MagicBlock 4.0 tx-format mismatch. **G3 recommended GO (conditional), awaiting PM sign-off** | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery`, `scripts/restart-drill.sh` |
 | CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | Done: signed off by the PM 2026-11-19 (all ⚑ choices confirmed) | `docs/spec/teen-patti-rules-v1.md` |
 | CF-015 | `teen-patti-core` crate (ranking, betting, Show/Side Show, settlement) | Done: 16 tests incl. all 22,100 hands and 20,000 random hands | `crates/teen-patti-core`, `docs/spec/teen-patti-rules-v1.md` |
-| CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Done locally (Devnet run in CF-025): `act`; differential test vs host engine over random hands; ≤ 49k CU per action; `poc_join` removed (seats only via `buy_in`) | `programs/card-flex/tests/test_game.rs` |
-| CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Done locally (Devnet run in CF-025): `end_hand` removed; public action log in `HandLog`; `cf-verify` replays the game (`cf-hand-record/2`) | `docs/spec/teen-patti-rules-v1.md` §7 |
-| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Done locally (Devnet run in CF-025): `side_show_view`; `set_hand_readers` revoke-only; fix: `start_hand` refuses a live grant | `programs/card-flex/tests/test_game.rs`, `pnpm handflow` |
-| CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Done locally (Devnet run in CF-025): `turn_deadline`, `timeout_turn`. Crank: the pinned SDK has no crank feature (ADR 0001), so a keeper calls `timeout_turn`; scheduling it is P8 keeper work | `programs/card-flex/tests/test_game.rs` |
-| CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Done locally (Devnet run in CF-025): `button`, `next_hand`; fix: only dealt seats may submit salts | `programs/card-flex/tests/test_table.rs` |
-| CF-025 | P5: six-player full game on Devnet, verified end to end | Next | |
+| CF-020 | P5: betting in the program (teen-patti-core on-chain, session-key actions, boot at deal) | Done (Devnet verified in CF-025): `act`; differential test vs host engine over random hands; ≤ 49k CU per action; `poc_join` removed (seats only via `buy_in`) | `programs/card-flex/tests/test_game.rs` |
+| CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Done (Devnet verified in CF-025): `end_hand` removed; public action log in `HandLog`; `cf-verify` replays the game (`cf-hand-record/2`) | `docs/spec/teen-patti-rules-v1.md` §7 |
+| CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Done (Devnet verified in CF-025): `side_show_view`; `set_hand_readers` revoke-only; fix: `start_hand` refuses a live grant | `programs/card-flex/tests/test_game.rs`, `pnpm handflow` |
+| CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Done (Devnet verified in CF-025): `turn_deadline`, `timeout_turn`. Crank: the pinned SDK has no crank feature (ADR 0001), so a keeper calls `timeout_turn`; scheduling it is P8 keeper work | `programs/card-flex/tests/test_game.rs` |
+| CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Done (Devnet verified in CF-025): `button`, `next_hand`; fix: only dealt seats may submit salts | `programs/card-flex/tests/test_table.rs` |
+| CF-025 | P5: six-player full game on Devnet, verified end to end | Done: 3- and 5-hand games 39/39 and 66/66; handflow 67/67, privacy suite 230/230, recovery 20/20; fix: Side Show viewers cleared by `next_hand` | `pnpm game`, `docs/findings/cf-025-full-game.md` |
 
 ## Blockers and asks for the team
 
@@ -45,6 +45,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-025: P5 exit met. Program redeployed to Devnet; full
+  six-player games (3 and 5 hands) pass end to end with every hand verified
+  by `cf-verify` (deck + game result), conservation, commit + sync to the
+  ledgers, and button rotation. handflow 67/67, privacy suite 230/230,
+  recovery 20/20 on the same build. Fix: `next_hand` clears Side Show
+  viewers. Findings: `docs/findings/cf-025-full-game.md`.
 - 2026-11-19 — CF-024 (local): multi-hand loop. `TableRuntime.button`
   (starts on the last seat); dealing starts left of it; permissionless
   `next_hand` (after reveal) moves it to the first dealt seat, bumps

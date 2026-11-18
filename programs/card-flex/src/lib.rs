@@ -1145,6 +1145,7 @@ pub mod card_flex {
         runtime.game = GameState::default();
         runtime.action_seq = 0;
         runtime.turn_deadline = 0;
+        runtime.side_show_viewers = [0; MAX_SEATS];
         Ok(())
     }
 

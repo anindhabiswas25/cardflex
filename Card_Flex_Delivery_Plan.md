@@ -98,7 +98,7 @@ Week counts below are effort estimates for a team of 6–7, used for sizing and 
 | P2 Fairness v2 | P1 accounts exist (overlaps P1) | ~4 wks | **G2 fairness** |
 | P3 Recovery | P2 deal works | ~3 wks | **G3 go/no-go on MagicBlock** |
 | P4 Rules engine (parallel) | P0 done | ~8 wks | Rules vectors frozen |
-| P5 Game program | G3 passed | ~5 wks | — |
+| P5 Game program | G3 passed | ~5 wks | Done 2026-11-19 (CF-020…025) |
 | P6 Money | P5 hand commit works (overlaps P5) | ~4 wks | — |
 | P7 Product (parallel) | G1 passed | ~11 wks | — |
 | P8 Hardening | P5, P6, P7 feature-complete | ~4 wks | — |

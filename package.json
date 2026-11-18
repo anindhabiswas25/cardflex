@@ -18,6 +18,7 @@
     "privacy-suite": "pnpm --filter @card-flex/probes privacy-suite",
     "check:fairness": "python3 -I scripts/check_fairness_vectors.py",
     "handflow": "pnpm --filter @card-flex/probes handflow",
+    "game": "pnpm --filter @card-flex/probes game",
     "deploy:devnet": "bash scripts/deploy-devnet.sh",
     "check:g2": "cargo test -p fairness-verifier --release -- --ignored",
     "recovery": "pnpm --filter @card-flex/probes recovery"
