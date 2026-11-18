@@ -42,8 +42,11 @@ const perKeys = (target, signer = authority) => [
   r(signer.publicKey, true), w(runtime), w(target), w(permissionPdaFromAccount(target)),
   r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
 ];
-const setReaders = (seat, readers, signer = authority) =>
-  ix("set_hand_readers", perKeys(hands[seat], signer), Buffer.concat([u8(seat), vecPubkeys(readers)]));
+// owner = the hand owner's session keypair when consenting to a grant; absent
+// optional accounts are passed as the program id (Anchor convention).
+const setReaders = (seat, readers, signer = authority, owner = null) =>
+  ix("set_hand_readers", [...perKeys(hands[seat], signer), owner ? r(owner.publicKey, true) : r(PROGRAM_ID)],
+    Buffer.concat([u8(seat), vecPubkeys(readers)]));
 
 const report = { probe: "CF-007", version: 1, region, started_at: new Date().toISOString(), program: PROGRAM_ID.toBase58(), checks: [] };
 const check = (group, name, expected, actual, note) => {
@@ -152,11 +155,21 @@ try {
 
   // ---------------- G1-4: Side Show grant and revoke ----------------
   log("G1-4 Side Show: grant hand0 to session1, then revoke");
-  await send(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey])], [authority], { skipPreflight: true });
+  check("side show", "grant without owner consent rejected", true, await rejected(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey])], [authority]));
+  check("side show", "grant signed by the wrong session rejected", true, await rejected(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey], authority, players[1].session)], [authority, players[1].session]));
+  await send(tee, [setReaders(0, [players[0].session.publicKey, players[1].session.publicKey], authority, players[0].session)], [authority, players[0].session], { skipPreflight: true });
   const granted = await waitFor(async () => canRead(conn.session1, hands[0]), 10_000);
   check("side show", "session1 can read hand0 after grant", true, !!granted.value, `took ${granted.ms} ms`);
   check("side show", "session2 still cannot read hand0", false, await canRead(conn.session2, hands[0]));
   check("side show", "session0 still reads hand0", true, await canRead(conn.session0, hands[0]));
+  // Security review: rotating a key that holds a grant would leave it readable.
+  {
+    const rot = ix("rotate_session", [
+      r(players[1].wallet.publicKey, true), w(runtime), w(hands[1]), w(permissionPdaFromAccount(hands[1])),
+      w(permissionPdaFromAccount(runtime)), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
+    ], Buffer.concat([u8(1), Keypair.generate().publicKey.toBuffer()]));
+    check("side show", "rotation blocked while a grant is active", true, await rejected(tee, [rot], [players[1].wallet]));
+  }
   await send(tee, [setReaders(0, [players[0].session.publicKey])], [authority], { skipPreflight: true });
   const revoked = await waitFor(async () => !(await canRead(conn.session1, hands[0])), 10_000);
   check("side show", "session1 loses hand0 after revoke (same token)", true, !!revoked.value, `took ${revoked.ms} ms`);
@@ -170,6 +183,9 @@ try {
   ], Buffer.concat([u8(seat), newKey.toBuffer()]));
   check("rotation", "another player's wallet cannot rotate seat 2", true, await rejected(tee, [rotate(2, Keypair.generate().publicKey, players[1].wallet)], [players[1].wallet]));
   check("rotation", "authority cannot rotate seat 2", true, await rejected(tee, [rotate(2, authority.publicKey, authority)], [authority]));
+  check("rotation", "seat 2 cannot rotate to the authority key", true, await rejected(tee, [rotate(2, authority.publicKey, players[2].wallet)], [players[2].wallet]));
+  check("rotation", "seat 2 cannot rotate to another wallet", true, await rejected(tee, [rotate(2, players[4].wallet.publicKey, players[2].wallet)], [players[2].wallet]));
+  check("rotation", "seat 2 cannot rotate to another seat's session", true, await rejected(tee, [rotate(2, players[4].session.publicKey, players[2].wallet)], [players[2].wallet]));
   await send(tee, [rotate(2, newSession.publicKey, players[2].wallet)], [players[2].wallet], { skipPreflight: true });
   const oldDenied = await waitFor(async () => !(await canRead(conn.session2, hands[2])), 10_000);
   check("rotation", "old session2 token denied after removal", true, !!oldDenied.value, `took ${oldDenied.ms} ms`);
@@ -189,11 +205,11 @@ try {
   check("authorization", "empty reader list rejected", true, await rejected(tee, [setReaders(1, [])], [authority]));
   // Security review: the operator must never be able to read a hand.
   const s0 = players[0].session.publicKey, s1 = players[1].session.publicKey, s3 = players[3].session.publicKey;
-  check("authorization", "authority cannot add itself to hand0", true, await rejected(tee, [setReaders(0, [s0, authority.publicKey])], [authority]));
+  check("authorization", "authority cannot add itself to hand0 (even with owner consent)", true, await rejected(tee, [setReaders(0, [s0, authority.publicKey], authority, players[0].session)], [authority, players[0].session]));
   check("authorization", "reader list without the owner rejected", true, await rejected(tee, [setReaders(0, [s1])], [authority]));
-  check("authorization", "outside key as opponent rejected", true, await rejected(tee, [setReaders(0, [s0, stranger.publicKey])], [authority]));
-  check("authorization", "wallet as opponent rejected", true, await rejected(tee, [setReaders(0, [s0, players[1].wallet.publicKey])], [authority]));
-  check("authorization", "three readers rejected", true, await rejected(tee, [setReaders(0, [s0, s1, s3])], [authority]));
+  check("authorization", "outside key as opponent rejected", true, await rejected(tee, [setReaders(0, [s0, stranger.publicKey], authority, players[0].session)], [authority, players[0].session]));
+  check("authorization", "wallet as opponent rejected", true, await rejected(tee, [setReaders(0, [s0, players[1].wallet.publicKey], authority, players[0].session)], [authority, players[0].session]));
+  check("authorization", "three readers rejected", true, await rejected(tee, [setReaders(0, [s0, s1, s3], authority, players[0].session)], [authority, players[0].session]));
   check("authorization", "authority still cannot read hand0", false, await canRead(conn.authority, hands[0]));
   check("authorization", "hand0 cards unchanged after attempts", dealPositions(0, SEATS).map((p) => deck[p]), [...((await conn.session0.getAccountInfo(hands[0]))?.data.subarray(49, 52) ?? [])]);
 

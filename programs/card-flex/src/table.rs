@@ -76,12 +76,34 @@ pub struct TableRuntime {
     pub dealt: bool,
     /// Set once permissions are built; no seat changes afterwards.
     pub locked: bool,
+    /// Bit i set = seat i's hand currently has a second (Side Show) reader.
+    pub grants: u8,
     pub bump: u8,
 }
 
 impl TableRuntime {
     pub fn seated(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.max_seats as usize).filter(move |i| self.occupied & (1 << i) != 0)
+    }
+
+    /// A key that may become a session key (and so a hand reader): never the
+    /// table authority, a seated wallet, an existing session key, the default
+    /// key or one of the table's own addresses (security review).
+    pub fn is_valid_new_session(
+        &self,
+        key: &Pubkey,
+        own_key: &Pubkey,
+        config: &Pubkey,
+        wallet: &Pubkey,
+    ) -> bool {
+        *key != Pubkey::default()
+            && *key != self.authority
+            && key != own_key
+            && key != config
+            && key != wallet
+            && !self
+                .seated()
+                .any(|i| self.wallets[i] == *key || self.session_keys[i] == *key)
     }
 }
 
@@ -182,6 +204,36 @@ pub struct TablePer<'info> {
     /// CHECK: fixed address.
     #[account(address = MAGIC_PROGRAM_ID)]
     pub magic_program: UncheckedAccount<'info>,
+}
+
+/// `set_hand_readers`: like `TablePer` plus the hand owner's session key,
+/// which must sign any grant of a second reader.
+#[derive(Accounts)]
+pub struct SetHandReaders<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
+    pub runtime: Account<'info, TableRuntime>,
+    /// CHECK: the seat hand PDA, checked in the handler.
+    #[account(mut)]
+    pub target: UncheckedAccount<'info>,
+    /// CHECK: permission PDA of `target`.
+    #[account(
+        mut,
+        seeds = [PERMISSION_SEED, target.key().as_ref()],
+        bump,
+        seeds::program = PERMISSION_PROGRAM_ID,
+    )]
+    pub permission: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(address = PERMISSION_PROGRAM_ID)]
+    pub permission_program: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(mut, address = EPHEMERAL_VAULT_ID)]
+    pub ephemeral_vault: UncheckedAccount<'info>,
+    /// CHECK: fixed address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+    pub owner_session: Option<Signer<'info>>,
 }
 
 /// `rotate_session`: signed by the seat's wallet inside PER.

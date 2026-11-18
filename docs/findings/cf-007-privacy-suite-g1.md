@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Result:** 134 of 134 checks passed in 2 of 2 runs on Devnet PER from
-  `dev-machine-1`; 144 of 144 after the security fix below.
+  `dev-machine-1`; 144 of 144 after the first security fix and 150 of 150 after the second.
 - **G1 status: provisionally passed.** It becomes final after the suite passes
   from every target region, plus one run on a different day. The PM signs off.
 - **Code:** `packages/probes/src/privacy-suite.mjs` (`pnpm privacy-suite --
@@ -75,6 +75,29 @@ That broke "the operator can't see cards". Fixed:
   opponent gets Side Show access. In P5, Side Show must be driven by game
   state: the requester asks, the counterparty accepts, the program grants
   exactly that pair and restores owner-only access automatically.
+
+## Second security review follow-up: collusion and stale grants (fixed)
+
+1. **Collusion path.** A player could rotate (or join with) a session key
+   equal to the table authority, a wallet or another seat's key. That key
+   then counted as a "seated session key", so the authority could grant it
+   any hand. Now `is_valid_new_session` rejects the authority, every seated
+   wallet, existing session keys, the default key and the table's own
+   addresses, in both `poc_join` and `rotate_session` (`BadSessionKey`).
+2. **Owner consent.** Granting a second reader now requires the hand
+   owner's session key to co-sign (`OwnerConsentMissing`). The authority
+   alone can no longer show anyone a hand.
+3. **Stale grants.** `TableRuntime.grants` tracks hands with an active Side
+   Show reader. `rotate_session` is refused while any grant is active
+   (`GrantActive`), so a rotated-out key can't keep access to another hand.
+
+Rerun on Devnet: **150/150**. Side Show 7/7 adds: no consent, wrong signer,
+rotation during a grant. Rotation 9/9 adds: rotating to the authority key,
+to another wallet, or to another seat's session. LiteSVM covers the same
+key rules at join.
+
+Remaining for P5: game-state checks on Side Show (valid counterparty,
+acceptance, automatic revoke at resolution).
 
 ## G1 criteria (PRD v1.2 §13.6) against the evidence
 

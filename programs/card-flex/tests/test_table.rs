@@ -163,3 +163,25 @@ fn default_build_has_test_deck_disabled() {
     // the allowed path. (poc_deal itself needs PER and is tested on Devnet.)
     assert!(!cfg!(feature = "poc-test-deck"));
 }
+
+#[test]
+fn session_key_cannot_be_authority_or_any_wallet() {
+    let (mut t, _) = create(6);
+    let a = funded(&mut t.svm);
+    let b = funded(&mut t.svm);
+    let authority = t.authority.pubkey();
+    // Security review: these would let the operator or a wallet become a reader.
+    assert!(!join(&mut t, &a, 0, authority));
+    assert!(!join(&mut t, &a, 0, a.pubkey()));
+    assert!(!join(&mut t, &a, 0, Pubkey::default()));
+    let runtime_key = t.runtime;
+    assert!(!join(&mut t, &a, 0, runtime_key));
+    let session_a = Pubkey::new_unique();
+    assert!(join(&mut t, &a, 0, session_a));
+    assert!(!join(&mut t, &b, 1, a.pubkey()), "another seat's wallet");
+    assert!(
+        !join(&mut t, &b, 1, session_a),
+        "another seat's session key"
+    );
+    assert!(join(&mut t, &b, 1, Pubkey::new_unique()));
+}

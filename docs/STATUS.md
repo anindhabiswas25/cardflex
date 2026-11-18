@@ -31,6 +31,10 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — Second security fix: session keys can't be the authority, a
+  wallet, another session or a table address; Side Show grants need the hand
+  owner's session signature; rotation blocked while a grant is active. Suite
+  150/150 on Devnet; 20 local tests.
 - 2026-11-18 — Security fix: `set_hand_readers` can no longer add the operator
   or any non-seat key; readers = own session key + at most one seated
   opponent. New `rotate_session` (seat wallet only). Suite 144/144 on Devnet.

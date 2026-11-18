@@ -103,6 +103,12 @@ pub mod card_flex {
             !runtime.seated().any(|i| runtime.wallets[i] == wallet),
             CardFlexError::SeatTaken
         );
+        let runtime_key = runtime.key();
+        let config = runtime.config;
+        require!(
+            runtime.is_valid_new_session(&session_key, &runtime_key, &config, &wallet),
+            CardFlexError::BadSessionKey
+        );
         runtime.wallets[seat as usize] = wallet;
         runtime.session_keys[seat as usize] = session_key;
         runtime.occupied |= 1 << seat;
@@ -242,7 +248,11 @@ pub mod card_flex {
     /// Show uses: grant the opponent's session key, then restore). At most 3
     /// readers; an empty list is rejected because its meaning is ambiguous in
     /// the docs (ADR 0002 / PRD §15.2).
-    pub fn set_hand_readers(ctx: Context<TablePer>, seat: u8, readers: Vec<Pubkey>) -> Result<()> {
+    pub fn set_hand_readers(
+        ctx: Context<SetHandReaders>,
+        seat: u8,
+        readers: Vec<Pubkey>,
+    ) -> Result<()> {
         let runtime = &ctx.accounts.runtime;
         require!(
             runtime.occupied & (1 << seat) != 0,
@@ -252,8 +262,9 @@ pub mod card_flex {
         // Readers are always the seat's own session key plus at most one other
         // seated player's session key (the Side Show opponent). The table
         // authority, wallets and outside keys are rejected.
-        // TODO(P5): drive Side Show from game state (request + accept between
-        // the right seats) instead of the authority choosing the opponent.
+        // A grant also needs the hand owner's session key to sign (consent).
+        // TODO(P5): add game-state checks (Side Show requested by a valid
+        // counterparty, accepted, then revoked automatically at resolution).
         let own = runtime.session_keys[seat as usize];
         require!(
             !readers.is_empty() && readers.len() <= 2 && readers[0] == own,
@@ -261,17 +272,32 @@ pub mod card_flex {
         );
         if let Some(other) = readers.get(1) {
             require!(
-                *other != own && runtime.seated().any(|i| runtime.session_keys[i] == *other),
+                *other != own
+                    && *other != runtime.authority
+                    && runtime.seated().any(|i| runtime.session_keys[i] == *other),
                 CardFlexError::BadReaders
             );
+            // Granting needs the hand owner's consent: their session key signs.
+            let owner = ctx
+                .accounts
+                .owner_session
+                .as_ref()
+                .ok_or(CardFlexError::OwnerConsentMissing)?;
+            require_keys_eq!(owner.key(), own, CardFlexError::OwnerConsentMissing);
         }
-        let runtime_key = runtime.key();
+        let granting = readers.len() == 2;
+        let (runtime_key, config, bump) = (runtime.key(), runtime.config, runtime.bump);
         let (hand, hand_bump) = Pubkey::find_program_address(
             &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
             &crate::ID,
         );
         require_keys_eq!(ctx.accounts.target.key(), hand, CardFlexError::BadSeatHand);
-        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        if granting {
+            ctx.accounts.runtime.grants |= 1 << seat;
+        } else {
+            ctx.accounts.runtime.grants &= !(1 << seat);
+        }
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, config.as_ref(), &[bump]];
         let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
         let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
         UpdateEphemeralPermissionCpi {
@@ -317,12 +343,16 @@ pub mod card_flex {
                 ctx.accounts.wallet.key(),
                 CardFlexError::NotSeatOwner
             );
+            let runtime_key = runtime.key();
+            let config = runtime.config;
+            let wallet = ctx.accounts.wallet.key();
             require!(
-                !runtime
-                    .seated()
-                    .any(|i| runtime.session_keys[i] == new_session),
-                CardFlexError::BadReaders
+                runtime.is_valid_new_session(&new_session, &runtime_key, &config, &wallet),
+                CardFlexError::BadSessionKey
             );
+            // The old key may hold a Side Show grant on another hand; rotating
+            // now would leave it readable (security review). Revoke first.
+            require!(runtime.grants == 0, CardFlexError::GrantActive);
             runtime.session_keys[seat as usize] = new_session;
             let mut members = vec![Member {
                 flags,
@@ -730,6 +760,14 @@ pub enum CardFlexError {
     BadReaders,
     #[msg("signer does not own this seat")]
     NotSeatOwner,
+    #[msg(
+        "session key may not be the authority, a wallet, an existing session or a table address"
+    )]
+    BadSessionKey,
+    #[msg("revoke the active Side Show grant first")]
+    GrantActive,
+    #[msg("the hand owner's session key must sign a grant")]
+    OwnerConsentMissing,
 }
 
 #[derive(Accounts)]
