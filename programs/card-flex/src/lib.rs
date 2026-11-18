@@ -71,7 +71,9 @@ pub mod card_flex {
         config.bump = ctx.bumps.config;
         config.status = status::ACTIVE;
         config.refund_timeout_secs = REFUND_TIMEOUT_DEFAULT_SECS;
-        config.min_buy_in = 1;
+        // A payout below the rent-exempt minimum could fail for an empty
+        // wallet, so stacks never start below it (security review).
+        config.min_buy_in = Rent::get()?.minimum_balance(0);
         config.max_buy_in = u64::MAX;
         config.last_sync_time = Clock::get()?.unix_timestamp;
         config.vault_bump = ctx.bumps.vault;
@@ -100,7 +102,7 @@ pub mod card_flex {
         let config = &mut ctx.accounts.config;
         require!(config.seated == 0, CardFlexError::TableLocked);
         require!(
-            min_buy_in > 0 && min_buy_in <= max_buy_in,
+            min_buy_in >= Rent::get()?.minimum_balance(0) && min_buy_in <= max_buy_in,
             CardFlexError::BadAmount
         );
         require!(
@@ -217,7 +219,9 @@ pub mod card_flex {
             let d = rec.try_borrow_data()?;
             require!(d.len() >= 72, CardFlexError::BadRuntime);
             require!(
-                d[8..40] == config.validator.to_bytes() && d[40..72] == crate::ID.to_bytes(),
+                allowed_validator(&config.validator)
+                    && d[8..40] == config.validator.to_bytes()
+                    && d[40..72] == crate::ID.to_bytes(),
                 CardFlexError::BadRuntime
             );
         } else {
@@ -257,8 +261,8 @@ pub mod card_flex {
     }
 
     /// ADR 0004 rule 5: after `refund_timeout_secs` without an accepted
-    /// sync, anyone pays every seat its last synced stack from the vault and
-    /// marks the table REFUNDED. No cooperation from PER or the operator.
+    /// sync, anyone switches the table to REFUNDED. No cooperation from PER
+    /// or the operator. Payouts are then claimed per seat (`claim_refund`).
     pub fn emergency_refund(ctx: Context<EmergencyRefund>) -> Result<()> {
         let config = &mut ctx.accounts.config;
         require!(
@@ -272,37 +276,30 @@ pub mod card_flex {
                 .saturating_add(config.refund_timeout_secs as i64),
             CardFlexError::TooEarly
         );
-        let config_key = config.key();
-        let seats: Vec<u8> = (0..MAX_SEATS as u8)
-            .filter(|s| config.seated & (1 << s) != 0)
-            .collect();
+        config.status = status::REFUNDED;
+        Ok(())
+    }
+
+    /// Pays one seat its last synced stack after `emergency_refund`, to the
+    /// wallet recorded at buy-in. Anyone may call it; each seat is
+    /// independent, so one failing payout can't lock the others.
+    pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
         require!(
-            ctx.remaining_accounts.len() == 2 * seats.len(),
-            CardFlexError::BadLedger
+            ctx.accounts.config.status == status::REFUNDED,
+            CardFlexError::TableNotActive
         );
+        let ledger = &mut ctx.accounts.ledger;
+        let pay = ledger.synced_stack;
+        require!(pay > 0, CardFlexError::NothingToClaim);
         let vault_info = ctx.accounts.vault.to_account_info();
         let rent_floor = Rent::get()?.minimum_balance(vault_info.data_len());
-        for (k, &seat) in seats.iter().enumerate() {
-            let ledger_info = &ctx.remaining_accounts[2 * k];
-            let wallet_info = &ctx.remaining_accounts[2 * k + 1];
-            let (pda, _) = Pubkey::find_program_address(
-                &[LEDGER_SEED, config_key.as_ref(), &[seat]],
-                &crate::ID,
-            );
-            require_keys_eq!(ledger_info.key(), pda, CardFlexError::BadLedger);
-            let mut ledger: Account<SeatLedger> = Account::try_from(ledger_info)?;
-            require_keys_eq!(wallet_info.key(), ledger.wallet, CardFlexError::BadLedger);
-            let pay = ledger.synced_stack;
-            require!(
-                vault_info.lamports() >= rent_floor.saturating_add(pay),
-                CardFlexError::VaultShort
-            );
-            **vault_info.try_borrow_mut_lamports()? -= pay;
-            **wallet_info.try_borrow_mut_lamports()? += pay;
-            ledger.synced_stack = 0;
-            ledger.exit(&crate::ID)?;
-        }
-        config.status = status::REFUNDED;
+        require!(
+            vault_info.lamports() >= rent_floor.saturating_add(pay),
+            CardFlexError::VaultShort
+        );
+        ledger.synced_stack = 0;
+        **vault_info.try_borrow_mut_lamports()? -= pay;
+        **ctx.accounts.wallet.try_borrow_mut_lamports()? += pay;
         Ok(())
     }
 
@@ -347,8 +344,16 @@ pub mod card_flex {
                 validator,
             },
         )?;
-        // ADR 0004: remember which validator holds the runtime.
-        ctx.accounts.config.validator = validator.ok_or(CardFlexError::ValidatorRequired)?;
+        // ADR 0004 + security review: only MagicBlock's TEE validator, and the
+        // validator never changes once recorded.
+        let v = validator.ok_or(CardFlexError::ValidatorRequired)?;
+        require!(allowed_validator(&v), CardFlexError::ValidatorNotAllowed);
+        let recorded = ctx.accounts.config.validator;
+        require!(
+            recorded == Pubkey::default() || recorded == v,
+            CardFlexError::ValidatorNotAllowed
+        );
+        ctx.accounts.config.validator = v;
         let runtime_key = ctx.accounts.runtime.key();
         ctx.accounts.delegate_hand_log(
             &ctx.accounts.authority,
@@ -1396,4 +1401,8 @@ pub enum CardFlexError {
     BadLedger,
     #[msg("vault holds less than the refund")]
     VaultShort,
+    #[msg("validator is not MagicBlock's TEE validator")]
+    ValidatorNotAllowed,
+    #[msg("nothing left to claim for this seat")]
+    NothingToClaim,
 }

@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P3 (recovery) in progress.** G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P3 done, G3 awaiting sign-off → P4 (rules engine).** G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -19,7 +19,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-010 | VRF request with caller_seed when SALTS_DONE; protected callback derives the seed | Done: ephemeral queue works inside PER, callback ~2.0–2.1 s; 12/12 checks ×2 | `request_shuffle`/`vrf_deal`, `pnpm handflow`, `docs/findings/cf-010-vrf.md` |
 | CF-011 | Shuffle, deal and Merkle root in-program from the seed; compute units; remove test deck from the real path | Done: Devnet 39/39 ×2, all cards verified vs public root; 56–86k CU; salt-substitution + stuck-VRF fixes | `deal_hand`/`cancel_hand`, `tests/test_deal.rs`, `docs/findings/cf-011-deal.md` |
 | CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Done: Devnet hand revealed, read with no token, `cf-verify` VALID (PER and base-layer copies); 10,000 random hands VALID + tampers caught. **G2 passed** (one location) | `crates/fairness-verifier`, `reveal_hand`, `docs/findings/cf-012-verifier-g2.md` |
-| CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | In progress: ADR 0004, money skeleton + refund (LiteSVM 4/4), Devnet outage drill 19/19; next: validator-restart drill on the local stack, then G3 | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery` |
+| CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Done: Devnet outage drill 20/20 (pull-based refunds, validator pinned); local restart drill: state survives and hand continues; local commits blocked by an Agave 3.1 vs MagicBlock 4.0 tx-format mismatch. **G3 recommended GO (conditional), awaiting PM sign-off** | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery`, `scripts/restart-drill.sh` |
+| CF-014 | Teen Patti rules v1 sign-off (PRD §11.3) | Next (P4) | PM decision |
 
 ## Blockers and asks for the team
 
@@ -32,10 +33,20 @@ starts, finishes or gets blocked. Newest entries first in the log.
 - Ask MagicBlock about the write-latency tail on Devnet (CF-004) and missed
   `accountSubscribe` updates for ephemeral accounts (CF-006).
 - Sign off rules v1 (PRD §11.3; CF-014).
+- Sign off gate G3 (recommendation in `docs/findings/cf-013-recovery.md`).
+- Approve (or not) an Agave 4.x `solana-test-validator` for the local stack only,
+  to test commits after a validator restart.
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
 
 ## Log
 
+- 2026-11-18 — CF-013 done. Security fixes: validator pinned to MagicBlock's
+  TEE validator; refunds are pull-based per seat (claim_refund); min buy-in
+  >= rent minimum. Devnet outage drill 20/20. Local restart drill: delegated
+  + ephemeral state and permissions survive a validator restart and the hand
+  continues without redeal; local commits fail because Agave 3.1.10 can't
+  parse MagicBlock 1.1.1 (solana 4.0) transactions (control run too).
+  G3: recommended GO (conditional) — PM to sign off.
 - 2026-11-18 — CF-013 steps 1–3: ADR 0004 recovery policy; buy_in into a
   never-delegated TableVault with SeatLedgers; commit_hand / sync_hand
   (delegation-record checked, stacks only between hands); emergency_refund.

@@ -45,7 +45,8 @@ try {
   const record = delegationRecordPdaFromDelegatedAccount(runtime);
   const commitIx = (payer) => ix("commit_hand", [w(payer.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)]);
   const syncIx = (withLedgers) => ix("sync_hand", [w(config), r(runtime), r(record), ...(withLedgers ? ledgers.map((l) => w(l)) : [])]);
-  const refundIx = (payer) => ix("emergency_refund", [r(payer.publicKey, true), w(config), w(vault), ...players.flatMap((p, s) => [w(ledgers[s]), w(p.wallet.publicKey)])]);
+  const refundIx = (payer) => ix("emergency_refund", [r(payer.publicKey, true), w(config)]);
+  const claimIx = (payer, s) => ix("claim_refund", [r(payer.publicKey, true), r(config), w(vault), w(ledgers[s]), w(players[s].wallet.publicKey)]);
   const baseCommitSeq = async () => { const a = await base.getAccountInfo(runtime); return a ? a.data.readBigUInt64LE(RT.commit_seq) : -1n; };
 
   // ---- money in ----
@@ -99,6 +100,9 @@ try {
   const refunded = await waitFor(async () => { await send(base, [refundIx(bystander)], [bystander], { retries: 0 }); return true; }, 90_000, 3000);
   report.timings.refund_after_last_sync_s = Math.round((Date.now() / 1000 - lastSync) * 10) / 10;
   check("refund", "a bystander can trigger emergency_refund after the timeout", true, !!refunded.value, `${report.timings.refund_after_last_sync_s}s after last sync`);
+  // Each seat's payout is claimed independently (anyone may submit the claim).
+  for (let s = 0; s < SEATS; s++) await send(base, [claimIx(bystander, s)], [bystander]);
+  check("refund", "a second claim for seat 0 is rejected", true, await rejected(base, [claimIx(bystander, 0)], [bystander]));
   const walletAfter = await Promise.all(players.map(async (p) => (await base.getBalance(p.wallet.publicKey))));
   check("refund", "every wallet got back exactly its synced stack", players.map(() => BUY_IN), walletAfter.map((a, i) => a - walletBefore[i]));
   check("refund", "vault paid out exactly the total", SEATS * BUY_IN, vaultBefore - (await base.getBalance(vault)));

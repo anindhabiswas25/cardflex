@@ -39,9 +39,21 @@ pub const REFUND_TIMEOUT_MIN_SECS: u32 = 60;
 pub const REFUND_TIMEOUT_MAX_SECS: u32 = 86_400;
 pub const REFUND_TIMEOUT_DEFAULT_SECS: u32 = 3_600;
 
+/// MagicBlock's TEE validator (Devnet and Mainnet PER). The only validator a
+/// table may be delegated to; a table's committed state is trusted for money
+/// only from it (security review: the authority must not choose).
+pub const TEE_VALIDATOR: Pubkey = pubkey!("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
+/// Local MagicBlock stack validator, accepted only with feature `local-stack`.
+pub const LOCAL_STACK_VALIDATOR: Pubkey = pubkey!("mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev");
+
+pub fn allowed_validator(key: &Pubkey) -> bool {
+    *key == TEE_VALIDATOR || (cfg!(feature = "local-stack") && *key == LOCAL_STACK_VALIDATOR)
+}
+
 /// Base-layer table status (ADR 0004). 0 is never a valid status.
 pub mod status {
     pub const ACTIVE: u8 = 1;
+    /// Emergency refund started: each seat claims its own payout.
     pub const REFUNDED: u8 = 2;
 }
 pub const SALT_TAG: &[u8; 8] = b"CFSALT02";
@@ -405,16 +417,29 @@ pub struct SyncHand<'info> {
     pub delegation_record: UncheckedAccount<'info>,
 }
 
-/// `emergency_refund`: anyone, after the liveness timeout. Pairs of
-/// (seat ledger, payout wallet) for every bought-in seat follow in
-/// `remaining_accounts`, in seat order.
+/// `emergency_refund`: anyone, after the liveness timeout. Only switches the
+/// table to REFUNDED; payouts are claimed per seat (security review: one
+/// failing payout must not block the others).
 #[derive(Accounts)]
 pub struct EmergencyRefund<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
     pub config: Box<Account<'info, TableConfig>>,
+}
+
+/// `claim_refund`: anyone pays one seat its synced stack after a refund.
+#[derive(Accounts)]
+pub struct ClaimRefund<'info> {
+    pub payer: Signer<'info>,
+    #[account(seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
     #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
     pub vault: Box<Account<'info, TableVault>>,
+    #[account(mut, seeds = [LEDGER_SEED, config.key().as_ref(), &[ledger.seat]], bump = ledger.bump, has_one = config, has_one = wallet)]
+    pub ledger: Box<Account<'info, SeatLedger>>,
+    /// CHECK: must equal the payout wallet recorded at buy-in (has_one).
+    #[account(mut)]
+    pub wallet: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]

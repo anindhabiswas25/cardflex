@@ -23,15 +23,23 @@ custom-panic = []
 # P1 test deck: predictable, devnet POC only. Never enable for a shared or
 # real-value deployment. Without it, poc_deal always fails.
 poc-test-deck = []
+# Also accept the local MagicBlock stack's validator (restart drills). Never
+# enable for a shared deployment.
+local-stack = []
 
 [dependencies]
 anchor-lang = { workspace = true }
 card-types = { path = "../../crates/card-types" }
 fairness-core = { path = "../../crates/fairness-core" }
-# sol_sha256 syscall on-chain; the sha2 feature gives a software fallback for host tests.
-solana-sha256-hasher = { version = "=3.1.0", features = ["sha2"] }
+# sol_sha256 syscall on-chain.
+solana-sha256-hasher = "=3.1.0"
 # Pulled in now so CI proves the pinned Anchor + MagicBlock SDK combination builds.
 ephemeral-rollups-sdk = { workspace = true, features = ["anchor", "vrf", "access-control"] }
+
+# Software SHA-256 fallback only for host builds and tests; never compiled
+# into the on-chain program.
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+solana-sha256-hasher = { version = "=3.1.0", features = ["sha2"] }
 
 [dev-dependencies]
 litesvm = "0.10.0"

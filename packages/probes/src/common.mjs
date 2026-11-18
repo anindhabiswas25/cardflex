@@ -9,9 +9,11 @@ import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } f
 import { getAuthToken } from "@magicblock-labs/ephemeral-rollups-sdk";
 
 export const PROGRAM_ID = new PublicKey("4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL");
-export const TEE_VALIDATOR = new PublicKey("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
+// Override for the local stack: CARDFLEX_VALIDATOR=mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev
+export const TEE_VALIDATOR = new PublicKey(process.env.CARDFLEX_VALIDATOR ?? "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
 export const BASE_RPC = process.env.CARDFLEX_BASE_RPC ?? "https://rpc.magicblock.app/devnet";
 export const TEE_RPC = process.env.CARDFLEX_TEE_RPC ?? "https://devnet-tee.magicblock.app";
+const TEE_WS = process.env.CARDFLEX_TEE_WS ?? TEE_RPC.replace(/^http/, "ws");
 export const KEYPAIR = process.env.CARDFLEX_DEVNET_KEYPAIR ?? `${homedir()}/.config/cardflex/devnet-deployer.json`;
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -85,7 +87,7 @@ export async function tokenFor(kp) {
 }
 export const teeUrl = (token) => (token ? `${TEE_RPC}?token=${token}` : TEE_RPC);
 export const teeConn = (token) =>
-  new Connection(teeUrl(token), { commitment: "confirmed", wsEndpoint: `${TEE_RPC.replace(/^http/, "ws")}${token ? `?token=${token}` : ""}` });
+  new Connection(teeUrl(token), { commitment: "confirmed", wsEndpoint: `${TEE_WS}${token ? `?token=${token}` : ""}` });
 
 /** Raw JSON-RPC call (for methods/encodings web3.js hides). */
 export async function rawRpc(url, method, params) {

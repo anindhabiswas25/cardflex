@@ -93,7 +93,7 @@ fn setup(seats: usize) -> T {
     let configure = Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::ConfigureTable {
-            min_buy_in: 1_000,
+            min_buy_in: 1_000_000,
             max_buy_in: 1_000_000_000,
             refund_timeout_secs: 60,
         }
@@ -223,21 +223,30 @@ fn sync_ix(t: &T, record: Pubkey, ledgers: &[Pubkey]) -> Instruction {
     )
 }
 
-fn refund_ix(t: &T, payer: Pubkey, pairs: &[(Pubkey, Pubkey)]) -> Instruction {
-    let mut metas = card_flex::accounts::EmergencyRefund {
-        payer,
-        config: t.config,
-        vault: t.vault,
-    }
-    .to_account_metas(None);
-    for (l, w) in pairs {
-        metas.push(AccountMeta::new(*l, false));
-        metas.push(AccountMeta::new(*w, false));
-    }
+fn emergency_ix(t: &T, payer: Pubkey) -> Instruction {
     Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::EmergencyRefund {}.data(),
-        metas,
+        card_flex::accounts::EmergencyRefund {
+            payer,
+            config: t.config,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn claim_ix(t: &T, payer: Pubkey, seat: u8, wallet: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::ClaimRefund {}.data(),
+        card_flex::accounts::ClaimRefund {
+            payer,
+            config: t.config,
+            vault: t.vault,
+            ledger: ledger(t, seat),
+            wallet,
+        }
+        .to_account_metas(None),
     )
 }
 
@@ -251,22 +260,22 @@ fn warp_secs(t: &mut T, secs: i64) {
 fn buy_in_moves_lamports_into_the_vault_and_records_ledgers() {
     let mut t = setup(3);
     let before = t.svm.get_account(&t.vault).unwrap().lamports;
-    buy_in(&mut t, 0, 100_000).unwrap();
-    buy_in(&mut t, 2, 250_000).unwrap();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    buy_in(&mut t, 2, 2_500_000).unwrap();
     let after = t.svm.get_account(&t.vault).unwrap().lamports;
-    assert_eq!(after - before, 350_000);
+    assert_eq!(after - before, 3_500_000);
     assert_eq!(config(&t).seated, 0b101);
     let l = ledger_state(&t, 2);
     assert_eq!(
         (l.seat, l.buy_in, l.synced_stack, l.wallet),
-        (2, 250_000, 250_000, t.wallets[2].pubkey())
+        (2, 2_500_000, 2_500_000, t.wallets[2].pubkey())
     );
     let rt =
         TableRuntime::try_deserialize(&mut t.svm.get_account(&t.runtime).unwrap().data.as_slice())
             .unwrap();
-    assert_eq!(rt.stacks[2], 250_000);
+    assert_eq!(rt.stacks[2], 2_500_000);
     // Limits, taken seat, duplicate wallet.
-    assert!(buy_in(&mut t, 1, 999)
+    assert!(buy_in(&mut t, 1, 999_999)
         .unwrap_err()
         .contains(&code(card_flex::CardFlexError::BadAmount)));
     assert!(
@@ -274,7 +283,7 @@ fn buy_in_moves_lamports_into_the_vault_and_records_ledgers() {
         "seat 0 taken (ledger exists)"
     );
     let w0 = t.wallets[0].insecure_clone();
-    let ix = buy_in_ix(&t, 1, 5_000, &w0);
+    let ix = buy_in_ix(&t, 1, 5_000_000, &w0);
     assert!(send_ix(vec![ix], &mut t.svm, &[&w0])
         .unwrap_err()
         .contains(&code(card_flex::CardFlexError::SeatTaken)));
@@ -302,8 +311,8 @@ fn buy_in_moves_lamports_into_the_vault_and_records_ledgers() {
 #[test]
 fn sync_accepts_only_newer_commits_from_the_right_validator() {
     let mut t = setup(2);
-    buy_in(&mut t, 0, 100_000).unwrap();
-    buy_in(&mut t, 1, 100_000).unwrap();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    buy_in(&mut t, 1, 1_000_000).unwrap();
     let ledgers = [ledger(&t, 0), ledger(&t, 1)];
     let payer = t.authority.insecure_clone();
     let record = delegate(&mut t, TEE.parse().unwrap(), card_flex::id());
@@ -371,20 +380,29 @@ fn sync_accepts_only_newer_commits_from_the_right_validator() {
 }
 
 #[test]
-fn emergency_refund_pays_exactly_the_synced_stacks_after_the_timeout() {
+fn emergency_refund_then_each_seat_claims_exactly_its_synced_stack() {
     let mut t = setup(3);
-    for (s, amt) in [(0u8, 100_000u64), (1, 200_000), (2, 300_000)] {
+    for (s, amt) in [(0u8, 1_000_000u64), (1, 2_000_000), (2, 3_000_000)] {
         buy_in(&mut t, s, amt).unwrap();
     }
     let payer = Keypair::new();
     t.svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
-    let pairs: Vec<(Pubkey, Pubkey)> = (0..3u8)
-        .map(|s| (ledger(&t, s), t.wallets[s as usize].pubkey()))
-        .collect();
+    let w: Vec<Pubkey> = t.wallets.iter().map(|k| k.pubkey()).collect();
 
+    // Nothing can be claimed while the table is active.
+    let e = send_ix(
+        vec![claim_ix(&t, payer.pubkey(), 0, w[0])],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::TableNotActive)),
+        "{e}"
+    );
     // Before the timeout: refused.
     let e = send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &pairs)],
+        vec![emergency_ix(&t, payer.pubkey())],
         &mut t.svm,
         &[&payer],
     )
@@ -392,61 +410,56 @@ fn emergency_refund_pays_exactly_the_synced_stacks_after_the_timeout() {
     assert!(e.contains(&code(card_flex::CardFlexError::TooEarly)), "{e}");
 
     warp_secs(&mut t, 61);
-    // A wallet that isn't the recorded payout address: refused.
-    let mut wrong = pairs.clone();
-    wrong[1].1 = payer.pubkey();
-    let e = send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &wrong)],
-        &mut t.svm,
-        &[&payer],
-    )
-    .unwrap_err();
-    assert!(
-        e.contains(&code(card_flex::CardFlexError::BadLedger)),
-        "{e}"
-    );
-    // A missing seat: refused.
-    let e = send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &pairs[..2])],
-        &mut t.svm,
-        &[&payer],
-    )
-    .unwrap_err();
-    assert!(
-        e.contains(&code(card_flex::CardFlexError::BadLedger)),
-        "{e}"
-    );
-
-    let before: Vec<u64> = (0..3)
-        .map(|s| t.svm.get_account(&t.wallets[s].pubkey()).unwrap().lamports)
-        .collect();
-    let vault_before = t.svm.get_account(&t.vault).unwrap().lamports;
     send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &pairs)],
+        vec![emergency_ix(&t, payer.pubkey())],
         &mut t.svm,
         &[&payer],
     )
-    .expect("refund");
-    let after: Vec<u64> = (0..3)
-        .map(|s| t.svm.get_account(&t.wallets[s].pubkey()).unwrap().lamports)
-        .collect();
-    assert_eq!(
-        [
-            after[0] - before[0],
-            after[1] - before[1],
-            after[2] - before[2]
-        ],
-        [100_000, 200_000, 300_000]
-    );
+    .expect("refund starts");
+    assert_eq!(config(&t).status, status::REFUNDED);
+    // A wallet that isn't the recorded payout address: refused.
+    let e = send_ix(
+        vec![claim_ix(&t, payer.pubkey(), 1, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(e.contains("Custom(2001)"), "has_one wallet: {e}");
+
+    let vault_before = t.svm.get_account(&t.vault).unwrap().lamports;
+    for s in 0..3u8 {
+        let before = t.svm.get_account(&w[s as usize]).unwrap().lamports;
+        send_ix(
+            vec![claim_ix(&t, payer.pubkey(), s, w[s as usize])],
+            &mut t.svm,
+            &[&payer],
+        )
+        .expect("claim");
+        let after = t.svm.get_account(&w[s as usize]).unwrap().lamports;
+        assert_eq!(
+            after - before,
+            [1_000_000, 2_000_000, 3_000_000][s as usize]
+        );
+        assert_eq!(ledger_state(&t, s).synced_stack, 0);
+    }
     assert_eq!(
         vault_before - t.svm.get_account(&t.vault).unwrap().lamports,
-        600_000
+        6_000_000
     );
-    assert_eq!(config(&t).status, status::REFUNDED);
-
-    // After a refund nothing can move money or reopen the table.
+    // Claiming twice pays nothing.
     let e = send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &pairs)],
+        vec![claim_ix(&t, payer.pubkey(), 0, w[0])],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::NothingToClaim)),
+        "{e}"
+    );
+    // A second refund and a late commit can't move money.
+    let e = send_ix(
+        vec![emergency_ix(&t, payer.pubkey())],
         &mut t.svm,
         &[&payer],
     )
@@ -466,19 +479,44 @@ fn emergency_refund_pays_exactly_the_synced_stacks_after_the_timeout() {
 }
 
 #[test]
+fn one_seat_claiming_is_independent_of_the_others() {
+    let mut t = setup(2);
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    buy_in(&mut t, 1, 1_000_000).unwrap();
+    let payer = Keypair::new();
+    t.svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
+    warp_secs(&mut t, 61);
+    send_ix(
+        vec![emergency_ix(&t, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    // Seat 1 never claims; seat 0 still gets paid.
+    let w0 = t.wallets[0].pubkey();
+    let before = t.svm.get_account(&w0).unwrap().lamports;
+    send_ix(
+        vec![claim_ix(&t, payer.pubkey(), 0, w0)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_eq!(t.svm.get_account(&w0).unwrap().lamports - before, 1_000_000);
+    assert_eq!(ledger_state(&t, 1).synced_stack, 1_000_000);
+}
+
+#[test]
 fn a_recent_sync_postpones_the_refund() {
     let mut t = setup(2);
-    buy_in(&mut t, 0, 100_000).unwrap();
-    buy_in(&mut t, 1, 100_000).unwrap();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    buy_in(&mut t, 1, 1_000_000).unwrap();
     let payer = t.authority.insecure_clone();
     let record = delegate(&mut t, TEE.parse().unwrap(), card_flex::id());
     warp_secs(&mut t, 50);
-    commit(&mut t, 1, phase::IDLE, {
-        let mut s = [0; MAX_SEATS];
-        s[0] = 100_000;
-        s[1] = 100_000;
-        s
-    });
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[0] = 1_000_000;
+    stacks[1] = 1_000_000;
+    commit(&mut t, 1, phase::IDLE, stacks);
     send_ix(
         vec![sync_ix(&t, record, &[ledger(&t, 0), ledger(&t, 1)])],
         &mut t.svm,
@@ -486,11 +524,8 @@ fn a_recent_sync_postpones_the_refund() {
     )
     .unwrap();
     warp_secs(&mut t, 30); // 80 s after creation, 30 s after the sync
-    let pairs: Vec<(Pubkey, Pubkey)> = (0..2u8)
-        .map(|s| (ledger(&t, s), t.wallets[s as usize].pubkey()))
-        .collect();
     let e = send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &pairs)],
+        vec![emergency_ix(&t, payer.pubkey())],
         &mut t.svm,
         &[&payer],
     )
@@ -498,9 +533,42 @@ fn a_recent_sync_postpones_the_refund() {
     assert!(e.contains(&code(card_flex::CardFlexError::TooEarly)), "{e}");
     warp_secs(&mut t, 31);
     send_ix(
-        vec![refund_ix(&t, payer.pubkey(), &pairs)],
+        vec![emergency_ix(&t, payer.pubkey())],
         &mut t.svm,
         &[&payer],
     )
     .expect("refund after timeout");
+}
+
+#[test]
+fn only_the_tee_validator_is_trusted() {
+    let mut t = setup(1);
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    let payer = t.authority.insecure_clone();
+    // A record naming an operator-chosen validator is never trusted, even if
+    // TableConfig were somehow made to name it.
+    let rogue = Pubkey::new_unique();
+    let record = delegate(&mut t, rogue, card_flex::id());
+    let mut c = t.svm.get_account(&t.config).unwrap();
+    let mut cfg = TableConfig::try_deserialize(&mut c.data.as_slice()).unwrap();
+    cfg.validator = rogue;
+    let mut d = Vec::new();
+    cfg.try_serialize(&mut d).unwrap();
+    d.resize(c.data.len(), 0);
+    c.data = d;
+    t.svm.set_account(t.config, c).unwrap();
+    commit(&mut t, 1, phase::IDLE, [5_000_000; MAX_SEATS]);
+    let e = send_ix(
+        vec![sync_ix(&t, record, &[ledger(&t, 0)])],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::BadRuntime)),
+        "{e}"
+    );
+    assert_eq!(ledger_state(&t, 0).synced_stack, 1_000_000);
+    assert!(card_flex::table::allowed_validator(&TEE.parse().unwrap()));
+    assert!(!card_flex::table::allowed_validator(&rogue));
 }

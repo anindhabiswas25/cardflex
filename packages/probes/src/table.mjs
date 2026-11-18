@@ -39,7 +39,8 @@ export async function setupTable({ seats = 6, buyIn = 0, refundTimeout = 3600 } 
   const ledgers = players.map((_, s) => pda(Buffer.from("seat-ledger"), config.toBuffer(), u8(s)));
   if (buyIn > 0) {
     const cfgData = Buffer.alloc(20);
-    cfgData.writeBigUInt64LE(1n, 0); cfgData.writeBigUInt64LE(BigInt(buyIn) * 10n, 8); cfgData.writeUInt32LE(refundTimeout, 16);
+    // min buy-in must be >= the rent-exempt minimum (program rule)
+    cfgData.writeBigUInt64LE(1_000_000n, 0); cfgData.writeBigUInt64LE(BigInt(buyIn) * 10n, 8); cfgData.writeUInt32LE(refundTimeout, 16);
     await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config)], cfgData)], [authority]);
     for (let s = 0; s < seats; s++) {
       // Fund each wallet for its buy-in plus the seat-ledger rent.

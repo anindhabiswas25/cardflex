@@ -83,3 +83,14 @@ same hand or refund exactly; never redeal.**
 - The liveness clock trusts that a commit means PER is alive. A validator
   that commits but never runs hands would keep the table open; the players'
   defence is leaving (P6 cash-out). Recorded for P8 review.
+
+## Amendment (same day, security review)
+
+- **Validator pinned:** tables may only be delegated to MagicBlock's TEE
+  validator (`TEE_VALIDATOR` in `table.rs`); the validator can't change once
+  recorded; `sync_hand` trusts committed state only from it. The local
+  stack's validator is allowed only in builds with feature `local-stack`.
+- **Pull-based refunds:** `emergency_refund` only sets `REFUNDED`; each seat's
+  payout is a separate `claim_refund` (anyone may submit it, paid only to
+  the recorded wallet, once), so one failing payout can't block the others.
+  `min_buy_in` is at least the rent-exempt minimum.

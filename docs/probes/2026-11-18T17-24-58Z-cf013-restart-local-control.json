@@ -1,0 +1,131 @@
+{
+  "probe": "CF-013-restart-local",
+  "ok": false,
+  "before": {
+    "phase": "before",
+    "checks": [
+      {
+        "name": "before: phase SALTS_PENDING with 2 salts in",
+        "expected": [
+          1,
+          3
+        ],
+        "actual": [
+          1,
+          3
+        ],
+        "pass": true
+      }
+    ],
+    "snapshot": {
+      "hand_ctx": "36988c4ef09250422e2a42e0be420c9e35ef3ac8e67afdde47333f16446a5421",
+      "commitments": "5633abbdaae2e7fbc54c666b412ecd7ff6b198a90e82f89cb520b8e9d8d1181b2aea90dca5e22923095fa08125c960827b5a83a810efba9cc183e0601f5bd4a90000000000000000000000000000000000000000000000000000000000000000",
+      "hand_no": "0"
+    },
+    "ok": true
+  },
+  "after": {
+    "phase": "after",
+    "checks": [
+      {
+        "name": "after restart: runtime still delegated and readable in the ER",
+        "expected": true,
+        "actual": true,
+        "pass": true
+      },
+      {
+        "name": "after restart: same hand number",
+        "expected": "0",
+        "actual": "0",
+        "pass": true
+      },
+      {
+        "name": "after restart: same hand_ctx",
+        "expected": "36988c4ef09250422e2a42e0be420c9e35ef3ac8e67afdde47333f16446a5421",
+        "actual": "36988c4ef09250422e2a42e0be420c9e35ef3ac8e67afdde47333f16446a5421",
+        "pass": true
+      },
+      {
+        "name": "after restart: same salt commitments",
+        "expected": "5633abbdaae2e7fbc54c666b412ecd7ff6b198a90e82f89cb520b8e9d8d1181b2aea90dca5e22923095fa08125c960827b5a83a810efba9cc183e0601f5bd4a90000000000000000000000000000000000000000000000000000000000000000",
+        "actual": "5633abbdaae2e7fbc54c666b412ecd7ff6b198a90e82f89cb520b8e9d8d1181b2aea90dca5e22923095fa08125c960827b5a83a810efba9cc183e0601f5bd4a90000000000000000000000000000000000000000000000000000000000000000",
+        "pass": true
+      },
+      {
+        "name": "after restart: phase still SALTS_PENDING, 2 salts in",
+        "expected": [
+          1,
+          3
+        ],
+        "actual": [
+          1,
+          3
+        ],
+        "pass": true
+      },
+      {
+        "name": "base layer: runtime still owned by the delegation program",
+        "expected": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+        "actual": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
+        "pass": true
+      },
+      {
+        "name": "after restart: ephemeral seat hand still exists for its owner",
+        "expected": true,
+        "actual": true,
+        "pass": true
+      },
+      {
+        "name": "after restart: permissions still hide hand 0 from a stranger",
+        "expected": null,
+        "actual": null,
+        "pass": true
+      },
+      {
+        "name": "after restart: permissions still hide hand 0 from seat 1",
+        "expected": null,
+        "actual": null,
+        "pass": true
+      },
+      {
+        "name": "after restart: seat 0 can't resubmit (state kept)",
+        "expected": true,
+        "actual": true,
+        "pass": true
+      },
+      {
+        "name": "after restart: last salt accepted, phase SALTS_DONE",
+        "expected": 2,
+        "actual": 2,
+        "pass": true
+      },
+      {
+        "name": "after restart: hand continues, seat 0 receives cards",
+        "expected": true,
+        "actual": true,
+        "pass": true
+      },
+      {
+        "name": "after restart: no second deal",
+        "expected": true,
+        "actual": true,
+        "pass": true
+      },
+      {
+        "name": "after restart: commit_hand reaches the base layer",
+        "expected": true,
+        "actual": false,
+        "pass": false,
+        "note": "180575 ms"
+      },
+      {
+        "name": "teardown: runtime back on the base layer",
+        "expected": true,
+        "actual": false,
+        "pass": false
+      }
+    ],
+    "undelegate_ms": 180477,
+    "ok": false
+  }
+}
