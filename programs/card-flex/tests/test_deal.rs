@@ -141,6 +141,7 @@ fn seeded_table(seats: u8) -> Table {
         side_show_viewers: [0; MAX_SEATS],
         side_show_hand_no: 0,
         turn_deadline: 0,
+        button: 5,
         bump,
     };
     for s in 0..seats as usize {

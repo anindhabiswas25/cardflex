@@ -278,6 +278,10 @@ pub struct TableRuntime {
     /// CF-023: unix time after which `timeout_turn` may act for the player to
     /// act (or the Side Show target). Reset by every action except See.
     pub turn_deadline: i64,
+    /// CF-024: dealing starts with the first dealt seat after the button.
+    /// Starts at `max_seats - 1` (first hand deals from seat 0); `next_hand`
+    /// moves it to the seat that was dealt first.
+    pub button: u8,
     pub bump: u8,
 }
 
@@ -301,6 +305,15 @@ impl TableRuntime {
 
     pub fn seated(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.max_seats as usize).filter(move |i| self.occupied & (1 << i) != 0)
+    }
+
+    /// Seated seats in clockwise order starting left of the button.
+    pub fn seated_from_button(&self) -> impl Iterator<Item = usize> + '_ {
+        let m = self.max_seats as usize;
+        let first = (self.button as usize + 1) % m.max(1);
+        (0..m)
+            .map(move |d| (first + d) % m)
+            .filter(move |i| self.occupied & (1 << i) != 0)
     }
 
     /// A key that may become a session key (and so a hand reader): never the
@@ -892,6 +905,14 @@ pub struct CommitHand<'info> {
     pub runtime: Box<Account<'info, TableRuntime>>,
     #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
     pub hand_log: Box<Account<'info, HandLog>>,
+}
+
+/// `next_hand`: anyone, after a hand is revealed.
+#[derive(Accounts)]
+pub struct NextHand<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
 }
 
 /// `reveal_hand`: anyone may publish a dealt hand's seed inputs. Salt

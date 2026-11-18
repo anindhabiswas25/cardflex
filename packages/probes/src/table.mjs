@@ -119,6 +119,8 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     }
     return (await readRuntime(conn))[RT.phase];
   }
+  // CF-024: after reveal_hand, anyone moves the table to the next hand.
+  const nextHandIx = (payer) => ix("next_hand", [r(payer.publicKey, true), w(runtime)]);
   // CF-023: anyone may time out the player to act after turn_deadline.
   const timeoutIx = (d, payer) => {
     const n = d[GAME.n];
@@ -133,5 +135,5 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     w(hands[b]), w(permissionPdaFromAccount(hands[b])), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
   ], Buffer.concat([u8(a), u8(b), u8(grant ? 1 : 0)]));
 
-  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx, timeoutIx };
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx, timeoutIx, nextHandIx };
 }

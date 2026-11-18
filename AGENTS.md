@@ -177,6 +177,10 @@ Planned crates and apps are listed in PRD §7.
   converts with `GameState::{from_hand,to_hand}`. Tables must be configured
   (`configure_table(boot, rake_bps, rake_cap, refund_timeout)`) before a hand;
   seats only via `buy_in` (40–200 boots). `poc_join` and `end_hand` are gone.
+- Hand loop (CF-024): start_hand → salts → request_shuffle → VRF → deal →
+  act/timeout_turn → HAND_COMPLETE → reveal_hand → (side_show_view revoke)
+  → commit_hand → sync_hand (base) → next_hand → start_hand. `next_hand` is
+  permissionless and moves `TableRuntime.button`.
 - Turn timer (CF-023): `TableRuntime.turn_deadline` (unix s), `TURN_SECS = 25`;
   `timeout_turn(expected_seq)` is permissionless after it. `act` and
   `timeout_turn` share `apply_game_action` in lib.rs; put new game effects

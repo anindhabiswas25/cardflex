@@ -81,6 +81,7 @@ pub mod card_flex {
         runtime.config = config.key();
         runtime.authority = config.authority;
         runtime.max_seats = max_seats;
+        runtime.button = max_seats - 1;
         runtime.bump = ctx.bumps.runtime;
         let hand_log = &mut ctx.accounts.hand_log;
         hand_log.runtime = runtime.key();
@@ -718,8 +719,8 @@ pub mod card_flex {
     }
 
     /// Starts the salt round: fixes the dealing order and roster and computes
-    /// `hand_ctx` (CF-Fairness v2 spec §2). P1/P2: button fixed at seat 0, so
-    /// dealing order is seat order.
+    /// `hand_ctx` (CF-Fairness v2 spec §2). Dealing order: clockwise from the
+    /// seat left of the button, seats with stack >= boot only (CF-024).
     pub fn start_hand(ctx: Context<StartHand>) -> Result<()> {
         let config_key = ctx.accounts.config.key();
         let runtime = &mut ctx.accounts.runtime;
@@ -733,7 +734,7 @@ pub mod card_flex {
         let boot = runtime.boot;
         require!(boot > 0, CardFlexError::BadAmount);
         let seats: Vec<fairness_core::Seat> = runtime
-            .seated()
+            .seated_from_button()
             .filter(|&i| runtime.stacks[i] >= boot)
             .map(|i| fairness_core::Seat {
                 index: i as u8,
@@ -783,6 +784,12 @@ pub mod card_flex {
         require!(
             runtime.salts_in & (1 << seat) == 0,
             CardFlexError::SaltAlreadySubmitted
+        );
+        // Only dealt seats: a seated player who isn't dealt in (stack below
+        // the boot) must not be able to stall the hand with a stray salt.
+        require!(
+            runtime.dealing_order[..runtime.dealing_count as usize].contains(&seat),
+            CardFlexError::SeatEmpty
         );
         let runtime_key = runtime.key();
         let (expected, _) =
@@ -1112,6 +1119,33 @@ pub mod card_flex {
             teen_patti_core::game::Action::Timeout,
             ctx.remaining_accounts,
         )
+    }
+
+    /// Moves to the next hand once this one is revealed (CF-024).
+    /// Permissionless. The button moves to the seat dealt first this hand;
+    /// `hand_no` goes up, so every account of the old hand (salts, seat
+    /// hands, VRF) is stale for the new one. Stacks stay as settled; a keeper
+    /// commits and syncs them (`commit_hand`, `sync_hand`) between hands.
+    pub fn next_hand(ctx: Context<NextHand>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.phase == phase::REVEALED, CardFlexError::WrongPhase);
+        if runtime.dealing_count > 0 {
+            runtime.button = runtime.dealing_order[0];
+        }
+        runtime.hand_no = runtime
+            .hand_no
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        runtime.phase = phase::IDLE;
+        runtime.dealt = false;
+        runtime.salts_in = 0;
+        runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+        runtime.vrf_caller_seed = [0; 32];
+        runtime.merkle_root = [0; 32];
+        runtime.game = GameState::default();
+        runtime.action_seq = 0;
+        runtime.turn_deadline = 0;
+        Ok(())
     }
 
     /// Cancels a hand whose VRF callback hasn't arrived within

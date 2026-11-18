@@ -15,8 +15,9 @@ Amounts are lamports. "Stake" is the current bet in **blind terms**.
 - 52 cards, no jokers; 2–6 players; 3 cards each, dealt in dealing order
   (CF-Fairness v2 §8).
 - **Dealing order** starts with the seat left of the button. The first
-  player in dealing order acts first. (Moving the button each hand comes in
-  P5. P2 fixed it at seat 0.)
+  player in dealing order acts first. A new table's button is on the last
+  seat (the first hand deals from seat 0); after every hand `next_hand` moves
+  it to the seat that was dealt first (CF-024).
 - **Boot:** fixed per table, collected from every dealt seat when the hand
   starts. A seat whose stack is below the boot is not dealt in.
 

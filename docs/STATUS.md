@@ -26,8 +26,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-021 | P5: showdown + settlement set HAND_COMPLETE; remove `end_hand`; reveal after showdown | Done locally (Devnet run in CF-025): `end_hand` removed; public action log in `HandLog`; `cf-verify` replays the game (`cf-hand-record/2`) | `docs/spec/teen-patti-rules-v1.md` §7 |
 | CF-022 | P5: Side Show driven by game state (mutual read grant on accept, auto-revoke) | Done locally (Devnet run in CF-025): `side_show_view`; `set_hand_readers` revoke-only; fix: `start_hand` refuses a live grant | `programs/card-flex/tests/test_game.rs`, `pnpm handflow` |
 | CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Done locally (Devnet run in CF-025): `turn_deadline`, `timeout_turn`. Crank: the pinned SDK has no crank feature (ADR 0001), so a keeper calls `timeout_turn`; scheduling it is P8 keeper work | `programs/card-flex/tests/test_game.rs` |
-| CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Next | |
-| CF-025 | P5: six-player full game on Devnet, verified end to end | Planned | |
+| CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Done locally (Devnet run in CF-025): `button`, `next_hand`; fix: only dealt seats may submit salts | `programs/card-flex/tests/test_table.rs` |
+| CF-025 | P5: six-player full game on Devnet, verified end to end | Next | |
 
 ## Blockers and asks for the team
 
@@ -45,6 +45,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-024 (local): multi-hand loop. `TableRuntime.button`
+  (starts on the last seat); dealing starts left of it; permissionless
+  `next_hand` (after reveal) moves it to the first dealt seat, bumps
+  `hand_no` and resets per-hand state. Fix: `submit_salt` accepted a salt
+  from a seated but undealt seat, which would stall the hand forever; now
+  only dealt seats may submit.
 - 2026-11-19 — CF-023 (local): turn timer. `deal_hand` and every action
   except See set `turn_deadline = now + 25 s`; after it, permissionless
   `timeout_turn` applies Timeout (pack, or reject a pending Side Show)

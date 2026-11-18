@@ -289,3 +289,162 @@ fn start_hand_refuses_a_live_reader_grant() {
     start(&mut t).expect("no live grant: the hand starts");
     assert_eq!(runtime(&t).phase, card_flex::table::phase::SALTS_PENDING);
 }
+
+fn patch_runtime(t: &mut Table, f: impl FnOnce(&mut TableRuntime)) {
+    use anchor_lang::AccountSerialize;
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+    f(&mut rt);
+    let mut data = Vec::new();
+    rt.try_serialize(&mut data).unwrap();
+    data.resize(acc.data.len(), 0);
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
+}
+
+fn send_signed(t: &mut Table, ix: Instruction, signers: &[&Keypair]) -> Result<(), String> {
+    t.svm.expire_blockhash();
+    let msg =
+        Message::new_with_blockhash(&[ix], Some(&signers[0].pubkey()), &t.svm.latest_blockhash());
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), signers).unwrap();
+    t.svm
+        .send_transaction(tx)
+        .map(|_| ())
+        .map_err(|e| e.meta.logs.join("\n"))
+}
+
+fn start_hand_ix(t: &Table) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::StartHand {}.data(),
+        card_flex::accounts::StartHand {
+            authority: t.authority.pubkey(),
+            config: t.config,
+            runtime: t.runtime,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn next_hand_ix(t: &Table, payer: &Keypair) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::NextHand {}.data(),
+        card_flex::accounts::NextHand {
+            payer: payer.pubkey(),
+            runtime: t.runtime,
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-024: the button moves every hand; dealing starts left of it; seats
+/// below the boot sit out; `next_hand` needs a revealed hand.
+#[test]
+fn button_moves_and_dealing_order_follows_it() {
+    use card_flex::table::phase;
+    let (mut t, _) = create(4);
+    let wallets: Vec<Keypair> = (0..3).map(|_| funded(&mut t.svm)).collect();
+    for (s, w) in wallets.iter().enumerate() {
+        assert!(join(&mut t, w, s as u8, Pubkey::new_unique()));
+    }
+    patch_runtime(&mut t, |rt| rt.locked = true);
+    let a = t.authority.insecure_clone();
+    let anyone = funded(&mut t.svm);
+    let order = |t: &Table| {
+        let rt = runtime(t);
+        rt.dealing_order[..rt.dealing_count as usize].to_vec()
+    };
+    assert_eq!(runtime(&t).button, 3, "new table: button on the last seat");
+    {
+        let ix = start_hand_ix(&t);
+        send_signed(&mut t, ix, &[&a]).unwrap();
+    }
+    assert_eq!(order(&t), vec![0, 1, 2], "first hand deals from seat 0");
+    // next_hand only after the reveal.
+    let e = {
+        let ix = next_hand_ix(&t, &anyone);
+        send_signed(&mut t, ix, &[&anyone]).unwrap_err()
+    };
+    assert!(e.contains("WrongPhase"), "{e}");
+    for (want_button, want_order, hand_no) in [
+        (0u8, vec![1u8, 2, 0], 1u64),
+        (1, vec![2, 0, 1], 2),
+        (2, vec![0, 1, 2], 3),
+    ] {
+        patch_runtime(&mut t, |rt| rt.phase = phase::REVEALED);
+        {
+            let ix = next_hand_ix(&t, &anyone);
+            send_signed(&mut t, ix, &[&anyone]).unwrap();
+        }
+        let rt = runtime(&t);
+        assert_eq!(
+            (rt.button, rt.hand_no, rt.phase, rt.salts_in),
+            (want_button, hand_no, phase::IDLE, 0)
+        );
+        {
+            let ix = start_hand_ix(&t);
+            send_signed(&mut t, ix, &[&a]).unwrap();
+        }
+        assert_eq!(order(&t), want_order);
+    }
+    // Seat 1 drops below the boot: it sits out, and its salt is refused.
+    patch_runtime(&mut t, |rt| {
+        rt.phase = phase::REVEALED;
+        rt.stacks[1] = 24_999;
+    });
+    {
+        let ix = next_hand_ix(&t, &anyone);
+        send_signed(&mut t, ix, &[&anyone]).unwrap();
+    }
+    {
+        let ix = start_hand_ix(&t);
+        send_signed(&mut t, ix, &[&a]).unwrap();
+    }
+    assert_eq!(order(&t), vec![2, 0], "button on 0: seat 1 skipped");
+    let rt = runtime(&t);
+    let session1 = Keypair::new();
+    patch_runtime(&mut t, |r| r.session_keys[1] = session1.pubkey());
+    let salt = Pubkey::find_program_address(
+        &[card_flex::table::SALT_SEED, t.runtime.as_ref(), &[1]],
+        &card_flex::id(),
+    )
+    .0;
+    let mut d = vec![0u8; card_flex::table::SALT_LEN as usize];
+    d[..8].copy_from_slice(card_flex::table::SALT_TAG);
+    d[8..40].copy_from_slice(t.runtime.as_ref());
+    d[40] = 1;
+    t.svm
+        .set_account(
+            salt,
+            solana_account::Account {
+                lamports: 10_000_000,
+                data: d,
+                owner: card_flex::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+    let ix = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::SubmitSalt {
+            seat: 1,
+            salt: [7; 32],
+        }
+        .data(),
+        card_flex::accounts::SubmitSalt {
+            session: session1.pubkey(),
+            runtime: t.runtime,
+            salt,
+        }
+        .to_account_metas(None),
+    );
+    t.svm.airdrop(&session1.pubkey(), 1_000_000_000).unwrap();
+    let e = send_signed(&mut t, ix, &[&session1]).unwrap_err();
+    assert!(
+        e.contains("SeatEmpty"),
+        "a seat that isn't dealt can't submit a salt: {e}"
+    );
+    assert_eq!(runtime(&t).salts_in, rt.salts_in);
+}
