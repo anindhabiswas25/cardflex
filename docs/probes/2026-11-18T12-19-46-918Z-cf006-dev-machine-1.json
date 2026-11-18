@@ -1,0 +1,64 @@
+{
+  "probe": "CF-006",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T12:19:46.918Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "accounts": {
+    "authority": "4ygKJb9CwB7nj9A3kg1nEkAr9ufWVknBGzeXFFxWtiSN",
+    "config": "qXFqoSYRWLsNW9ZYVmSwvZqjCahqfTqmZMkWNr42tej",
+    "runtime": "6gdrbsTZJkWSw3gk5LmLATuxXfWoBxYUvYdCPi32febY",
+    "dealer": "EzsifLb6ampDAsDZtRbj5KCssMXfdCn24mQAYAR4c9Vg",
+    "hands": [
+      "98aFKfKvV5JoXjTrocn2pbmfEFE7wN2iYKW4PFB6Jnvz",
+      "3vBnRt9msbN3rGwUix7bBkZ8yMY9LqSSVdX8v7xbsnhR",
+      "4BwMhQeL466ie6L45nA5Wa8K7pD3KTSPXQ99mX8Mrh2W",
+      "3QFfqPRjvgZc9UMoCzKtcgaDXNW9FSAT3hfLJD3ckFMt",
+      "3PjzDM7j3JUy5PE8sk9dh1N3iVfJFczgAkrhgyFNHr7Z",
+      "AaVzz3XuPPjLMXGib1qvut5RmppGUAMbVVYRo13qV6CR"
+    ]
+  },
+  "steps": {
+    "fund": {
+      "sig": "4iiQyYgv2RRBzFDFiEB9gkAMmAEHy35tRUqBxJeQCKM1jXW2tDbHTYD1P6U7R4tgU7C8YWi8cT5YXCm6pCrprSEU",
+      "ms": 1627.8
+    },
+    "create_table": {
+      "sig": "5zFFw99nGL9QXBtYHAJer8FQdogvAWA93WGstbS44ybCp6D6tYvCBrmKD8Z56LHma76dwTbtTp5W3qERsv1742u9",
+      "ms": 1123.2
+    },
+    "joins": [
+      {
+        "sig": "28Af6bf42R8RaDhB3nB4FBfbyaAGBhLQwyXPJEcy9zk9AFxeEQtogYiUHQuYUxRdhEbFA6tLX6PomctAbb9E9VRJ",
+        "ms": 848.3
+      },
+      {
+        "sig": "2uDha7thNwPWCRpLa6rnyx5pg9oWjcU2rNsuK863dxfzJiwY282VeczXVYSM1KVbRyCGfUp8WBJNDMcVXWCTv15N",
+        "ms": 732.8
+      },
+      {
+        "sig": "5mzP2nCfRbgdCmSDwr4bNJ6PH1cGYfogzh8uXa9setcbDekCWGkmpBX3KRTsTNPKkg63JxoGv2JVSUgkV8SZAZG",
+        "ms": 1540.1
+      },
+      {
+        "sig": "4xdkaUyEziWg5q5GjCDUjsTSFgcBQ9Lc1MzcTbfQEbYzRGTCp1BKq3ihQ9bU6fTf6FgeTyMALqB8tf3XCXM8WL54",
+        "ms": 992.9
+      },
+      {
+        "sig": "4GGCsKDr9s4hQN7WYjG9bMMsybyYB1p9fG8WtyadeSFAieAkoPCvutVK8SfNz87Dc2QQTCe6ZgZN6PLiued4NjNg",
+        "ms": 2824
+      },
+      {
+        "sig": "44SGh8EjPhta4bxgWmJuPAogCTtkF2b2dBmbdASTaCR2iPfN3FTSjFvDgop4mUFHj3mdJGGk1huna2CoE9fNY7k4",
+        "ms": 970.1
+      }
+    ],
+    "delegate": {
+      "sig": "FjXzuSq5k1xBU6YTh2WWi9JLyfKiXkDtswNC5CTVbGdUYUBAbRokjVYSvByNs6VcdwdrCk3m1Kyd2HSowKnCuo7",
+      "ms": 1335.1
+    }
+  },
+  "ok": false,
+  "error": "TypeError: fetch failed",
+  "finished_at": "2026-11-18T12:20:24.960Z"
+}

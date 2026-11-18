@@ -23,6 +23,7 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = { workspace = true }
+card-types = { path = "../../crates/card-types" }
 # Pulled in now so CI proves the pinned Anchor + MagicBlock SDK combination builds.
 ephemeral-rollups-sdk = { workspace = true, features = ["anchor", "vrf", "access-control", "crank"] }
 

@@ -1,0 +1,356 @@
+{
+  "probe": "CF-006",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T12:20:41.318Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "accounts": {
+    "authority": "AXHDGpNcZLekstangGSeYPpVVZcgoof6Y9K8VKvAtkYG",
+    "config": "4Zc6kdC4FwWV8kT1TmZkSPZYLL8wS9vMcFaQPFv8x7M7",
+    "runtime": "DFowLQCeNvjXm4eXwcsaQvtq5cSxAUMVToyoQRPybDBw",
+    "dealer": "9kgQmhZcgHtbjuSizFTkaMJXCvd5epGQcXbLYZq3Mbcs",
+    "hands": [
+      "77yiQyMqBxQ5m19tmLuMCcgwk5wvZDcqcFzARhpfiVSr",
+      "7dif63rudFduk4wrBHf7EpYWDySjm22qENi46eureead",
+      "2s4qPWL8gzxtva2J3wQG4w316MTEHgZCrDSeDd55K9es",
+      "BDtCUKQdA63yiQYDXwju1NF6GqKqWWy4mZ84uBBk73Ly",
+      "3EtrxS53odKiTbn8SRmYfJ1JUq9LWxQumdLx1HUConGt",
+      "FU4aF43rKiNWYYNa5GXP4wedmsJubsuACDFdpSZZxaQ8"
+    ]
+  },
+  "steps": {
+    "fund": {
+      "sig": "4UhJz8z6Rnc7wpgLbVS91MT71qzixJc6HoYZhpi7NfL3fjSXHxQDGNknvnCLc9YNbRbiBmRDXPbU7ubkxkMoidkx",
+      "ms": 953.1
+    },
+    "create_table": {
+      "sig": "4btdfi1afDQDawmGEeHHhDG3ZvLemQ7CqyZHesLPAB7cisPPuGRbev99eKJJfnZsuLdtgJVGqaiddNakwX6RAKgT",
+      "ms": 784.5
+    },
+    "joins": [
+      {
+        "sig": "3A9FBczEqSmiXYTKQ6dSm5v8e7opzrjmR9R5WqFYNcg37MfibacYr8hrhDk3T4GwmCiuceE9oGVzxjiwy71JjhUr",
+        "ms": 838
+      },
+      {
+        "sig": "3sQpLq13NQuTV87R7TqhPpJ2LxftXXnedBqxEMiNpqxVkJqrhB6o7L6SDoJwtPavUZdUJBxbW7kXo79jmNEDCR95",
+        "ms": 733
+      },
+      {
+        "sig": "2FNRUGMGX54V7JiqCjTV9Q3CtYmrcVFz5gN4ZQbtdqvMyp5e1qQrFZAGUBt4aAGFJuwswap11A1xbf9erbWFVtoK",
+        "ms": 1672.3
+      },
+      {
+        "sig": "2GG7PCvwGRC7yoCQ1j1vZg8KbGTnWQxVnxYMENdGzHCLaLqSN5Ka81eVRPc8D1VDAZQ1jgTecabDYp26ueY76pMc",
+        "ms": 3715.2
+      },
+      {
+        "sig": "3FJwBt4ojmgvpqzU5aA2dp9y17DepbXMN6PBJBM4ygBhCSsWuWrWJ13WbWfcqcwWLpfNXYe8SMfQ8iFVrH3wrmTt",
+        "ms": 1284.8
+      },
+      {
+        "sig": "5EP9BrkttzZR7r4kt6Ao8rNS4D6nd3kYxwPb6RnWbYJiKMRy4Ljd1ZnKWaUfeibYbGPn23NcrzWqRunMWeqrR7W8",
+        "ms": 3901.3
+      }
+    ],
+    "delegate": {
+      "sig": "5zmrZVUXDnyWn2X4jud71ZBjFuwWoisbRxTJyLKayMzu9u7Rw85ceHijjVu5TmXh9YcdVgx7dzBvaYBBV2XYbbJa",
+      "ms": 1018.4
+    },
+    "runtime_visible_in_per_ms": 114.8,
+    "open_runtime_permission": {
+      "sig": "22LhMeGZ2TQcmQpFDxvTWAxqinYVMFQ14BURZi7PmMDjR5weDPNQZ9xRmyCm6V9rgzpgehzbw25A9VocFLVaZVHf",
+      "ms": 632.9
+    },
+    "open_dealer": {
+      "sig": "UpVjQCop2SmvGVkjCTNq7DPV79doM6qXBfTmRf5UN4pCCQGtGQNbB2xzefLn8QyLfhWzcKRwrPTsGK3Y3Ziuuv3",
+      "ms": 2077.4
+    },
+    "open_seat_hands": [
+      {
+        "sig": "3QbZjUJ67y6epY9pmwkgZugENhyyLsKdzHkYVWJAN8Co7XD6TEdc1u2yTfXyovkbYuRSFFaaXXegYG7JgqdFEjUZ",
+        "ms": 1056.9
+      },
+      {
+        "sig": "3necF5WYsYwVsNQJ69B7HpjjvrrXxJFPxkUeY3pWAUUYZgZ2s2CJugQcApFcqv4LY3caqtJMQ18PtY7GB9GRFjPE",
+        "ms": 194.3
+      },
+      {
+        "sig": "TBMiADsQUJX7AM7hRb8ChgdPM9b2ZEqoxCaSuy7PDg3RMtbSt6keo2EStbJVCxfkHwLc3TWxVf5DLgJEmasb7jW",
+        "ms": 209.8
+      },
+      {
+        "sig": "b7RbkViSRoGjR6Hi6UpuwdxYCnMfX51H2VA6LnETtjEGiT8RzzcGNkQa4qUdAhgoJbzJ4hzrVvWkkWfYadXLsJE",
+        "ms": 189.4
+      },
+      {
+        "sig": "2vJhfGnEbknuWx857Dkpu6cBqmjc5uQWcDzTvyAYod3R7a31gdfJeTVVXDkmATKA2zc5omY4rxToZrFYdE7euCPQ",
+        "ms": 2037.5
+      },
+      {
+        "sig": "kFnbLpD89JeDtkcsKmYJDmK7n1pUB53PUkBzvBN776XXUGqLSbW3QMoRoSAJstJDCNMamv8YneFRmmhsdJeq69Q",
+        "ms": 10688.2
+      }
+    ],
+    "deal": {
+      "sig": "4sJ68NpYSAvQveBDFAHrN9VChVaWtLahaFbjYjE68rqozf3gnRqNjhS4akEPsWC4sN1fdsUap5ciJ5G59WRdbHE2",
+      "ms": 2364.1
+    },
+    "delivery": [
+      {
+        "seat": 0,
+        "ws_notified_ms": 793.4,
+        "reread_ms": 5192.7,
+        "cards_match_deal": true
+      },
+      {
+        "seat": 1,
+        "ws_notified_ms": 1031.4,
+        "reread_ms": 1489.8,
+        "cards_match_deal": true
+      },
+      {
+        "seat": 2,
+        "ws_notified_ms": 793.3,
+        "reread_ms": 74.2,
+        "cards_match_deal": true
+      },
+      {
+        "seat": 3,
+        "ws_notified_ms": 793.1,
+        "reread_ms": 74.5,
+        "cards_match_deal": true
+      },
+      {
+        "seat": 4,
+        "ws_notified_ms": 1031.6,
+        "reread_ms": 73.2,
+        "cards_match_deal": true
+      },
+      {
+        "seat": 5,
+        "ws_notified_ms": 1073.3,
+        "reread_ms": 89,
+        "cards_match_deal": true
+      }
+    ],
+    "delivery_summary": {
+      "seats_with_correct_cards": 6,
+      "distinct_cards": 18,
+      "ws_notified": 6,
+      "ws_notify_ms": {
+        "n": 6,
+        "min": 793.1,
+        "p50": 793.4,
+        "p95": 1073.3,
+        "max": 1073.3
+      }
+    },
+    "privacy": {
+      "matrix": {
+        "authority": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "stranger": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "no_token": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "session0": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "R",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "wallet0": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "session1": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "R",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "wallet1": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "session2": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "R",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "wallet2": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "session3": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "R",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "wallet3": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "session4": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "R",
+          "hand5": "-"
+        },
+        "wallet4": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        },
+        "session5": {
+          "runtime": "R",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "R"
+        },
+        "wallet5": {
+          "runtime": "-",
+          "dealer": "-",
+          "hand0": "-",
+          "hand1": "-",
+          "hand2": "-",
+          "hand3": "-",
+          "hand4": "-",
+          "hand5": "-"
+        }
+      },
+      "violations": [],
+      "pass": true
+    },
+    "close": [
+      {
+        "sig": "f1qyS5vP7TuGCsx9tvgQwBWp6SF61gKgTFn8RG3a6VS1PHXkmn7JK3Pfwb6AiZYW3Xe1ToBFgRGNnZnLt6giNpv",
+        "ms": 490.6
+      },
+      {
+        "sig": "36vtUJ13wrkuzsYsYGrivYHPjFLLroiQUjfAJ3yDUhMsxa5anpCUpfY69fNpJZ7QTGf8wCKuXf9YaN5RqdiYxKFt",
+        "ms": 2277.2
+      },
+      {
+        "sig": "3oDn2U4NSAju6YuGahcBDgzPL5U5Up3y8z3PjuXKwKRT4ZE2GgKArnK6trRSqEKpCY17zp26nPCNm7razVUoSep9",
+        "ms": 7253.2
+      },
+      {
+        "sig": "33iTtEjqeD62huxWbYHXCYwuS8mfvmFTNXVh4J6bGLBwb7udWgZ95ZiFBKwqj7iL224LvuBMktduy6HXEQ27RxwB",
+        "ms": 1040.1
+      },
+      {
+        "sig": "4n8DvW7Akinbxn6VNssVzk9SkYDiGUdtdQVGd7GWhC7HXn5Gx6sQYABL4sAWKgF7NoeomnXPysGTPiZ1zPJzvmQi",
+        "ms": 436.3
+      },
+      {
+        "sig": "2BjRu1PvbYUHMqmhfP1hr5x2xUgCGQvrcEE8DiUk5BjKqZ5KQsjaeu5bJWMUFUPqvAJ2LZu51dEw8DUNZA7AJjqE",
+        "ms": 1380.3
+      },
+      {
+        "sig": "3MEfeQSTtYGiTJaEczxLmBJWqdGyBCbTvp8mo6ZSyAEU2ufPXU9fMqW69p6jLruTBtgttDnjeogX6qVpmeBMVMmY",
+        "ms": 1041.5
+      }
+    ],
+    "undelegate": {
+      "sig": "3VYZKuJwtDAK1VSsXJd8ktMYpAoWdhKnegzbyoVx2Xe65NVH3uL3WmgE44yBsSfmBMPwbt7hufnzf47v3XrjgLa4",
+      "ms": 161.4
+    },
+    "runtime_back_on_base_ms": 7204.1,
+    "base_layer": {
+      "secret_accounts": {
+        "dealer": "absent",
+        "hand0": "absent",
+        "hand1": "absent",
+        "hand2": "absent",
+        "hand3": "absent",
+        "hand4": "absent",
+        "hand5": "absent"
+      },
+      "runtime_contains_hand_bytes": false
+    }
+  },
+  "ok": true,
+  "auth_transient_failures": [],
+  "finished_at": "2026-11-18T12:22:28.243Z"
+}

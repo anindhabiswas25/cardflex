@@ -14,7 +14,8 @@
     "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust",
     "mb-stack": "mb-stack",
     "probe": "pnpm --filter @card-flex/probes probe",
-    "roundtrip": "pnpm --filter @card-flex/probes roundtrip"
+    "roundtrip": "pnpm --filter @card-flex/probes roundtrip",
+    "tablepoc": "pnpm --filter @card-flex/probes tablepoc"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

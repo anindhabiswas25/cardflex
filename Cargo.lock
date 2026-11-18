@@ -885,6 +885,7 @@ name = "card-flex"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "card-types",
  "ephemeral-rollups-sdk",
  "litesvm",
  "solana-keypair",

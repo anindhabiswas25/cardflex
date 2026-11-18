@@ -6,8 +6,12 @@
 //!   base layer, delegate it to the TEE validator, make it private, write to it
 //!   inside PER, commit, then commit-and-undelegate back to the base layer.
 //!   This is scaffolding for measurements and P1; game instructions replace it.
+//! - Table instructions (CF-006, `table.rs`): P1 privacy POC with the real
+//!   account layout from ADR 0002 and a fixed test deck.
 //! - `probe_secret_*`: CF-006 spike for ADR 0002 assumption A1: an
 //!   ephemeral-only account inside PER, protected by an ephemeral permission.
+
+pub mod table;
 
 use anchor_lang::prelude::*;
 use ephemeral_rollups_sdk::{
@@ -24,6 +28,8 @@ use ephemeral_rollups_sdk::{
     ephem::MagicIntentBundleBuilder,
     ephemeral_accounts::EphemeralAccount,
 };
+
+use table::*;
 
 declare_id!("4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL");
 
@@ -43,6 +49,285 @@ pub mod card_flex {
 
     pub fn ping(_ctx: Context<Ping>) -> Result<()> {
         msg!("card-flex protocol v{}", PROTOCOL_VERSION);
+        Ok(())
+    }
+
+    // ---------- CF-006 table (base layer) ----------
+
+    /// Creates `TableConfig` and `TableRuntime` and pre-funds the runtime
+    /// with the ephemeral rent it will spend inside PER.
+    pub fn create_table(ctx: Context<CreateTable>, table_id: u64, max_seats: u8) -> Result<()> {
+        require!(
+            (2..=MAX_SEATS as u8).contains(&max_seats),
+            CardFlexError::BadSeat
+        );
+        anchor_lang::system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.key(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.authority.to_account_info(),
+                    to: ctx.accounts.runtime.to_account_info(),
+                },
+            ),
+            ephemeral_budget(),
+        )?;
+        let config = &mut ctx.accounts.config;
+        config.authority = ctx.accounts.authority.key();
+        config.table_id = table_id;
+        config.max_seats = max_seats;
+        config.runtime = ctx.accounts.runtime.key();
+        config.bump = ctx.bumps.config;
+        let runtime = &mut ctx.accounts.runtime;
+        runtime.config = config.key();
+        runtime.authority = config.authority;
+        runtime.max_seats = max_seats;
+        runtime.bump = ctx.bumps.runtime;
+        Ok(())
+    }
+
+    /// P1 seating on the base layer: records the wallet and its session key.
+    /// P6 replaces this with `buy_in`.
+    pub fn poc_join(ctx: Context<PocJoin>, seat: u8, session_key: Pubkey) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        let wallet = ctx.accounts.wallet.key();
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        require!(
+            runtime.occupied & (1 << seat) == 0,
+            CardFlexError::SeatTaken
+        );
+        require!(!runtime.dealt, CardFlexError::AlreadyDealt);
+        require!(
+            !runtime.seated().any(|i| runtime.wallets[i] == wallet),
+            CardFlexError::SeatTaken
+        );
+        runtime.wallets[seat as usize] = wallet;
+        runtime.session_keys[seat as usize] = session_key;
+        runtime.occupied |= 1 << seat;
+        Ok(())
+    }
+
+    /// Delegates `TableRuntime` to the TEE validator. Never auto-commits
+    /// (ADR 0002 rule 1).
+    pub fn delegate_table(ctx: Context<DelegateTable>) -> Result<()> {
+        let validator = ctx.accounts.validator.as_ref().map(|v| v.key());
+        let config_key = ctx.accounts.config.key();
+        ctx.accounts.delegate_runtime(
+            &ctx.accounts.authority,
+            &[RUNTIME_SEED, config_key.as_ref()],
+            DelegateConfig {
+                commit_frequency_ms: u32::MAX,
+                validator,
+            },
+        )?;
+        Ok(())
+    }
+
+    // ---------- CF-006 table (PER) ----------
+
+    /// Makes `TableRuntime` readable only by the table authority and the
+    /// seated session keys.
+    pub fn open_runtime_permission(ctx: Context<TablePer>) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        require_keys_eq!(
+            ctx.accounts.target.key(),
+            runtime.key(),
+            CardFlexError::BadDealer
+        );
+        let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+        let mut members = vec![Member {
+            flags,
+            pubkey: runtime.authority,
+        }];
+        members.extend(runtime.seated().map(|i| Member {
+            flags,
+            pubkey: runtime.session_keys[i],
+        }));
+        let seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        create_permission(
+            ctx.accounts,
+            &ctx.accounts.runtime.to_account_info(),
+            members,
+            &[seeds],
+        )
+    }
+
+    /// Creates the ephemeral `DealerState`. Its only permission member is the
+    /// `TableRuntime` PDA, which can't sign, so no one can read it.
+    pub fn open_dealer(ctx: Context<TablePer>) -> Result<()> {
+        let runtime_key = ctx.accounts.runtime.key();
+        let (dealer, dealer_bump) =
+            Pubkey::find_program_address(&[DEALER_SEED, runtime_key.as_ref()], &crate::ID);
+        require_keys_eq!(ctx.accounts.target.key(), dealer, CardFlexError::BadDealer);
+        let runtime_seeds: &[&[u8]] = &[
+            RUNTIME_SEED,
+            ctx.accounts.runtime.config.as_ref(),
+            &[ctx.accounts.runtime.bump],
+        ];
+        let dealer_seeds: &[&[u8]] = &[DEALER_SEED, runtime_key.as_ref(), &[dealer_bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        EphemeralAccount::new(
+            &runtime_info,
+            &ctx.accounts.target,
+            &ctx.accounts.ephemeral_vault,
+        )
+        .with_signer_seeds(&[runtime_seeds, dealer_seeds])
+        .create(DEALER_LEN)?;
+        {
+            let mut data = ctx.accounts.target.try_borrow_mut_data()?;
+            data[..8].copy_from_slice(DEALER_TAG);
+            data[8..40].copy_from_slice(runtime_key.as_ref());
+        }
+        let members = vec![Member {
+            flags: 0,
+            pubkey: runtime_key,
+        }];
+        create_permission(
+            ctx.accounts,
+            &ctx.accounts.target.to_account_info(),
+            members,
+            &[runtime_seeds, dealer_seeds],
+        )
+    }
+
+    /// Creates the ephemeral `SeatHand` for an occupied seat, readable only by
+    /// that seat's session key.
+    pub fn open_seat_hand(ctx: Context<TablePer>, seat: u8) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        require!(
+            runtime.occupied & (1 << seat) != 0,
+            CardFlexError::SeatEmpty
+        );
+        let runtime_key = runtime.key();
+        let (hand, hand_bump) = Pubkey::find_program_address(
+            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
+            &crate::ID,
+        );
+        require_keys_eq!(ctx.accounts.target.key(), hand, CardFlexError::BadSeatHand);
+        let reader = runtime.session_keys[seat as usize];
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        EphemeralAccount::new(
+            &runtime_info,
+            &ctx.accounts.target,
+            &ctx.accounts.ephemeral_vault,
+        )
+        .with_signer_seeds(&[runtime_seeds, hand_seeds])
+        .create(SEAT_HAND_LEN)?;
+        {
+            let mut data = ctx.accounts.target.try_borrow_mut_data()?;
+            data[..8].copy_from_slice(SEAT_HAND_TAG);
+            data[8..40].copy_from_slice(runtime_key.as_ref());
+            data[40] = seat;
+        }
+        let members = vec![Member {
+            flags: TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG,
+            pubkey: reader,
+        }];
+        create_permission(
+            ctx.accounts,
+            &ctx.accounts.target.to_account_info(),
+            members,
+            &[runtime_seeds, hand_seeds],
+        )
+    }
+
+    /// Deals the P1 **test deck** (not random). `remaining_accounts` = the
+    /// seat hands of every occupied seat, in seat order.
+    pub fn poc_deal(ctx: Context<PocDeal>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(!runtime.dealt, CardFlexError::AlreadyDealt);
+        let seats: Vec<usize> = runtime.seated().collect();
+        require!(seats.len() >= 2, CardFlexError::NotEnoughPlayers);
+        require!(
+            ctx.remaining_accounts.len() == seats.len(),
+            CardFlexError::BadSeatHand
+        );
+        let runtime_key = runtime.key();
+        let deck = poc_test_deck(runtime.hand_no);
+
+        {
+            let mut data = ctx.accounts.dealer.try_borrow_mut_data()?;
+            require!(&data[..8] == DEALER_TAG, CardFlexError::BadDealer);
+            data[40..48].copy_from_slice(&runtime.hand_no.to_le_bytes());
+            for (i, card) in deck.iter().enumerate() {
+                data[48 + i] = card.id();
+            }
+        }
+        for (k, (&seat, hand)) in seats.iter().zip(ctx.remaining_accounts).enumerate() {
+            let (expected, _) = Pubkey::find_program_address(
+                &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat as u8]],
+                &crate::ID,
+            );
+            require_keys_eq!(hand.key(), expected, CardFlexError::BadSeatHand);
+            require_keys_eq!(*hand.owner, crate::ID, CardFlexError::BadSeatHand);
+            let mut data = hand.try_borrow_mut_data()?;
+            require!(&data[..8] == SEAT_HAND_TAG, CardFlexError::BadSeatHand);
+            data[41..49].copy_from_slice(&runtime.hand_no.to_le_bytes());
+            for (j, pos) in deal_positions(k, seats.len()).into_iter().enumerate() {
+                data[49 + j] = deck[pos].id();
+            }
+        }
+        runtime.dealt = true;
+        Ok(())
+    }
+
+    /// Closes an ephemeral account (dealer or a seat hand) and its permission,
+    /// returning rent to `TableRuntime`. Must run before `undelegate_table`.
+    pub fn close_ephemeral(ctx: Context<TablePer>, seat: Option<u8>) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        let runtime_key = runtime.key();
+        let (expected, bump) = match seat {
+            Some(s) => Pubkey::find_program_address(
+                &[SEAT_HAND_SEED, runtime_key.as_ref(), &[s]],
+                &crate::ID,
+            ),
+            None => Pubkey::find_program_address(&[DEALER_SEED, runtime_key.as_ref()], &crate::ID),
+        };
+        require_keys_eq!(
+            ctx.accounts.target.key(),
+            expected,
+            CardFlexError::BadSeatHand
+        );
+        let seat_byte = [seat.unwrap_or(0)];
+        let bump_byte = [bump];
+        let target_seeds: Vec<&[u8]> = match seat {
+            Some(_) => vec![SEAT_HAND_SEED, runtime_key.as_ref(), &seat_byte, &bump_byte],
+            None => vec![DEALER_SEED, runtime_key.as_ref(), &bump_byte],
+        };
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        CloseEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: ctx.accounts.target.to_account_info(),
+            permission: ctx.accounts.permission.to_account_info(),
+            vault: ctx.accounts.ephemeral_vault.to_account_info(),
+            magic_program: ctx.accounts.magic_program.to_account_info(),
+            permission_program: ctx.accounts.permission_program.to_account_info(),
+            authority: ctx.accounts.target.to_account_info(),
+            authority_is_signer: false,
+        }
+        .invoke_signed(&[runtime_seeds, &target_seeds])?;
+        EphemeralAccount::new(
+            &runtime_info,
+            &ctx.accounts.target,
+            &ctx.accounts.ephemeral_vault,
+        )
+        .with_signer_seeds(&[runtime_seeds])
+        .close()?;
+        Ok(())
+    }
+
+    /// Commits `TableRuntime` and returns it to the base layer.
+    pub fn undelegate_table(ctx: Context<CommitTable>) -> Result<()> {
+        MagicIntentBundleBuilder::new(
+            ctx.accounts.authority.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .commit_and_undelegate(&[ctx.accounts.runtime.to_account_info()])
+        .build_and_invoke()?;
         Ok(())
     }
 
@@ -118,7 +403,7 @@ pub mod card_flex {
     pub fn probe_write(ctx: Context<ProbeWrite>, value: u64) -> Result<()> {
         let probe = &mut ctx.accounts.probe;
         probe.value = value;
-        probe.writes = probe.writes.checked_add(1).ok_or(ProbeError::Overflow)?;
+        probe.writes = probe.writes.checked_add(1).ok_or(CardFlexError::Overflow)?;
         Ok(())
     }
 
@@ -168,7 +453,7 @@ pub mod card_flex {
         let mut data = ctx.accounts.secret.try_borrow_mut_data()?;
         require!(
             data.len() == SECRET_LEN as usize && &data[..8] == SECRET_TAG,
-            ProbeError::BadSecret
+            CardFlexError::BadSecret
         );
         data[8..40].copy_from_slice(&secret);
         Ok(())
@@ -233,6 +518,29 @@ pub mod card_flex {
 #[derive(Accounts)]
 pub struct Ping {}
 
+/// Creates a private ephemeral permission for `account` with `members`.
+fn create_permission<'info>(
+    accs: &TablePer<'info>,
+    account: &AccountInfo<'info>,
+    members: Vec<Member>,
+    signer_seeds: &[&[&[u8]]],
+) -> Result<()> {
+    CreateEphemeralPermissionCpi {
+        payer: accs.runtime.to_account_info(),
+        permissioned_account: account.clone(),
+        permission: accs.permission.to_account_info(),
+        vault: accs.ephemeral_vault.to_account_info(),
+        magic_program: accs.magic_program.to_account_info(),
+        permission_program: accs.permission_program.to_account_info(),
+        args: EphemeralMembersArgs {
+            is_private: true,
+            members,
+        },
+    }
+    .invoke_signed(signer_seeds)?;
+    Ok(())
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Probe {
@@ -242,11 +550,25 @@ pub struct Probe {
 }
 
 #[error_code]
-pub enum ProbeError {
+pub enum CardFlexError {
     #[msg("counter overflow")]
     Overflow,
     #[msg("not a probe secret account")]
     BadSecret,
+    #[msg("seat index out of range")]
+    BadSeat,
+    #[msg("seat already taken")]
+    SeatTaken,
+    #[msg("seat is empty")]
+    SeatEmpty,
+    #[msg("need at least two seated players")]
+    NotEnoughPlayers,
+    #[msg("hand already dealt")]
+    AlreadyDealt,
+    #[msg("wrong or missing seat hand account")]
+    BadSeatHand,
+    #[msg("wrong dealer account")]
+    BadDealer,
 }
 
 #[derive(Accounts)]

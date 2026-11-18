@@ -147,7 +147,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | CF-003 | Latency and geofence probe from each target region to devnet-tee | QA | 1–2 | P0 | In progress: probe built, dev-machine-1 measured; other regions pending (docs/findings/cf-003-devnet-access.md) |
 | CF-004 | Minimal program delegated to devnet-tee, commit + undelegate round-trip | PROG | 2 | P0 | Done (2026-11-18): docs/findings/cf-004-devnet-roundtrip.md |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | PROG | 2 | P0 | Done (2026-11-18): docs/adr/0002-account-lifecycle.md |
-| CF-006 | TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | PROG | 3–4 | P0 | Not started |
+| CF-006 | TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | PROG | 3–4 | P0 | Done (2026-11-18): docs/findings/cf-006-six-player-table.md |
 | CF-007 | Privacy probe suite: RPC, WS, getTransaction, logs, session reuse | QA | 3–5 | P0 | Not started |
 | CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | FAIR | 3–5 | P0 | Not started |
 | CF-009 | Salt round: private salt tx into SaltAccount, public commitment | PROG | 4–5 | P0 | Not started |
@@ -253,7 +253,7 @@ The docs don't answer these; PM raises them on MagicBlock Discord at kickoff and
 - [ ] Is a regional TEE endpoint (Asia, EU, US) planned?
 - [ ] Which TDX measurements can we pin, and are they published per release?
 - [x] Can an EphemeralPermission protect an ephemeral-only account (ADR 0002, assumption A1)? Yes in 4/4 Devnet runs (CF-006 spike); confirm in CF-007.
-- [ ] Why did an owner WebSocket subscription to an ephemeral account miss an update in 1 of 4 runs?
+- [ ] Why do owner WebSocket subscriptions to ephemeral accounts miss updates (1 of 4 runs in the spike; 0 of 6 players in one CF-006 run)?
 - [ ] Do ephemeral-only accounts survive a PER restart?
 - [ ] What is the fee-payer setup so per-hand commits never stop (10-commit limit)?
 

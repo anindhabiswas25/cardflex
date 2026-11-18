@@ -55,6 +55,7 @@ pnpm verify              # all of the above, same order as CI
 pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
 pnpm roundtrip -- --region <label> [--target tee|er-as]   # CF-004 devnet round trip (spends devnet SOL)
+pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet (needs anchor build)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -62,9 +63,10 @@ Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
 ## Repo map
 
 ```text
-programs/card-flex/    Anchor program; ping + CF-004 probe_* scaffolding (replace in P1)
+programs/card-flex/    Anchor program: table.rs = P1 table (ADR 0002 layout, TEST deck);
+                       probe_* = CF-004/A1 scaffolding (remove when P5 lands)
 crates/card-types/     frozen canonical card encoding (no_std)
-packages/probes/       CF-003 probe.mjs, CF-004 roundtrip.mjs
+packages/probes/       CF-003 probe.mjs, CF-004 roundtrip.mjs, CF-006 tablepoc.mjs
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region
 scripts/               check-toolchain.sh
@@ -110,6 +112,14 @@ Planned crates and apps are listed in PRD §7.
   transaction as signature + status only (CF-006 spike). Owner WS updates on
   an ephemeral account were missed once in 4 runs, so re-read, don't trust
   the socket alone.
+- Six-player privacy matrix passes on Devnet (CF-006): session key reads only
+  its own SeatHand, wallets read nothing, DealerState unreadable. Clients must
+  POLL their own SeatHand after a deal; WebSocket delivered 0/6 in one run.
+- An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
+  otherwise); use `CardFlexError` in lib.rs.
+- If `solana program deploy` fails mid-way, close the leftover buffer
+  (`solana program show --buffers`, `solana program close <buffer>`) to get
+  the SOL back, then redeploy.
 - Program upgrades need room: check `solana program show` Data Length vs the
   new `.so` size and run `solana program extend <id> <bytes>` first.
 - MagicBlock IDs and endpoints: PRD §5.1.2 and ADR 0001.
