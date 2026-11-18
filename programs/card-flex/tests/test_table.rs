@@ -144,14 +144,19 @@ fn join(t: &mut Table, wallet: &Keypair, seat: u8, session_key: Pubkey) -> bool 
         card_flex::accounts::BuyIn {
             wallet: wallet.pubkey(),
             config: t.config,
-            runtime: t.runtime,
             vault: t.vault,
             ledger,
+            global: common::global_address(),
             system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
     send(&mut t.svm, ix, wallet)
+        && send(
+            &mut t.svm,
+            common::join_seat_ix(&wallet.pubkey(), t.runtime, t.config, seat),
+            wallet,
+        )
 }
 
 fn runtime(t: &Table) -> TableRuntime {

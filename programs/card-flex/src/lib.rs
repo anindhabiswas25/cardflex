@@ -19,9 +19,13 @@ use ephemeral_rollups_sdk::{
         instructions::{
             CloseEphemeralPermissionCpi, CreateEphemeralPermissionCpi, UpdateEphemeralPermissionCpi,
         },
-        structs::{EphemeralMembersArgs, Member, TX_BALANCES_FLAG, TX_LOGS_FLAG, TX_MESSAGE_FLAG},
+        structs::{
+            EphemeralMembersArgs, Member, PERMISSION_SEED, TX_BALANCES_FLAG, TX_LOGS_FLAG,
+            TX_MESSAGE_FLAG,
+        },
     },
     anchor::ephemeral,
+    consts::{EPHEMERAL_VAULT_ID, MAGIC_PROGRAM_ID, PERMISSION_PROGRAM_ID},
     cpi::DelegateConfig,
     ephem::MagicIntentBundleBuilder,
     ephemeral_accounts::EphemeralAccount,
@@ -169,31 +173,39 @@ pub mod card_flex {
     /// Base layer, before delegation (the runtime must still be owned by this
     /// program, which Anchor checks). P6 adds re-buys and cash-out.
     pub fn buy_in(ctx: Context<BuyIn>, seat: u8, amount: u64, session_key: Pubkey) -> Result<()> {
+        require!(!ctx.accounts.global.paused, CardFlexError::Paused);
         let config = &mut ctx.accounts.config;
-        let runtime = &mut ctx.accounts.runtime;
         let wallet = ctx.accounts.wallet.key();
         require!(
             config.status == status::ACTIVE,
             CardFlexError::TableNotActive
         );
-        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
-        require!(!runtime.locked, CardFlexError::TableLocked);
-        require!(
-            runtime.occupied & (1 << seat) == 0,
-            CardFlexError::SeatTaken
-        );
-        require!(
-            !runtime.seated().any(|i| runtime.wallets[i] == wallet),
-            CardFlexError::SeatTaken
-        );
+        require!(seat < config.max_seats, CardFlexError::BadSeat);
         require!(
             amount >= config.min_buy_in && amount <= config.max_buy_in,
             CardFlexError::BadAmount
         );
-        let runtime_key = runtime.key();
+        // One seat per wallet (ledger init already refuses a taken seat).
+        let seated_wallets: Vec<Pubkey> = (0..MAX_SEATS)
+            .filter(|&i| config.seated & (1 << i) != 0)
+            .map(|i| config.wallets[i])
+            .collect();
+        require!(!seated_wallets.contains(&wallet), CardFlexError::SeatTaken);
+        // Session key: the checks the base layer can make; `join_seat`
+        // repeats the full check against the live runtime.
         let config_key = config.key();
         require!(
-            runtime.is_valid_new_session(&session_key, &runtime_key, &config_key, &wallet),
+            session_key != Pubkey::default()
+                && session_key != wallet
+                && session_key != config.authority
+                && session_key != config_key
+                && session_key != config.runtime
+                && session_key != ctx.accounts.vault.key()
+                && !seated_wallets.contains(&session_key)
+                && !(0..MAX_SEATS).any(|i| {
+                    config.seated & (1 << i) != 0
+                        && (config.sessions[i] == session_key || config.sessions[i] == wallet)
+                }),
             CardFlexError::BadSessionKey
         );
         anchor_lang::system_program::transfer(
@@ -206,10 +218,12 @@ pub mod card_flex {
             ),
             amount,
         )?;
-        runtime.wallets[seat as usize] = wallet;
-        runtime.session_keys[seat as usize] = session_key;
-        runtime.stacks[seat as usize] = amount;
-        runtime.occupied |= 1 << seat;
+        let epoch = config.seat_epochs[seat as usize]
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        config.seat_epochs[seat as usize] = epoch;
+        config.wallets[seat as usize] = wallet;
+        config.sessions[seat as usize] = session_key;
         config.seated |= 1 << seat;
         let ledger = &mut ctx.accounts.ledger;
         ledger.config = config_key;
@@ -218,6 +232,170 @@ pub mod card_flex {
         ledger.buy_in = amount;
         ledger.synced_stack = amount;
         ledger.bump = ctx.bumps.ledger;
+        ledger.epoch = epoch;
+        ledger.session_key = session_key;
+        ledger.left = false;
+        Ok(())
+    }
+
+    /// Seats a bought-in ledger (ADR 0005 decision 2). Permissionless: the
+    /// ledger alone decides who sits and with what. Between hands only.
+    pub fn join_seat(ctx: Context<JoinSeat>, seat: u8) -> Result<()> {
+        let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+        let (runtime_key, config, bump, session, members, locked) = {
+            let runtime = &mut ctx.accounts.runtime;
+            let ledger = &ctx.accounts.ledger;
+            require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+            require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+            require!(
+                runtime.occupied & (1 << seat) == 0,
+                CardFlexError::SeatTaken
+            );
+            require_keys_eq!(ledger.config, runtime.config, CardFlexError::BadLedger);
+            require!(
+                ledger.epoch == runtime.seat_epoch[seat as usize].wrapping_add(1) && !ledger.left,
+                CardFlexError::BadLedger
+            );
+            let runtime_key = runtime.key();
+            let config = runtime.config;
+            require!(
+                !runtime
+                    .seated()
+                    .any(|i| runtime.wallets[i] == ledger.wallet),
+                CardFlexError::SeatTaken
+            );
+            require!(
+                runtime.is_valid_new_session(
+                    &ledger.session_key,
+                    &runtime_key,
+                    &config,
+                    &ledger.wallet
+                ),
+                CardFlexError::BadSessionKey
+            );
+            let s = seat as usize;
+            runtime.wallets[s] = ledger.wallet;
+            runtime.session_keys[s] = ledger.session_key;
+            runtime.stacks[s] = ledger.buy_in;
+            runtime.seat_epoch[s] = ledger.epoch;
+            runtime.occupied |= 1 << seat;
+            let mut members = vec![Member {
+                flags,
+                pubkey: runtime.authority,
+            }];
+            members.extend(runtime.seated().map(|i| Member {
+                flags,
+                pubkey: runtime.session_keys[i],
+            }));
+            (
+                runtime_key,
+                config,
+                runtime.bump,
+                ledger.session_key,
+                members,
+                runtime.locked,
+            )
+        };
+        if !locked {
+            return Ok(()); // base layer, before permissions exist
+        }
+        let a = &ctx.accounts;
+        let (hand, hand_perm, rt_perm, perm_prog, vault, magic) = (
+            need(&a.hand)?,
+            need(&a.hand_permission)?,
+            need(&a.runtime_permission)?,
+            need(&a.permission_program)?,
+            need(&a.ephemeral_vault)?,
+            need(&a.magic_program)?,
+        );
+        let (hand_pda, hand_bump) = Pubkey::find_program_address(
+            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
+            &crate::ID,
+        );
+        let perm_of = |k: &Pubkey| {
+            Pubkey::find_program_address(&[PERMISSION_SEED, k.as_ref()], &PERMISSION_PROGRAM_ID).0
+        };
+        require_keys_eq!(hand.key(), hand_pda, CardFlexError::BadSeatHand);
+        require_keys_eq!(
+            hand_perm.key(),
+            perm_of(&hand_pda),
+            CardFlexError::BadSeatHand
+        );
+        require_keys_eq!(
+            rt_perm.key(),
+            perm_of(&runtime_key),
+            CardFlexError::BadSeatHand
+        );
+        require_keys_eq!(
+            perm_prog.key(),
+            PERMISSION_PROGRAM_ID,
+            CardFlexError::BadSeatHand
+        );
+        require_keys_eq!(vault.key(), EPHEMERAL_VAULT_ID, CardFlexError::BadSeatHand);
+        require_keys_eq!(magic.key(), MAGIC_PROGRAM_ID, CardFlexError::BadSeatHand);
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, config.as_ref(), &[bump]];
+        let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        UpdateEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: hand.clone(),
+            permission: hand_perm,
+            vault: vault.clone(),
+            magic_program: magic.clone(),
+            permission_program: perm_prog.clone(),
+            authority: hand,
+            authority_is_signer: false,
+            args: EphemeralMembersArgs {
+                is_private: true,
+                members: vec![Member {
+                    flags,
+                    pubkey: session,
+                }],
+            },
+        }
+        .invoke_signed(&[runtime_seeds, hand_seeds])?;
+        UpdateEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: runtime_info.clone(),
+            permission: rt_perm,
+            vault,
+            magic_program: magic,
+            permission_program: perm_prog,
+            authority: runtime_info,
+            authority_is_signer: false,
+            args: EphemeralMembersArgs {
+                is_private: true,
+                members,
+            },
+        }
+        .invoke_signed(&[runtime_seeds])?;
+        Ok(())
+    }
+
+    /// Refunds a buy-in that never joined (ADR 0005). Only while the runtime
+    /// is on the base layer and owned by this program: then the base copy is
+    /// the truth, and no join in PER can race the refund. Anyone may submit;
+    /// it pays the recorded wallet and closes the ledger.
+    pub fn cancel_buy_in(ctx: Context<CancelBuyIn>, seat: u8) -> Result<()> {
+        let runtime = &ctx.accounts.runtime;
+        require!(
+            runtime.seat_epoch[seat as usize] < ctx.accounts.ledger.epoch,
+            CardFlexError::SeatTaken
+        );
+        let pay = ctx.accounts.ledger.synced_stack;
+        let vault_info = ctx.accounts.vault.to_account_info();
+        let rent_floor = Rent::get()?.minimum_balance(vault_info.data_len());
+        require!(
+            vault_info.lamports() >= rent_floor.saturating_add(pay),
+            CardFlexError::VaultShort
+        );
+        ctx.accounts.ledger.synced_stack = 0;
+        **vault_info.try_borrow_mut_lamports()? -= pay;
+        **ctx.accounts.wallet.try_borrow_mut_lamports()? += pay;
+        let config = &mut ctx.accounts.config;
+        config.seated &= !(1 << seat);
+        config.wallets[seat as usize] = Pubkey::default();
+        config.sessions[seat as usize] = Pubkey::default();
         Ok(())
     }
 
@@ -306,8 +484,12 @@ pub mod card_flex {
             );
             require_keys_eq!(acc.key(), pda, CardFlexError::BadLedger);
             let mut ledger: Account<SeatLedger> = Account::try_from(acc)?;
-            ledger.synced_stack = rt.stacks[seat as usize];
-            ledger.exit(&crate::ID)?;
+            // ADR 0005: only the sit-down this ledger belongs to. A ledger
+            // that hasn't joined yet keeps its buy-in.
+            if rt.seat_epoch[seat as usize] == ledger.epoch && rt.occupied & (1 << seat) != 0 {
+                ledger.synced_stack = rt.stacks[seat as usize];
+                ledger.exit(&crate::ID)?;
+            }
         }
         Ok(())
     }
@@ -472,10 +654,8 @@ pub mod card_flex {
         );
         let runtime = &ctx.accounts.runtime;
         require!(seat < runtime.max_seats, CardFlexError::BadSeat);
-        require!(
-            runtime.occupied & (1 << seat) != 0,
-            CardFlexError::SeatEmpty
-        );
+        // Empty seats too (ADR 0005): their reader is the default key, which
+        // nobody holds; `join_seat` swaps in the new player's session key.
         let runtime_key = runtime.key();
         let (hand, hand_bump) = Pubkey::find_program_address(
             &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
@@ -719,10 +899,7 @@ pub mod card_flex {
         );
         let runtime = &ctx.accounts.runtime;
         require!(seat < runtime.max_seats, CardFlexError::BadSeat);
-        require!(
-            runtime.occupied & (1 << seat) != 0,
-            CardFlexError::SeatEmpty
-        );
+        // Empty seats too (ADR 0005): the salt account has no human reader.
         let runtime_key = runtime.key();
         let (salt, salt_bump) =
             Pubkey::find_program_address(&[SALT_SEED, runtime_key.as_ref(), &[seat]], &crate::ID);
@@ -1514,6 +1691,13 @@ fn create_permission_with<'info>(
     }
     .invoke_signed(signer_seeds)?;
     Ok(())
+}
+
+/// An optional account that must be present (permission paths of `join_seat`).
+fn need<'info>(o: &Option<UncheckedAccount<'info>>) -> Result<AccountInfo<'info>> {
+    o.as_ref()
+        .map(|x| x.to_account_info())
+        .ok_or(error!(CardFlexError::BadSeatHand))
 }
 
 /// Replaces a seat hand's reader list (permission CPI signed by the runtime

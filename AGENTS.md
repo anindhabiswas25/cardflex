@@ -202,6 +202,10 @@ Planned crates and apps are listed in PRD §7.
   `GlobalConfig` (`["global"]`) holds treasury, max rake and pause; only the
   program's upgrade authority can create it (probes: `ensureGlobal`). Pause
   must never block cash-out, refunds or rake sweeps.
+- Seating (CF-031): `buy_in` (base) only creates the ledger; `join_seat`
+  (permissionless, IDLE only) puts it in the runtime. Probes: `buyInIx` then
+  `joinSeatIx` (common.mjs). Open seat hands and salts for ALL seats at setup:
+  `join_seat` in PER only swaps reader lists, it never creates accounts.
 - Money (ADR 0004): lamports only in TableVault (never delegated); only
   `SeatLedger.synced_stack` is ever paid; `sync_hand` trusts committed runtime
   state only after checking the delegation record (validator + owner) and

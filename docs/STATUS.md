@@ -29,8 +29,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Done (Devnet verified in CF-025): `button`, `next_hand`; fix: only dealt seats may submit salts | `programs/card-flex/tests/test_table.rs` |
 | CF-025 | P5: six-player full game on Devnet, verified end to end | Done: 3- and 5-hand games 39/39 and 66/66; handflow 67/67, privacy suite 230/230, recovery 20/20; fix: Side Show viewers cleared by `next_hand` | `pnpm game`, `docs/findings/cf-025-full-game.md` |
 | CF-030 | P6: ADR 0005 (seat lifecycle + money) and `GlobalConfig` (treasury, max rake, pause) | Done locally (Devnet in CF-035) | `docs/adr/0005-seat-lifecycle-and-money.md`, `tests/test_global.rs` |
-| CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Next | |
-| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Planned | |
+| CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Done locally (Devnet in CF-035): `cancel_buy_in` for unjoined seats while not delegated; seat hands and salts opened for empty seats | `tests/test_recovery.rs` |
+| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Next | |
 | CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Planned | |
 | CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Planned | |
 | CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Planned | |
@@ -51,6 +51,14 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-031 (local): `buy_in` works on a live table (ledger with
+  a new seat epoch, payout wallet, session key; pause-checked); permissionless
+  `join_seat` seats exactly the next epoch between hands and, in PER, swaps
+  the seat hand and runtime reader lists. `sync_hand` copies stacks only on
+  matching epochs, so an unjoined ledger keeps its buy-in. `cancel_buy_in`
+  refunds an unjoined ledger only while the runtime isn't delegated (no race
+  with a PER join). Seat hands and salts are opened for empty seats too.
+  Program now 811 KB (deploy script extends the slot).
 - 2026-11-19 — P6 started. ADR 0005: seat epochs keep a seat's old and new
   occupant apart; buy-in = ledger on base + `join_seat`; leave at a hand
   boundary, cash-out once from synced state; rake swept only from synced

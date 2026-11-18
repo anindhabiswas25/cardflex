@@ -131,7 +131,7 @@ export const RT = {
   stacks: 810, commit_seq: 858,
   // CF-020 rules and live hand (checked by tests/test_game.rs runtime_byte_offsets).
   boot: 866, rake_bps: 874, rake_cap: 876, rake_owed: 884, action_seq: 892, game: 900,
-  side_show_viewers: 1140, side_show_hand_no: 1146, turn_deadline: 1154, button: 1162,
+  side_show_viewers: 1140, side_show_hand_no: 1146, turn_deadline: 1154, button: 1162, seat_epoch: 1163,
 };
 // GameState offsets inside TableRuntime (absolute). Seats are 20 bytes each:
 // dealt, active, seen, blind_turns (1 each), stack u64, contributed u64.
@@ -225,3 +225,19 @@ export async function ensureGlobal(conn, ix, admin, maxRakeBps = 1_000) {
   ], data)], [admin]);
   return true;
 }
+
+// ---- CF-031: buy-in (base, ledger only) then join_seat (ADR 0005) ----
+// SeatLedger tail: epoch(90) session_key(94) left(126).
+export const SL5 = { epoch: 90, session_key: 94, left: 126 };
+export const ledgerPda = (config, seat) => PublicKey.findProgramAddressSync([Buffer.from("seat-ledger"), config.toBuffer(), Buffer.from([seat])], PROGRAM_ID)[0];
+export const buyInIx = (ix, wallet, config, vault, seat, amount, session) => ix("buy_in", [
+  w(wallet, true), w(config), w(vault), w(ledgerPda(config, seat)), r(GLOBAL), r(SystemProgram.programId),
+], Buffer.concat([u8(seat), u64(BigInt(amount)), session.toBuffer()]));
+/** join_seat. `per` = { hand, handPermission, runtimePermission, permissionProgram, vault, magic } once
+ * the table's permissions exist (PER); absent optional accounts are the program id. */
+export const joinSeatIx = (ix, payer, runtime, config, seat, per = null) => ix("join_seat", [
+  r(payer, true), w(runtime), r(ledgerPda(config, seat)),
+  ...(per
+    ? [w(per.hand), w(per.handPermission), w(per.runtimePermission), r(per.permissionProgram), w(per.vault), r(per.magic)]
+    : Array(6).fill(r(PROGRAM_ID))),
+], u8(seat));

@@ -8,7 +8,7 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, loadDiscriminators, loadPayer, makeIx, send, tokenFor, teeConn,
-  waitFor, log, w, r, u8, u64, RT, GAME, PHASE, ACTION, GLOBAL, ensureGlobal,
+  waitFor, log, w, r, u8, u64, RT, GAME, PHASE, ACTION, GLOBAL, ensureGlobal, buyInIx, joinSeatIx,
 } from "./common.mjs";
 
 // Every seat buys in for real (vault + seat ledgers, ADR 0004). The table is
@@ -48,8 +48,8 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     for (let s = 0; s < seats; s++) {
       // Fund each wallet for its buy-in plus the seat-ledger rent.
       await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: buyIn + 5_000_000 })], [payer]);
-      await send(base, [ix("buy_in", [w(players[s].wallet.publicKey, true), w(config), w(runtime), w(vault), w(ledgers[s]), r(SystemProgram.programId)],
-        Buffer.concat([u8(s), u64(buyIn), players[s].session.publicKey.toBuffer()]))], [players[s].wallet]);
+      await send(base, [buyInIx(ix, players[s].wallet.publicKey, config, vault, s, buyIn, players[s].session.publicKey)], [players[s].wallet]);
+      await send(base, [joinSeatIx(ix, players[s].wallet.publicKey, runtime, config, s)], [players[s].wallet]);
     }
   }
   await send(base, [ix("delegate_table", [

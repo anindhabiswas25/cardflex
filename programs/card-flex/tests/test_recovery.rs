@@ -141,9 +141,9 @@ fn buy_in_ix(t: &T, seat: u8, amount: u64, wallet: &Keypair) -> Instruction {
         card_flex::accounts::BuyIn {
             wallet: wallet.pubkey(),
             config: t.config,
-            runtime: t.runtime,
             vault: t.vault,
             ledger: ledger(t, seat),
+            global: common::global_address(),
             system_program: system_program::ID,
         }
         .to_account_metas(None),
@@ -153,6 +153,9 @@ fn buy_in_ix(t: &T, seat: u8, amount: u64, wallet: &Keypair) -> Instruction {
 fn buy_in(t: &mut T, seat: u8, amount: u64) -> Result<(), String> {
     let w = t.wallets[seat as usize].insecure_clone();
     let ix = buy_in_ix(t, seat, amount, &w);
+    send_ix(vec![ix], &mut t.svm, &[&w])?;
+    // ADR 0005: the seat enters the runtime with join_seat.
+    let ix = common::join_seat_ix(&w.pubkey(), t.runtime, t.config, seat);
     send_ix(vec![ix], &mut t.svm, &[&w])
 }
 
@@ -581,4 +584,250 @@ fn only_the_tee_validator_is_trusted() {
     assert_eq!(ledger_state(&t, 0).synced_stack, 1_000_000);
     assert!(card_flex::table::allowed_validator(&TEE.parse().unwrap()));
     assert!(!card_flex::table::allowed_validator(&rogue));
+}
+
+fn runtime_state(t: &T) -> TableRuntime {
+    TableRuntime::try_deserialize(&mut t.svm.get_account(&t.runtime).unwrap().data.as_slice())
+        .unwrap()
+}
+
+fn cancel_ix(t: &T, seat: u8, payer: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::CancelBuyIn { seat }.data(),
+        card_flex::accounts::CancelBuyIn {
+            payer,
+            config: t.config,
+            runtime: t.runtime,
+            vault: t.vault,
+            ledger: ledger(t, seat),
+            wallet: t.wallets[seat as usize].pubkey(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-031 (ADR 0005): buy-in only records a ledger with a new epoch;
+/// join_seat seats exactly that epoch; sync never copies a stale stack into a
+/// ledger that hasn't joined.
+#[test]
+fn buy_in_then_join_seat_with_epochs() {
+    let mut t = setup(3);
+    let w0 = t.wallets[0].insecure_clone();
+    send_ix(vec![buy_in_ix(&t, 0, 1_000_000, &w0)], &mut t.svm, &[&w0]).unwrap();
+    let l = ledger_state(&t, 0);
+    assert_eq!((l.epoch, l.synced_stack, l.left), (1, 1_000_000, false));
+    assert_eq!(config(&t).seat_epochs[0], 1);
+    assert_eq!(runtime_state(&t).occupied, 0, "buy_in alone doesn't seat");
+    // Byte offsets used by packages/probes/src/common.mjs (SL, SL5).
+    let d = t.svm.get_account(&ledger(&t, 0)).unwrap().data;
+    assert_eq!(
+        u64::from_le_bytes(d[81..89].try_into().unwrap()),
+        l.synced_stack
+    );
+    assert_eq!(
+        u32::from_le_bytes(d[90..94].try_into().unwrap()),
+        1,
+        "epoch"
+    );
+    assert_eq!(&d[94..126], l.session_key.as_ref());
+    assert_eq!(d[126], 0, "left");
+    // join_seat seats epoch 1; a second join is refused.
+    send_ix(
+        vec![common::join_seat_ix(&w0.pubkey(), t.runtime, t.config, 0)],
+        &mut t.svm,
+        &[&w0],
+    )
+    .unwrap();
+    let rt = runtime_state(&t);
+    assert_eq!(
+        (
+            rt.occupied,
+            rt.stacks[0],
+            rt.seat_epoch[0],
+            rt.wallets[0],
+            rt.session_keys[0]
+        ),
+        (1, 1_000_000, 1, w0.pubkey(), l.session_key)
+    );
+    let e = send_ix(
+        vec![common::join_seat_ix(&w0.pubkey(), t.runtime, t.config, 0)],
+        &mut t.svm,
+        &[&w0],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::SeatTaken)),
+        "{e}"
+    );
+    // Seat 1: bought in, not joined. A commit that (wrongly) shows an old
+    // stack at seat 1 must not reach its ledger: epochs differ.
+    let w1 = t.wallets[1].insecure_clone();
+    send_ix(vec![buy_in_ix(&t, 1, 2_000_000, &w1)], &mut t.svm, &[&w1]).unwrap();
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[0] = 1_200_000;
+    stacks[1] = 999;
+    commit(&mut t, 1, phase::IDLE, stacks);
+    let payer = t.authority.insecure_clone();
+    let ledgers = [ledger(&t, 0), ledger(&t, 1)];
+    send_ix(
+        vec![sync_ix(&t, Pubkey::new_unique(), &ledgers)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_eq!(
+        ledger_state(&t, 0).synced_stack,
+        1_200_000,
+        "joined seat synced"
+    );
+    assert_eq!(
+        ledger_state(&t, 1).synced_stack,
+        2_000_000,
+        "unjoined ledger keeps its buy-in"
+    );
+    // join only between hands.
+    commit(&mut t, 2, phase::DEALT, stacks);
+    let e = send_ix(
+        vec![common::join_seat_ix(&w1.pubkey(), t.runtime, t.config, 1)],
+        &mut t.svm,
+        &[&w1],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::WrongPhase)),
+        "{e}"
+    );
+}
+
+#[test]
+fn join_refuses_a_ledger_of_the_wrong_epoch() {
+    let mut t = setup(2);
+    let w0 = t.wallets[0].insecure_clone();
+    send_ix(vec![buy_in_ix(&t, 0, 1_000_000, &w0)], &mut t.svm, &[&w0]).unwrap();
+    // Pretend the runtime already seated epoch 1 at seat 0 and the seat is
+    // free again (the old player left but its ledger was never cashed out):
+    // a ledger with epoch 1 must not join a second time.
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+    rt.seat_epoch[0] = 1;
+    let mut d = Vec::new();
+    rt.try_serialize(&mut d).unwrap();
+    d.resize(acc.data.len(), 0);
+    acc.data = d;
+    t.svm.set_account(t.runtime, acc).unwrap();
+    let e = send_ix(
+        vec![common::join_seat_ix(&w0.pubkey(), t.runtime, t.config, 0)],
+        &mut t.svm,
+        &[&w0],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::BadLedger)),
+        "{e}"
+    );
+}
+
+/// cancel_buy_in refunds a ledger that never joined, only while the runtime
+/// is not delegated; the seat can then be bought again with a new epoch.
+#[test]
+fn cancel_buy_in_only_for_unjoined_seats_on_the_base_layer() {
+    let mut t = setup(3);
+    let payer = t.authority.insecure_clone();
+    let w0 = t.wallets[0].insecure_clone();
+    let w1 = t.wallets[1].insecure_clone();
+    buy_in(&mut t, 0, 1_000_000).unwrap(); // joined
+    send_ix(vec![buy_in_ix(&t, 1, 2_000_000, &w1)], &mut t.svm, &[&w1]).unwrap(); // not joined
+    let e = send_ix(
+        vec![cancel_ix(&t, 0, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::SeatTaken)),
+        "a joined seat can't cancel: {e}"
+    );
+    let before = t.svm.get_balance(&w1.pubkey()).unwrap();
+    let vault_before = t.svm.get_balance(&t.vault).unwrap();
+    send_ix(
+        vec![cancel_ix(&t, 1, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    let after = t.svm.get_balance(&w1.pubkey()).unwrap();
+    assert!(
+        after >= before + 2_000_000,
+        "buy-in plus ledger rent back to the wallet"
+    );
+    assert_eq!(
+        t.svm.get_balance(&t.vault).unwrap(),
+        vault_before - 2_000_000
+    );
+    assert!(
+        t.svm
+            .get_account(&ledger(&t, 1))
+            .map(|a| a.lamports == 0)
+            .unwrap_or(true),
+        "ledger closed"
+    );
+    assert_eq!(config(&t).seated & 0b10, 0);
+    // Cancelling twice is impossible (ledger gone); the seat takes a new buy-in with epoch 2.
+    assert!(send_ix(
+        vec![cancel_ix(&t, 1, payer.pubkey())],
+        &mut t.svm,
+        &[&payer]
+    )
+    .is_err());
+    send_ix(vec![buy_in_ix(&t, 1, 1_500_000, &w1)], &mut t.svm, &[&w1]).unwrap();
+    assert_eq!(ledger_state(&t, 1).epoch, 2);
+    // Once delegated, no cancel: a join in PER could race it.
+    delegate(&mut t, TEE.parse().unwrap(), card_flex::id());
+    assert!(send_ix(
+        vec![cancel_ix(&t, 1, payer.pubkey())],
+        &mut t.svm,
+        &[&payer]
+    )
+    .is_err());
+    let _ = w0;
+}
+
+#[test]
+fn pause_blocks_buy_in_but_not_refunds() {
+    let mut t = setup(2);
+    // setup_global's admin is not kept here; take over the global authority.
+    let mut acc = t.svm.get_account(&common::global_address()).unwrap();
+    let admin = Keypair::new();
+    t.svm.airdrop(&admin.pubkey(), 1_000_000_000).unwrap();
+    acc.data[8..40].copy_from_slice(admin.pubkey().as_ref());
+    t.svm.set_account(common::global_address(), acc).unwrap();
+    let w1 = t.wallets[1].insecure_clone();
+    send_ix(vec![buy_in_ix(&t, 1, 1_000_000, &w1)], &mut t.svm, &[&w1]).unwrap();
+    let pause = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::UpdateGlobal {
+            treasury: admin.pubkey(),
+            max_rake_bps: 1_000,
+            paused: true,
+        }
+        .data(),
+        card_flex::accounts::UpdateGlobal {
+            authority: admin.pubkey(),
+            global: common::global_address(),
+        }
+        .to_account_metas(None),
+    );
+    send_ix(vec![pause], &mut t.svm, &[&admin]).unwrap();
+    let w0 = t.wallets[0].insecure_clone();
+    let e = send_ix(vec![buy_in_ix(&t, 0, 1_000_000, &w0)], &mut t.svm, &[&w0]).unwrap_err();
+    assert!(e.contains(&code(card_flex::CardFlexError::Paused)), "{e}");
+    // Withdrawing an unjoined buy-in still works while paused.
+    let payer = t.authority.insecure_clone();
+    send_ix(
+        vec![cancel_ix(&t, 1, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
 }

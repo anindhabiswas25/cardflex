@@ -18,7 +18,7 @@ import {
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, repoRoot, loadDiscriminators, loadPayer, makeIx, send, rejected,
   tokenFor, authFailures, teeConn, teeUrl, rawRpc, waitFor, sleep, log, ms, w, r, u8, u64, vecPubkeys,
-  testDeck, dealPositions, rosterHash, handCtx, saltCommitment, RT, GLOBAL, ensureGlobal,
+  testDeck, dealPositions, rosterHash, handCtx, saltCommitment, RT, GLOBAL, ensureGlobal, buyInIx, joinSeatIx,
 } from "./common.mjs";
 import { randomBytes } from "node:crypto";
 
@@ -78,8 +78,8 @@ try {
   for (let s = 0; s < SEATS; s++) {
     const ledger = PublicKey.findProgramAddressSync([Buffer.from("seat-ledger"), config.toBuffer(), u8(s)], PROGRAM_ID)[0];
     await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: 6_000_000 })], [payer]);
-    await send(base, [ix("buy_in", [w(players[s].wallet.publicKey, true), w(config), w(runtime), w(vault), w(ledger), r(SystemProgram.programId)],
-      Buffer.concat([u8(s), u64(1_000_000), players[s].session.publicKey.toBuffer()]))], [players[s].wallet]);
+    await send(base, [buyInIx(ix, players[s].wallet.publicKey, config, vault, s, 1_000_000, players[s].session.publicKey)], [players[s].wallet]);
+    await send(base, [joinSeatIx(ix, players[s].wallet.publicKey, runtime, config, s)], [players[s].wallet]);
   }
   await send(base, [ix("delegate_table", [
     r(authority.publicKey, true), w(config),

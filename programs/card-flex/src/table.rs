@@ -156,6 +156,14 @@ pub struct TableConfig {
     pub last_sync_time: i64,
     pub last_synced_seq: u64,
     pub vault_bump: u8,
+    // ---- ADR 0005 (P6) ----
+    /// Sit-downs per seat; a new `SeatLedger` gets `seat_epochs[s] + 1`.
+    pub seat_epochs: [u32; MAX_SEATS],
+    /// Payout wallet of each seat with a ledger (duplicate-wallet check).
+    pub wallets: [Pubkey; MAX_SEATS],
+    /// Session key chosen at each seat's buy-in (collision check; a later
+    /// `rotate_session` in PER is checked there by `is_valid_new_session`).
+    pub sessions: [Pubkey; MAX_SEATS],
 }
 
 /// Program-wide settings (ADR 0005 decision 7). Base layer, never delegated.
@@ -192,6 +200,14 @@ pub struct SeatLedger {
     pub buy_in: u64,
     pub synced_stack: u64,
     pub bump: u8,
+    // ---- ADR 0005 (P6) ----
+    /// Sit-down this ledger belongs to; stacks are copied only between a
+    /// ledger and a runtime seat with the same epoch.
+    pub epoch: u32,
+    /// Session key the player chose at buy-in; `join_seat` installs it.
+    pub session_key: Pubkey,
+    /// Set by `sync_hand` once the committed runtime shows the seat left.
+    pub left: bool,
 }
 
 /// Public record of the last revealed hand (ADR 0002 `HandLog`, spec §9).
@@ -300,6 +316,8 @@ pub struct TableRuntime {
     /// Starts at `max_seats - 1` (first hand deals from seat 0); `next_hand`
     /// moves it to the seat that was dealt first.
     pub button: u8,
+    /// ADR 0005: epoch of the sit-down at each seat (0 = never joined).
+    pub seat_epoch: [u32; MAX_SEATS],
     pub bump: u8,
 }
 
@@ -703,8 +721,6 @@ pub struct BuyIn<'info> {
     pub wallet: Signer<'info>,
     #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
     pub config: Box<Account<'info, TableConfig>>,
-    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump)]
-    pub runtime: Box<Account<'info, TableRuntime>>,
     #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
     pub vault: Box<Account<'info, TableVault>>,
     #[account(
@@ -715,7 +731,59 @@ pub struct BuyIn<'info> {
         bump
     )]
     pub ledger: Box<Account<'info, SeatLedger>>,
+    #[account(seeds = [GLOBAL_SEED], bump = global.bump)]
+    pub global: Box<Account<'info, GlobalConfig>>,
     pub system_program: Program<'info, System>,
+}
+
+/// `join_seat`: anyone seats a bought-in ledger into the runtime between
+/// hands (ADR 0005). On the base layer before delegation, or in PER (the
+/// ledger is then a read-only clone of the base account). When the table's
+/// permissions exist (`runtime.locked`), the permission accounts must be
+/// passed so the new session key can read its hand and the runtime.
+#[derive(Accounts)]
+#[instruction(seat: u8)]
+pub struct JoinSeat<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(seeds = [LEDGER_SEED, runtime.config.as_ref(), &[seat]], bump = ledger.bump)]
+    pub ledger: Box<Account<'info, SeatLedger>>,
+    /// CHECK: seat hand PDA, checked in the handler (when locked).
+    #[account(mut)]
+    pub hand: Option<UncheckedAccount<'info>>,
+    /// CHECK: permission PDA of `hand`, checked in the handler.
+    #[account(mut)]
+    pub hand_permission: Option<UncheckedAccount<'info>>,
+    /// CHECK: permission PDA of `runtime`, checked in the handler.
+    #[account(mut)]
+    pub runtime_permission: Option<UncheckedAccount<'info>>,
+    /// CHECK: fixed address, checked in the handler.
+    pub permission_program: Option<UncheckedAccount<'info>>,
+    /// CHECK: fixed address, checked in the handler.
+    #[account(mut)]
+    pub ephemeral_vault: Option<UncheckedAccount<'info>>,
+    /// CHECK: fixed address, checked in the handler.
+    pub magic_program: Option<UncheckedAccount<'info>>,
+}
+
+/// `cancel_buy_in`: refunds a ledger that never joined, only while the
+/// runtime is on the base layer (not delegated), so no join can race it.
+#[derive(Accounts)]
+#[instruction(seat: u8)]
+pub struct CancelBuyIn<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
+    #[account(mut, close = wallet, seeds = [LEDGER_SEED, config.key().as_ref(), &[seat]], bump = ledger.bump, has_one = wallet)]
+    pub ledger: Box<Account<'info, SeatLedger>>,
+    /// CHECK: the payout wallet recorded at buy-in (`has_one`).
+    #[account(mut)]
+    pub wallet: UncheckedAccount<'info>,
 }
 
 /// `sync_hand`: anyone copies committed runtime state into the seat ledgers.

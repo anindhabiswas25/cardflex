@@ -81,3 +81,28 @@ pub fn setup_global(svm: &mut LiteSVM) -> Keypair {
     .expect("init_global");
     admin
 }
+
+/// `join_seat` on the base layer (no permissions yet: optional accounts None).
+pub fn join_seat_ix(payer: &Pubkey, runtime: Pubkey, config: Pubkey, seat: u8) -> Instruction {
+    let ledger = Pubkey::find_program_address(
+        &[card_flex::table::LEDGER_SEED, config.as_ref(), &[seat]],
+        &card_flex::id(),
+    )
+    .0;
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::JoinSeat { seat }.data(),
+        card_flex::accounts::JoinSeat {
+            payer: *payer,
+            runtime,
+            ledger,
+            hand: None,
+            hand_permission: None,
+            runtime_permission: None,
+            permission_program: None,
+            ephemeral_vault: None,
+            magic_program: None,
+        }
+        .to_account_metas(None),
+    )
+}
