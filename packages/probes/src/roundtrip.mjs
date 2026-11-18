@@ -41,6 +41,9 @@ const IX = {
   probe_write: [14, 140, 183, 133, 37, 195, 5, 31],
   probe_commit: [213, 253, 176, 239, 206, 141, 229, 183],
   probe_undelegate: [229, 233, 69, 5, 125, 134, 139, 48],
+  probe_secret_create: [15, 83, 170, 113, 225, 30, 29, 228],
+  probe_secret_write: [72, 5, 150, 93, 160, 113, 217, 201],
+  probe_secret_close: [124, 238, 62, 201, 70, 53, 136, 92],
 };
 
 const args = process.argv.slice(2);
@@ -105,7 +108,9 @@ const authority = Keypair.generate(); // per-run, like a per-seat session key
 const base = new Connection(BASE_RPC, "confirmed");
 const [probe] = PublicKey.findProgramAddressSync([Buffer.from("probe"), authority.publicKey.toBuffer()], PROGRAM_ID);
 const permission = permissionPdaFromAccount(probe);
-report.accounts = { authority: authority.publicKey.toBase58(), probe: probe.toBase58(), permission: permission.toBase58() };
+const [secret] = PublicKey.findProgramAddressSync([Buffer.from("secret"), probe.toBuffer()], PROGRAM_ID);
+const secretPermission = permissionPdaFromAccount(secret);
+report.accounts = { authority: authority.publicKey.toBase58(), probe: probe.toBase58(), permission: permission.toBase58(), secret: secret.toBase58() };
 log(`authority ${authority.publicKey.toBase58()}\nprobe     ${probe.toBase58()}`);
 
 try {
@@ -197,6 +202,85 @@ try {
   };
   }
 
+  // 4b. ADR 0002 assumption A1: ephemeral-only account with a private permission.
+  if (PRIVATE) {
+    log("A1: ephemeral secret account");
+    const secretKeys = [r(authority.publicKey, true), w(probe), w(secret), w(secretPermission), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID)];
+    const secret1 = Buffer.alloc(32, 0xa1);
+    const secret2 = Buffer.alloc(32, 0xb2);
+    const a1 = {};
+    try {
+      a1.create = await send(tee, [ix("probe_secret_create", secretKeys, secret1)], [authority], { skipPreflight: true });
+      const strangerA1 = Keypair.generate();
+      const strangerA1Conn = teeConn(await tokenFor(strangerA1));
+      const noTok = new Connection(TEE_RPC, "confirmed");
+      const readSecret = async (c) => {
+        try {
+          const acc = await c.getAccountInfo(secret);
+          if (!acc) return "denied/absent";
+          return acc.data.subarray(8, 40).equals(secret1) || acc.data.subarray(8, 40).equals(secret2) ? `READ ${acc.data[8].toString(16)}` : "read (other data)";
+        } catch (e) { return `error: ${String(e.message ?? e).slice(0, 80)}`; }
+      };
+      const multi = async (c) => {
+        try { const [acc] = await c.getMultipleAccountsInfo([secret]); return acc ? "READ" : "denied/absent"; }
+        catch (e) { return `error: ${String(e.message ?? e).slice(0, 80)}`; }
+      };
+      // Live subscription from a stranger: must receive nothing on writes.
+      let strangerNotes = 0;
+      const sub = strangerA1Conn.onAccountChange(secret, () => { strangerNotes++; }, { commitment: "processed" });
+      let ownerNotes = 0;
+      const ownerSub = tee.onAccountChange(secret, () => { ownerNotes++; }, { commitment: "processed" });
+      await sleep(1000);
+      a1.write = await send(tee, [ix("probe_secret_write", [r(authority.publicKey, true), r(probe), w(secret)], secret2)], [authority], { skipPreflight: true });
+      await sleep(2000);
+      await strangerA1Conn.removeAccountChangeListener(sub);
+      await tee.removeAccountChangeListener(ownerSub);
+      a1.reads = {
+        owner_get: await readSecret(tee),
+        stranger_get: await readSecret(strangerA1Conn),
+        no_token_get: await readSecret(noTok),
+        stranger_get_multiple: await multi(strangerA1Conn),
+        no_token_get_multiple: await multi(noTok),
+        owner_ws_notifications: ownerNotes,
+        stranger_ws_notifications: strangerNotes,
+        on_base_layer: (await base.getAccountInfo(secret)) ? "PRESENT" : "absent",
+      };
+      // Open question 2: is the transaction carrying the secret hidden from non-members?
+      const txView = async (c, sig) => {
+        try {
+          const tx = await c.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+          if (!tx) return "denied/absent";
+          const msg = tx.transaction.message;
+          const ixs = msg.compiledInstructions ?? [];
+          const keys = msg.staticAccountKeys ?? [];
+          const raw = Buffer.concat(ixs.map((i) => Buffer.from(i.data)));
+          if (raw.includes(secret2) || raw.includes(secret1)) return "VISIBLE incl. secret bytes";
+          if (!ixs.length && !keys.length && !(tx.meta?.logMessages?.length)) return "redacted (signature + status only)";
+          return `visible (${keys.length} keys, ${ixs.length} ixs, ${tx.meta?.logMessages?.length ?? 0} logs)`;
+        } catch (e) { return `error: ${String(e.message ?? e).slice(0, 80)}`; }
+      };
+      await sleep(1000);
+      a1.tx_visibility = {
+        owner_create_tx: await txView(tee, a1.create.sig),
+        stranger_create_tx: await txView(strangerA1Conn, a1.create.sig),
+        no_token_create_tx: await txView(noTok, a1.create.sig),
+        stranger_write_tx: await txView(strangerA1Conn, a1.write.sig),
+        no_token_write_tx: await txView(noTok, a1.write.sig),
+      };
+      a1.tx_hidden = Object.entries(a1.tx_visibility).filter(([k]) => !k.startsWith("owner")).every(([, v]) => v.startsWith("redacted") || v === "denied/absent");
+      a1.close = await send(tee, [ix("probe_secret_close", secretKeys)], [authority], { skipPreflight: true });
+      a1.after_close_owner_get = await readSecret(tee);
+      a1.pass = a1.reads.owner_get.startsWith("READ b2") && a1.reads.stranger_get === "denied/absent" && a1.reads.no_token_get === "denied/absent"
+        && a1.reads.stranger_get_multiple === "denied/absent" && a1.reads.no_token_get_multiple === "denied/absent"
+        && a1.reads.stranger_ws_notifications === 0 && a1.reads.on_base_layer === "absent"
+        && a1.tx_hidden === true;
+    } catch (e) {
+      a1.pass = false;
+      a1.error = String(e.message ?? e).slice(0, 300);
+    }
+    report.steps.a1_ephemeral_secret = a1;
+  }
+
   // 5. Commit (stay delegated), then commit + undelegate.
   log("7/7 commit, then undelegate");
   const commitTx = await send(tee, [ix("probe_commit", [w(authority.publicKey, true), w(probe), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
@@ -215,7 +299,8 @@ try {
     return acc && acc.owner.equals(PROGRAM_ID) ? acc : null;
   }, 120_000, 500);
   report.steps.undelegate = { per_tx_ms: undelTx.ms, until_owned_by_program_on_base_ms: backHome.ms, ok: !!backHome.value };
-  report.ok = !!backHome.value && !!baseHasValue.value && failures.length === 0;
+  if (PRIVATE) report.steps.a1_ephemeral_secret.on_base_after_undelegate = (await base.getAccountInfo(secret)) ? "PRESENT" : "absent";
+  report.ok = !!backHome.value && !!baseHasValue.value && failures.length === 0 && (!PRIVATE || report.steps.a1_ephemeral_secret.pass === true);
 } catch (e) {
   report.ok = false;
   report.error = String(e.stack ?? e).slice(0, 600);
@@ -238,6 +323,12 @@ if (s.writes) {
   row("write -> subscriber p50 / p95", `${s.writes.notify_ms.p50} / ${s.writes.notify_ms.p95} ms (n=${s.writes.notify_ms.n})`);
 }
 if (s.privacy_smoke) row("privacy smoke", JSON.stringify(s.privacy_smoke));
+if (s.a1_ephemeral_secret) {
+  row("A1 ephemeral secret", s.a1_ephemeral_secret.pass ? "PASS" : "FAIL");
+  if (s.a1_ephemeral_secret.reads) row("A1 reads", JSON.stringify(s.a1_ephemeral_secret.reads));
+  if (s.a1_ephemeral_secret.tx_visibility) row("A1 tx visibility", JSON.stringify(s.a1_ephemeral_secret.tx_visibility));
+  if (s.a1_ephemeral_secret.error) row("A1 error", s.a1_ephemeral_secret.error);
+}
 if (s.commit) row("commit -> value on base", `${s.commit.until_base_has_value_ms} ms (match: ${s.commit.base_value_matches})`);
 if (s.undelegate) row("undelegate -> owned on base", `${s.undelegate.until_owned_by_program_on_base_ms} ms`);
 console.log(`\nFull results: ${out}`);

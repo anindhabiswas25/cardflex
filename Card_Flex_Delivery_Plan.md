@@ -245,14 +245,15 @@ The top risk is trusting the TEE operator; every fallback keeps the provider-neu
 The docs don't answer these; PM raises them on MagicBlock Discord at kickoff and QA turns each into a P1 test.
 
 - [ ] Does `DEFAULT_EPHEMERAL_QUEUE` VRF work inside the TEE rollup (PER)?
-- [ ] Are transaction messages (`TX_MESSAGE`) hidden from non-members, so salt transactions stay private?
+- [x] Are transaction messages (`TX_MESSAGE`) hidden from non-members, so salt transactions stay private? Yes for non-members: `getTransaction` returns signature and status only (CF-006 spike). Existence and timing stay visible.
 - [ ] What does an empty member list mean: public or fully private?
 - [x] PER auth token lifetime, refresh method and challenge format? Answered in CF-003: JWT valid 30 days, no refresh endpoint, timestamped challenge (docs/findings/cf-003-devnet-access.md).
 - [ ] Can delegated accounts be force-undelegated if the TEE validator is down?
 - [ ] Limits on cranks: tasks per account, minimum interval, iterations?
 - [ ] Is a regional TEE endpoint (Asia, EU, US) planned?
 - [ ] Which TDX measurements can we pin, and are they published per release?
-- [ ] Can an EphemeralPermission protect an ephemeral-only account (ADR 0002, assumption A1)?
+- [x] Can an EphemeralPermission protect an ephemeral-only account (ADR 0002, assumption A1)? Yes in 4/4 Devnet runs (CF-006 spike); confirm in CF-007.
+- [ ] Why did an owner WebSocket subscription to an ephemeral account miss an update in 1 of 4 runs?
 - [ ] Do ephemeral-only accounts survive a PER restart?
 - [ ] What is the fee-payer setup so per-hand commits never stop (10-commit limit)?
 

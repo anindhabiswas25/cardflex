@@ -105,4 +105,11 @@ Planned crates and apps are listed in PRD §7.
   hold secrets); ephemeral-only = DealerState, SaltAccount, SeatHand (never
   committed). A commit publishes account data in plaintext; always
   delegate with `commit_frequency_ms = u32::MAX`.
+- Ephemeral-only accounts with a private permission are hidden from
+  strangers (reads null, no WS updates); non-members see a private
+  transaction as signature + status only (CF-006 spike). Owner WS updates on
+  an ephemeral account were missed once in 4 runs, so re-read, don't trust
+  the socket alone.
+- Program upgrades need room: check `solana program show` Data Length vs the
+  new `.so` size and run `solana program extend <id> <bytes>` first.
 - MagicBlock IDs and endpoints: PRD §5.1.2 and ADR 0001.

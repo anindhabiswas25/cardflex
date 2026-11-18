@@ -1,0 +1,163 @@
+{
+  "probe": "CF-004",
+  "version": 1,
+  "region": "dev-machine-1",
+  "target": "tee",
+  "started_at": "2026-11-18T11:43:50.784Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "steps": {
+    "fund": {
+      "sig": "BjrjBmwcd9WWgHgpZNFJmBaD96ZDNsmMrP2DkdCDUXsbHJZJQSeF9cCH5CdxFxZiZjJtoCB9zDrCgMES1R71PA5",
+      "ms": 862.7,
+      "send_ms": 210.2
+    },
+    "init": {
+      "sig": "5KTjDtXG2YTiSEf227x1YoTZiTSpB6g6MDr2FQiEjNmDBfyCjaBKeJP891YuGZ7QNMmUH2QDAF5cTqLEK33nf36S",
+      "ms": 1116.3,
+      "send_ms": 304.5
+    },
+    "delegate": {
+      "sig": "3JtZD8pdNqADUB8mxsTZx2XR5cwQWHWHyxYJ1vJxjSeZcgR61Rau3wYWxY8eqBRNqa5sjH8QA1kf3DTcwhbZb7H4",
+      "ms": 735.1,
+      "send_ms": 207.7
+    },
+    "auth": {
+      "ms": 1097.6
+    },
+    "delegation_visible_in_per": {
+      "ms": 172,
+      "ok": true
+    },
+    "make_private": {
+      "sig": "2QHWPhAFFhqpDTwBuYJiLeWRY9AgLpRtiDSaUiAmGL5xpzuaA7ABT9dEs6oW3GmbJxxtDM3Rp8Rt8kswhtHGXvvx",
+      "ms": 760,
+      "send_ms": 128.3
+    },
+    "writes": {
+      "send_rpc_ms": {
+        "n": 10,
+        "min": 98.2,
+        "p50": 139.6,
+        "p95": 618.3,
+        "max": 618.3
+      },
+      "confirm_ms": {
+        "n": 10,
+        "min": 225.1,
+        "p50": 281,
+        "p95": 755.7,
+        "max": 755.7
+      },
+      "notify_ms": {
+        "n": 10,
+        "min": 96.1,
+        "p50": 163.9,
+        "p95": 611,
+        "max": 611
+      },
+      "missed_notifications": 0,
+      "failures": [],
+      "samples": {
+        "send_rpc_ms": [
+          120.1,
+          618.3,
+          139.6,
+          205,
+          98.2,
+          171.7,
+          146.6,
+          178.3,
+          110.1,
+          131.3
+        ],
+        "confirm_ms": [
+          244.8,
+          755.7,
+          281,
+          408.5,
+          317.3,
+          268.4,
+          225.1,
+          321.3,
+          352.7,
+          248.3
+        ],
+        "notify_ms": [
+          126.2,
+          611,
+          163.9,
+          199.8,
+          96.1,
+          166.3,
+          142.8,
+          179.9,
+          351.7,
+          134.2
+        ]
+      }
+    },
+    "privacy_smoke": {
+      "owner_can_read": true,
+      "stranger_token_can_read": false,
+      "no_token_can_read": false
+    },
+    "a1_ephemeral_secret": {
+      "create": {
+        "sig": "vi1Sx6QEYGTxiHc1ibGCbqw5JVhb1ahBjSony3JdcCqsPu8PiUUab3q3hWyGYBmwhW4DHpL1dmVpnAFAHfKuomQ",
+        "ms": 914.7,
+        "send_ms": 171
+      },
+      "write": {
+        "sig": "47UWxp6oFggpJRU46CMQ2aKx91i4M59tYcvvxoNBgHhSoNzc9XAbDCVDtfn14qzDWd94XrkuadA4je8v4H9J64UZ",
+        "ms": 4246.7,
+        "send_ms": 134.1
+      },
+      "reads": {
+        "owner_get": "READ b2",
+        "stranger_get": "denied/absent",
+        "no_token_get": "denied/absent",
+        "stranger_get_multiple": "denied/absent",
+        "no_token_get_multiple": "denied/absent",
+        "owner_ws_notifications": 0,
+        "stranger_ws_notifications": 0,
+        "on_base_layer": "absent"
+      },
+      "tx_visibility": {
+        "owner_create_tx": "VISIBLE incl. secret bytes",
+        "stranger_create_tx": "redacted (signature + status only)",
+        "no_token_create_tx": "redacted (signature + status only)",
+        "stranger_write_tx": "redacted (signature + status only)",
+        "no_token_write_tx": "redacted (signature + status only)"
+      },
+      "tx_hidden": true,
+      "close": {
+        "sig": "4io3kBqZuUF5Q8tH1CRUY5LXns5KAopjkt7BCuFdykyfMKoqbxTdfkXV3DBxT4W3FS3ZJmdhyJBaqvqqJN1dJSyq",
+        "ms": 1350.4,
+        "send_ms": 159.9
+      },
+      "after_close_owner_get": "denied/absent",
+      "pass": true,
+      "on_base_after_undelegate": "absent"
+    },
+    "commit": {
+      "per_tx_ms": 856.3,
+      "base_signature": "3THCYD3xfpxKLKZMGbddFhbC69L2oGeSGtyDEa3Du7EmEs2BU2oKNwnazsigpXenUApcPgZG21xTeTw7DhmAYBfX",
+      "until_base_has_value_ms": 1239.7,
+      "base_value_matches": true
+    },
+    "undelegate": {
+      "per_tx_ms": 744.6,
+      "until_owned_by_program_on_base_ms": 174.5,
+      "ok": true
+    }
+  },
+  "accounts": {
+    "authority": "nchk9iGAdkJ2eGsbbxwM6LBoGGm5kMJb2rKvKWsbJri",
+    "probe": "GSWrbeTbocwCfXLPnKQrb3GajP9eqbFpT8NCvd3j1Kw4",
+    "permission": "5KEPcuXaqToqaw12tzhMtemuLsdjWAzoTjuv687Hp4mn",
+    "secret": "6SHoVmkeJax7HGx6ZiD5PYyMBoqRmnfM8bXmpb5s7edX"
+  },
+  "last_value": "1795002241565010",
+  "ok": true,
+  "finished_at": "2026-11-18T11:44:23.289Z"
+}

@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P0 — Tooling and probes** (all P0 tickets done except CF-003 other regions; P1 can start). Update this file whenever a ticket
+Current phase: **P1 — Privacy POC** (P0 done except CF-003 runs from other regions). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -12,7 +12,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-003 | Latency, access and attestation probe | In progress: probe built, `dev-machine-1` measured; other regions pending | `packages/probes/`, `docs/findings/cf-003-devnet-access.md` |
 | CF-004 | Minimal program on devnet-tee: delegate, write, commit, undelegate; measure write latency | Done | `programs/card-flex` probe_* instructions, `packages/probes/src/roundtrip.mjs`, `docs/findings/cf-004-devnet-roundtrip.md` |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | Done | `docs/adr/0002-account-lifecycle.md`; PRD v1.2 amendment 1 |
-| CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission (tests ADR 0002 assumption A1) | Next | starts phase P1 |
+| CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | In progress: A1 spike passed on Devnet (`docs/findings/cf-006-a1-ephemeral-privacy.md`); next build the real table accounts | `programs/card-flex` probe_secret_*, `roundtrip.mjs` A1 section |
 
 ## Blockers and asks for the team
 
@@ -27,6 +27,11 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-006 spike: ephemeral-only account with private permission
+  works on Devnet PER (4/4 runs). Strangers get null reads, no WS updates,
+  and redacted transactions (signature + status only). One owner WS update
+  was missed in 1 of 4 runs: clients must re-read their hand. Program
+  upgraded on devnet (384,080-byte slot, extended by 64 KiB).
 - 2026-11-18 — CF-005 done (ADR 0002). Secret accounts are ephemeral-only and
   never committed; TableRuntime + HandLog delegated, committed per hand;
   money follows committed state via base `sync_hand`; refunded tables ignore

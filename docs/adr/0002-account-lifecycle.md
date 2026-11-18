@@ -1,6 +1,7 @@
 # ADR 0002 — Account lifecycle: base, delegated, ephemeral-only
 
-- **Status:** Accepted. One assumption is still to be proven in P1 (A1 below).
+- **Status:** Accepted. Assumption A1 held in a Devnet spike (4/4 runs,
+  `docs/findings/cf-006-a1-ephemeral-privacy.md`); the full G1 suite is still required.
 - **Date:** 2026-11-18
 - **Ticket:** CF-005
 - **Amends:** PRD v1.2 §5.1.1, §10.2, §10.7, §13.3, §15.2–15.4, §25.3
