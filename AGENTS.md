@@ -195,6 +195,11 @@ Planned crates and apps are listed in PRD §7.
   converts with `GameState::{from_hand,to_hand}`. Tables must be configured
   (`configure_table(boot, rake_bps, rake_cap, refund_timeout)`) before a hand;
   seats only via `buy_in` (40–200 boots). `poc_join` and `end_hand` are gone.
+- Liveness (CF-050): every phase can be advanced by anyone, never only by
+  a key holder: `start_hand` is permissionless; a stalled salt round is
+  ended by `cancel_salts` after `salts_deadline`; a missing VRF callback by
+  `cancel_hand`; a slow player by `timeout_turn`. Keep it that way: a phase
+  only a key holder can advance can freeze players' money.
 - Hand loop (CF-024): start_hand → salts → request_shuffle → VRF → deal →
   act/timeout_turn → HAND_COMPLETE → reveal_hand → (side_show_view revoke)
   → commit_hand → sync_hand (base) → next_hand → start_hand. `next_hand` is

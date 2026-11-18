@@ -278,7 +278,7 @@ fn start_hand_refuses_a_live_reader_grant() {
             card_flex::id(),
             &card_flex::instruction::StartHand {}.data(),
             card_flex::accounts::StartHand {
-                authority: t.authority.pubkey(),
+                payer: t.authority.pubkey(),
                 config: t.config,
                 runtime: t.runtime,
             }
@@ -328,7 +328,7 @@ fn start_hand_ix(t: &Table) -> Instruction {
         card_flex::id(),
         &card_flex::instruction::StartHand {}.data(),
         card_flex::accounts::StartHand {
-            authority: t.authority.pubkey(),
+            payer: t.authority.pubkey(),
             config: t.config,
             runtime: t.runtime,
         }
@@ -461,4 +461,121 @@ fn button_moves_and_dealing_order_follows_it() {
         "a seat that isn't dealt can't submit a salt: {e}"
     );
     assert_eq!(runtime(&t).salts_in, rt.salts_in);
+}
+
+/// CF-050 liveness: anyone starts a hand; a salt round that stalls can be
+/// cancelled by anyone after SALT_SECS; players who didn't submit a salt are
+/// made to leave (so they can cash out), the rest stay; nothing is charged.
+#[test]
+fn stalled_salt_round_is_cancelled_and_absent_players_leave() {
+    use card_flex::table::{phase, SALT_LEN, SALT_SECS, SALT_SEED, SALT_TAG};
+    let (mut t, _) = create(4);
+    let wallets: Vec<Keypair> = (0..3).map(|_| funded(&mut t.svm)).collect();
+    for (s, w) in wallets.iter().enumerate() {
+        assert!(join(&mut t, w, s as u8, Pubkey::new_unique()));
+    }
+    let session0 = Keypair::new();
+    t.svm.airdrop(&session0.pubkey(), 1_000_000_000).unwrap();
+    patch_runtime(&mut t, |rt| {
+        rt.locked = true;
+        rt.session_keys[0] = session0.pubkey();
+    });
+    let before = runtime(&t);
+    // A stranger (not the table authority) starts the hand.
+    let stranger = funded(&mut t.svm);
+    let start = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::StartHand {}.data(),
+        card_flex::accounts::StartHand {
+            payer: stranger.pubkey(),
+            config: t.config,
+            runtime: t.runtime,
+        }
+        .to_account_metas(None),
+    );
+    send_signed(&mut t, start, &[&stranger]).expect("start_hand is permissionless");
+    let rt = runtime(&t);
+    assert_eq!(rt.phase, phase::SALTS_PENDING);
+    let now = t
+        .svm
+        .get_sysvar::<anchor_lang::prelude::Clock>()
+        .unix_timestamp;
+    assert_eq!(rt.salts_deadline, now + SALT_SECS);
+    // Seat 0 submits its salt; seats 1 and 2 never do.
+    let salt =
+        Pubkey::find_program_address(&[SALT_SEED, t.runtime.as_ref(), &[0]], &card_flex::id()).0;
+    let mut d = vec![0u8; SALT_LEN as usize];
+    d[..8].copy_from_slice(SALT_TAG);
+    d[8..40].copy_from_slice(t.runtime.as_ref());
+    t.svm
+        .set_account(
+            salt,
+            solana_account::Account {
+                lamports: 10_000_000,
+                data: d,
+                owner: card_flex::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+    let submit = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::SubmitSalt {
+            seat: 0,
+            salt: [9; 32],
+        }
+        .data(),
+        card_flex::accounts::SubmitSalt {
+            session: session0.pubkey(),
+            runtime: t.runtime,
+            salt,
+        }
+        .to_account_metas(None),
+    );
+    send_signed(&mut t, submit, &[&session0]).unwrap();
+    let cancel = |t: &Table| {
+        Instruction::new_with_bytes(
+            card_flex::id(),
+            &card_flex::instruction::CancelSalts {}.data(),
+            card_flex::accounts::CancelSalts {
+                payer: stranger.pubkey(),
+                runtime: t.runtime,
+            }
+            .to_account_metas(None),
+        )
+    };
+    let e = {
+        let ix = cancel(&t);
+        send_signed(&mut t, ix, &[&stranger]).unwrap_err()
+    };
+    assert!(e.contains("TooEarly"), "{e}");
+    let mut clock = t.svm.get_sysvar::<anchor_lang::prelude::Clock>();
+    clock.unix_timestamp = now + SALT_SECS;
+    t.svm.set_sysvar(&clock);
+    {
+        let ix = cancel(&t);
+        send_signed(&mut t, ix, &[&stranger]).unwrap();
+    }
+    let rt = runtime(&t);
+    assert_eq!(rt.phase, phase::IDLE);
+    assert_eq!(
+        rt.hand_no,
+        before.hand_no + 1,
+        "new hand number: fresh context next time"
+    );
+    assert_eq!(rt.cancelled_hands, before.cancelled_hands + 1);
+    assert_eq!(
+        (rt.occupied, rt.departed),
+        (0b001, 0b110),
+        "absent seats 1 and 2 left; seat 0 stays"
+    );
+    assert_eq!(rt.stacks, before.stacks, "no boot was charged");
+    assert_eq!((rt.salts_in, rt.salt_commitments[0]), (0, [0; 32]));
+    // Cancelling again is refused (not in a salt round).
+    let e = {
+        let ix = cancel(&t);
+        send_signed(&mut t, ix, &[&stranger]).unwrap_err()
+    };
+    assert!(e.contains("WrongPhase"), "{e}");
 }

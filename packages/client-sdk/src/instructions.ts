@@ -88,6 +88,17 @@ export function claimRefund(p: { payer: PublicKey; config: PublicKey; seat: numb
 
 // ---- keeper instructions (permissionless) ----
 
+/** Anyone (CF-050): starts the salt round for the next hand. */
+export function startHand(p: { payer: PublicKey; config: PublicKey }) {
+  return buildIx("start_hand", { payer: p.payer, config: p.config, runtime: tableAddresses(p.config).runtime });
+}
+
+/** Anyone, after runtime.salts_deadline: ends a stalled salt round; non-submitters leave. */
+export const cancelSalts = (p: { payer: PublicKey; config: PublicKey }) => buildIx("cancel_salts", { payer: p.payer, runtime: tableAddresses(p.config).runtime });
+
+/** Anyone, after VRF_TIMEOUT_SLOTS without a VRF callback. */
+export const cancelHand = (p: { payer: PublicKey; config: PublicKey }) => buildIx("cancel_hand", { payer: p.payer, runtime: tableAddresses(p.config).runtime });
+
 export function requestShuffle(p: { payer: PublicKey; config: PublicKey }) {
   const t = tableAddresses(p.config);
   return buildIx("request_shuffle", { payer: p.payer, runtime: t.runtime, dealer: t.dealer, oracle_queue: VRF_EPHEMERAL_QUEUE, program_identity: vrfIdentityPda(), vrf_program: VRF_PROGRAM_ID });

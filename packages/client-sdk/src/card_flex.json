@@ -459,6 +459,66 @@
       "args": []
     },
     {
+      "name": "cancel_salts",
+      "docs": [
+        "Ends a salt round that stalled (CF-050): after `salts_deadline`, anyone",
+        "may call it. No boots were collected yet (that happens at the deal), so",
+        "nothing is owed. Dealt players who didn't submit a salt are made to",
+        "leave (they can cash out after the next sync); the rest stay seated.",
+        "The hand number moves on, so the next hand has a new context and new",
+        "salts. Without this, one absent player froze the table and everyone's",
+        "money with it."
+      ],
+      "discriminator": [
+        83,
+        93,
+        145,
+        129,
+        236,
+        77,
+        114,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "cash_out",
       "docs": [
         "Pays a seat that has left (ADR 0005 decision 4): its `synced_stack`,",
@@ -3879,12 +3939,12 @@
       ],
       "accounts": [
         {
-          "name": "authority",
-          "signer": true,
-          "relations": [
-            "config",
-            "runtime"
-          ]
+          "name": "payer",
+          "docs": [
+            "Anyone (CF-050): starting a hand needs no privilege, so a keeper holds",
+            "no table key and an operator can't stall a table by not starting it."
+          ],
+          "signer": true
         },
         {
           "name": "config",
@@ -3902,7 +3962,8 @@
               },
               {
                 "kind": "account",
-                "path": "authority"
+                "path": "config.authority",
+                "account": "TableConfig"
               },
               {
                 "kind": "account",
@@ -5730,6 +5791,13 @@
               "matching ledger is cashed out and a new epoch joins."
             ],
             "type": "u8"
+          },
+          {
+            "name": "salts_deadline",
+            "docs": [
+              "CF-050: unix time after which `cancel_salts` may end a stalled salt round."
+            ],
+            "type": "i64"
           },
           {
             "name": "bump",

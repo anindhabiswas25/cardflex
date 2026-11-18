@@ -1111,6 +1111,10 @@ pub mod card_flex {
         runtime.salts_in = 0;
         runtime.salt_commitments = [[0; 32]; MAX_SEATS];
         runtime.phase = phase::SALTS_PENDING;
+        runtime.salts_deadline = Clock::get()?
+            .unix_timestamp
+            .checked_add(SALT_SECS)
+            .ok_or(CardFlexError::Overflow)?;
         Ok(())
     }
 
@@ -1501,6 +1505,39 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// Ends a salt round that stalled (CF-050): after `salts_deadline`, anyone
+    /// may call it. No boots were collected yet (that happens at the deal), so
+    /// nothing is owed. Dealt players who didn't submit a salt are made to
+    /// leave (they can cash out after the next sync); the rest stay seated.
+    /// The hand number moves on, so the next hand has a new context and new
+    /// salts. Without this, one absent player froze the table and everyone's
+    /// money with it.
+    pub fn cancel_salts(ctx: Context<CancelSalts>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(
+            runtime.phase == phase::SALTS_PENDING,
+            CardFlexError::WrongPhase
+        );
+        require!(
+            Clock::get()?.unix_timestamp >= runtime.salts_deadline,
+            CardFlexError::TooEarly
+        );
+        let dealt = runtime.dealing_order[..runtime.dealing_count as usize]
+            .iter()
+            .fold(0u8, |m, s| m | (1 << s));
+        runtime.leaving |= dealt & !runtime.salts_in;
+        runtime.cancelled_hands = runtime.cancelled_hands.saturating_add(1);
+        runtime.hand_no = runtime
+            .hand_no
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        runtime.phase = phase::IDLE;
+        runtime.salts_in = 0;
+        runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+        apply_leaves(runtime);
+        Ok(())
+    }
+
     /// Cancels a hand whose VRF callback hasn't arrived within
     /// `VRF_TIMEOUT_SLOTS`. Permissionless. The cancellation is counted
     /// publicly, the hand number moves on (so a late callback is rejected and
@@ -1751,6 +1788,15 @@ pub mod card_flex {
 
     /// Commits `TableRuntime` and returns it to the base layer.
     pub fn undelegate_table(ctx: Context<CommitTable>) -> Result<()> {
+        // CF-050: a newer commit_seq, so sync_hand accepts the state this
+        // writes back (otherwise a player who just left couldn't cash out).
+        ctx.accounts.runtime.commit_seq = ctx
+            .accounts
+            .runtime
+            .commit_seq
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        ctx.accounts.runtime.exit(&crate::ID)?;
         MagicIntentBundleBuilder::new(
             ctx.accounts.authority.to_account_info(),
             ctx.accounts.magic_context.to_account_info(),

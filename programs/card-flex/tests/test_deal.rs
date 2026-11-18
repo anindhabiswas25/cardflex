@@ -145,6 +145,7 @@ fn seeded_table(seats: u8) -> Table {
         seat_epoch: [0; MAX_SEATS],
         leaving: 0,
         departed: 0,
+        salts_deadline: 0,
         bump,
     };
     for s in 0..seats as usize {

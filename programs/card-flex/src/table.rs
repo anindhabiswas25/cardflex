@@ -44,6 +44,9 @@ pub const MIN_BUY_IN_BOOTS: u64 = 40;
 pub const MAX_BUY_IN_BOOTS: u64 = 200;
 /// Rules v1 §3: seconds a player has to act before anyone may time them out.
 pub const TURN_SECS: i64 = 25;
+/// CF-050: seconds the dealt players have to submit their salts before
+/// anyone may cancel the hand (non-submitters are then made to leave).
+pub const SALT_SECS: i64 = 30;
 /// Highest rake the program accepts: 10% of a won pot.
 pub const MAX_RAKE_BPS: u16 = 1_000;
 
@@ -330,6 +333,8 @@ pub struct TableRuntime {
     /// Seats that left; their final stack stays in `stacks` until the
     /// matching ledger is cashed out and a new epoch joins.
     pub departed: u8,
+    /// CF-050: unix time after which `cancel_salts` may end a stalled salt round.
+    pub salts_deadline: i64,
     pub bump: u8,
 }
 
@@ -964,10 +969,20 @@ pub struct SetHandReaders<'info> {
 /// `start_hand`: authority starts the salt round for the next hand.
 #[derive(Accounts)]
 pub struct StartHand<'info> {
-    pub authority: Signer<'info>,
-    #[account(seeds = [TABLE_SEED, authority.key().as_ref(), &config.table_id.to_le_bytes()], bump = config.bump, has_one = authority)]
+    /// Anyone (CF-050): starting a hand needs no privilege, so a keeper holds
+    /// no table key and an operator can't stall a table by not starting it.
+    pub payer: Signer<'info>,
+    #[account(seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
     pub config: Account<'info, TableConfig>,
-    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump, has_one = authority, has_one = config)]
+    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump, has_one = config)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+}
+
+/// `cancel_salts`: anyone, after `salts_deadline`.
+#[derive(Accounts)]
+pub struct CancelSalts<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
 }
 

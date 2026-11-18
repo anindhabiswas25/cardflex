@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P6 done (2026-11-19) → next P7 (client app) / P8 (hardening).** P4, P5, P6 done. Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P8 (hardening).** P4–P6 done; P7 non-UI parts done (CF-016/018/040/041), UI in progress (not committed). Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -38,14 +38,17 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-018 | P7: backend / indexer (lobby, hand history, player records) | Done (not committed): `services/api` (node:http + node:sqlite, ADR 0006); every hand verified with the WASM verifier and replayed for per-seat bets/nets; live on Devnet: 6 tables, 4 hands, all VALID | `pnpm api`, `pnpm test:api` |
 | CF-040 | P7: `cf-verify` as WASM for the browser Verify page | Done (not committed): `crates/fairness-wasm` (277 KB, no imports) + `loadVerifier` in the SDK; same verdicts as the native CLI on 6 Devnet hands; tampering caught | `pnpm build:wasm`, `packages/client-sdk/test/verifier.test.ts` |
 | CF-041 | P7: admin backend (create/configure tables, pause, sweep rake) | Done (not committed): `cf-admin` CLI signing locally (no key-holding server); live on Devnet: create → open (15 PER steps) → status → strict reconcile → sweep → close | `pnpm admin -- …`, `pnpm test:admin` |
+| CF-050 | P8: program liveness: salt-round timeout (`cancel_salts`, absent players leave), permissionless `start_hand`, `undelegate_table` bumps `commit_seq` | Done locally (Devnet with CF-051) | `tests/test_table.rs` |
+| CF-051 | P8: keeper service (drives every phase, commit + sync per hand + heartbeat, indexes each hand before next_hand) | Next | |
+| CF-052 | P8: program slimming (drop test-only code from production builds, size) | Planned | |
+| CF-053 | P8: recovery abort path for a hand whose ephemeral state was lost (ADR 0004 #8) | Planned | |
+| CF-054 | P8: load test, 50 concurrent tables | Planned | |
+| CF-055 | P8: security review pass | Planned | |
+| CF-056 | P8: ops: Squads multisig, production refund timeout, reconcile alarms, runbooks | Planned | |
 
 ## Open program items (P8)
 
-- `undelegate_table` doesn't bump `commit_seq`, so `sync_hand` refuses the
-  state it writes back: a player who left just before a table was closed can
-  only cash out after another commit (or via the refund). `cf-admin table
-  close` now commits first; the program should bump `commit_seq` on
-  undelegate too (found live in CF-041).
+- (fixed in CF-050) `undelegate_table` now bumps `commit_seq`.
 
 ## Blockers and asks for the team
 
@@ -63,6 +66,16 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — P8 started. CF-050 (local): a liveness audit for the keeper
+  found that a salt round had no timeout: one absent player froze the table
+  and, because heartbeats kept it "alive", the refund never triggered either,
+  so every player's money was stuck. New `cancel_salts` (permissionless after
+  `SALT_SECS` = 30): back to IDLE with a new hand number, non-submitters made
+  to leave (cash-out after sync), nothing charged (boots are taken at the
+  deal). `start_hand` is permissionless (a keeper holds no table key; an
+  operator can't stall a table). `undelegate_table` bumps `commit_seq`.
+  Also fixed (security review of CF-018): one malformed request could crash
+  the API process; now 400/500 and it keeps serving.
 - 2026-11-19 — CF-041 (not committed): `services/admin` → `cf-admin`, an
   operator CLI that signs locally (a server holding the admin key would be
   the most valuable target; the authority moves to a Squads multisig in P8).
