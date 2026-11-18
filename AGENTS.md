@@ -60,6 +60,7 @@ pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (nee
 pnpm handflow -- --region <label>   # P2: salts -> VRF -> deal -> reveal -> cf-verify (48 checks)
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
+pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, emergency refund (~3 min)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -165,6 +166,11 @@ Planned crates and apps are listed in PRD §7.
   `reveal_hand` makes the deck derivable, so it requires `HAND_COMPLETE`;
   today only the interim authority-only `end_hand` sets that, and P5 must
   replace it with showdown logic. Hand record format: `cf-hand-record/1` (crates/fairness-verifier).
+- Money (ADR 0004): lamports only in TableVault (never delegated); only
+  `SeatLedger.synced_stack` is ever paid; `sync_hand` trusts committed runtime
+  state only after checking the delegation record (validator + owner) and
+  copies stacks only between hands; `emergency_refund` is permissionless after
+  `refund_timeout_secs` without a sync. `delegate_table` needs config writable.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

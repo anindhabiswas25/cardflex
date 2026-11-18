@@ -32,6 +32,18 @@ pub const DEALER_SEED: &[u8] = b"dealer";
 
 pub const SALT_SEED: &[u8] = b"salt";
 pub const HAND_LOG_SEED: &[u8] = b"hand-log";
+pub const VAULT_SEED: &[u8] = b"table-vault";
+pub const LEDGER_SEED: &[u8] = b"seat-ledger";
+/// ADR 0004: bounds for the per-table refund timeout.
+pub const REFUND_TIMEOUT_MIN_SECS: u32 = 60;
+pub const REFUND_TIMEOUT_MAX_SECS: u32 = 86_400;
+pub const REFUND_TIMEOUT_DEFAULT_SECS: u32 = 3_600;
+
+/// Base-layer table status (ADR 0004). 0 is never a valid status.
+pub mod status {
+    pub const ACTIVE: u8 = 1;
+    pub const REFUNDED: u8 = 2;
+}
 pub const SALT_TAG: &[u8; 8] = b"CFSALT02";
 /// tag(8) + runtime(32) + seat(1) + hand_no(8) + salt(32)
 pub const SALT_LEN: u32 = 81;
@@ -111,6 +123,38 @@ pub struct TableConfig {
     pub max_seats: u8,
     pub runtime: Pubkey,
     pub bump: u8,
+    // ---- ADR 0004 (P3) ----
+    pub status: u8,
+    /// Validator the runtime was delegated to (checked by `sync_hand`).
+    pub validator: Pubkey,
+    pub refund_timeout_secs: u32,
+    pub min_buy_in: u64,
+    pub max_buy_in: u64,
+    /// Bit i set = seat i has a `SeatLedger` (bought in).
+    pub seated: u8,
+    /// Liveness clock: base-layer time of the last accepted `sync_hand`.
+    pub last_sync_time: i64,
+    pub last_synced_seq: u64,
+    pub vault_bump: u8,
+}
+
+/// Holds every lamport of the table (ADR 0002/0004). Never delegated.
+#[account]
+#[derive(InitSpace)]
+pub struct TableVault {}
+
+/// One per bought-in seat. `synced_stack` is the only amount the base layer
+/// will ever pay out for this seat (ADR 0004).
+#[account]
+#[derive(InitSpace)]
+pub struct SeatLedger {
+    pub config: Pubkey,
+    pub seat: u8,
+    /// Payout address, fixed at buy-in.
+    pub wallet: Pubkey,
+    pub buy_in: u64,
+    pub synced_stack: u64,
+    pub bump: u8,
 }
 
 /// Public record of the last revealed hand (ADR 0002 `HandLog`, spec §9).
@@ -179,6 +223,10 @@ pub struct TableRuntime {
     pub vrf_request_slot: u64,
     /// Hands cancelled at this table (public, for selective-abort monitoring).
     pub cancelled_hands: u32,
+    /// Chip stacks per seat index, in lamports (ADR 0004; betting in P5).
+    pub stacks: [u64; MAX_SEATS],
+    /// Bumped by every `commit_hand`; `sync_hand` accepts only newer ones.
+    pub commit_seq: u64,
     pub bump: u8,
 }
 
@@ -298,9 +346,75 @@ pub struct CreateTable<'info> {
         bump
     )]
     pub hand_log: Box<Account<'info, HandLog>>,
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + TableVault::INIT_SPACE,
+        seeds = [VAULT_SEED, config.key().as_ref()],
+        bump
+    )]
+    pub vault: Box<Account<'info, TableVault>>,
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+/// `configure_table`: authority sets money limits before anyone buys in.
+#[derive(Accounts)]
+pub struct ConfigureTable<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut, has_one = authority)]
+    pub config: Box<Account<'info, TableConfig>>,
+}
+
+/// `buy_in`: a wallet takes a seat with lamports (base layer, before the
+/// table is delegated).
+#[derive(Accounts)]
+#[instruction(seat: u8)]
+pub struct BuyIn<'info> {
+    #[account(mut)]
+    pub wallet: Signer<'info>,
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
+    #[account(
+        init,
+        payer = wallet,
+        space = 8 + SeatLedger::INIT_SPACE,
+        seeds = [LEDGER_SEED, config.key().as_ref(), &[seat]],
+        bump
+    )]
+    pub ledger: Box<Account<'info, SeatLedger>>,
+    pub system_program: Program<'info, System>,
+}
+
+/// `sync_hand`: anyone copies committed runtime state into the seat ledgers.
+/// Seat ledgers of every bought-in seat follow in `remaining_accounts`, in
+/// seat order.
+#[derive(Accounts)]
+pub struct SyncHand<'info> {
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    /// CHECK: committed base-layer copy of the runtime; PDA, owner and
+    /// delegation record are checked in the handler (ADR 0004).
+    pub runtime: UncheckedAccount<'info>,
+    /// CHECK: delegation record PDA of the runtime, checked in the handler.
+    pub delegation_record: UncheckedAccount<'info>,
+}
+
+/// `emergency_refund`: anyone, after the liveness timeout. Pairs of
+/// (seat ledger, payout wallet) for every bought-in seat follow in
+/// `remaining_accounts`, in seat order.
+#[derive(Accounts)]
+pub struct EmergencyRefund<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
 }
 
 #[derive(Accounts)]
@@ -315,8 +429,8 @@ pub struct PocJoin<'info> {
 #[derive(Accounts)]
 pub struct DelegateTable<'info> {
     pub authority: Signer<'info>,
-    #[account(has_one = authority)]
-    pub config: Account<'info, TableConfig>,
+    #[account(mut, has_one = authority)]
+    pub config: Box<Account<'info, TableConfig>>,
     /// CHECK: the runtime PDA, checked by seeds; delegated by the SDK.
     #[account(mut, del, seeds = [RUNTIME_SEED, config.key().as_ref()], bump)]
     pub runtime: UncheckedAccount<'info>,
@@ -489,6 +603,19 @@ pub struct CommitTable<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
+    pub hand_log: Box<Account<'info, HandLog>>,
+}
+
+/// `commit_hand`: anyone may commit the table state (heartbeat / end of
+/// hand) without undelegating (ADR 0004).
+#[commit]
+#[derive(Accounts)]
+pub struct CommitHand<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
     #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
     pub hand_log: Box<Account<'info, HandLog>>,

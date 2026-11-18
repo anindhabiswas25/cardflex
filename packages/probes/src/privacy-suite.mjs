@@ -37,6 +37,7 @@ const tableId = BigInt(Date.now());
 const [config] = PublicKey.findProgramAddressSync([Buffer.from("table"), authority.publicKey.toBuffer(), u64(tableId)], PROGRAM_ID);
 const [runtime] = PublicKey.findProgramAddressSync([Buffer.from("table-runtime"), config.toBuffer()], PROGRAM_ID);
 const [handLog] = PublicKey.findProgramAddressSync([Buffer.from("hand-log"), runtime.toBuffer()], PROGRAM_ID);
+const [vault] = PublicKey.findProgramAddressSync([Buffer.from("table-vault"), config.toBuffer()], PROGRAM_ID);
 const [dealer] = PublicKey.findProgramAddressSync([Buffer.from("dealer"), runtime.toBuffer()], PROGRAM_ID);
 const hands = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
 const saltAccs = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("salt"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
@@ -64,12 +65,12 @@ try {
   // ---------------- setup ----------------
   log("setup: table, six players, delegate");
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
+  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
   for (let s = 0; s < SEATS; s++) {
     await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
   }
   await send(base, [ix("delegate_table", [
-    r(authority.publicKey, true), r(config),
+    r(authority.publicKey, true), w(config),
     w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(runtime, PROGRAM_ID)),
     w(delegationRecordPdaFromDelegatedAccount(runtime)), w(delegationMetadataPdaFromDelegatedAccount(runtime)),
     w(runtime),

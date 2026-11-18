@@ -68,6 +68,11 @@ fn create(max_seats: u8) -> (Table, bool) {
         &card_flex::id(),
     )
     .0;
+    let vault = Pubkey::find_program_address(
+        &[card_flex::table::VAULT_SEED, config.as_ref()],
+        &card_flex::id(),
+    )
+    .0;
     let ix = Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::CreateTable {
@@ -79,6 +84,7 @@ fn create(max_seats: u8) -> (Table, bool) {
             config,
             runtime,
             hand_log,
+            vault,
             authority: authority.pubkey(),
             system_program: system_program::ID,
         }

@@ -1,0 +1,167 @@
+{
+  "probe": "CF-013-recovery",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T16:32:14.691Z",
+  "checks": [
+    {
+      "group": "money",
+      "name": "table ACTIVE with three seats bought in",
+      "expected": [
+        1,
+        7
+      ],
+      "actual": [
+        1,
+        7
+      ],
+      "pass": true
+    },
+    {
+      "group": "money",
+      "name": "validator recorded at delegation",
+      "expected": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+      "actual": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+      "pass": true
+    },
+    {
+      "group": "money",
+      "name": "seat 0 ledger synced_stack = buy-in",
+      "expected": "10000000",
+      "actual": "10000000",
+      "pass": true
+    },
+    {
+      "group": "money",
+      "name": "seat 1 ledger synced_stack = buy-in",
+      "expected": "10000000",
+      "actual": "10000000",
+      "pass": true
+    },
+    {
+      "group": "money",
+      "name": "seat 2 ledger synced_stack = buy-in",
+      "expected": "10000000",
+      "actual": "10000000",
+      "pass": true
+    },
+    {
+      "group": "sync",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "3956.9 ms"
+    },
+    {
+      "group": "sync",
+      "name": "sync_hand accepted (last_synced_seq = 1)",
+      "expected": "1",
+      "actual": "1",
+      "pass": true
+    },
+    {
+      "group": "sync",
+      "name": "replaying the same commit is rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand",
+      "name": "hand dealt (mid-hand at outage)",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "refund",
+      "name": "refund before the timeout is rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "refund",
+      "name": "a bystander can trigger emergency_refund after the timeout",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "68.6s after last sync"
+    },
+    {
+      "group": "refund",
+      "name": "every wallet got back exactly its synced stack",
+      "expected": [
+        10000000,
+        10000000,
+        10000000
+      ],
+      "actual": [
+        10000000,
+        10000000,
+        10000000
+      ],
+      "pass": true
+    },
+    {
+      "group": "refund",
+      "name": "vault paid out exactly the total",
+      "expected": 30000000,
+      "actual": 30000000,
+      "pass": true
+    },
+    {
+      "group": "refund",
+      "name": "table status REFUNDED",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "refund",
+      "name": "second refund rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "late commit",
+      "name": "late commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "late commit",
+      "name": "sync of the late commit rejected (no money moves)",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "late commit",
+      "name": "no redeal: second deal rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "late commit",
+      "name": "no redeal: new VRF request rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    }
+  ],
+  "timings": {
+    "commit_to_base_ms": 3956.9,
+    "refund_after_last_sync_s": 68.6,
+    "teardown_ok": true
+  },
+  "auth_transient_failures": [],
+  "passed": 19,
+  "failed": 0,
+  "ok": true,
+  "finished_at": "2026-11-18T16:34:19.233Z"
+}

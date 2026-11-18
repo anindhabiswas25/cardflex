@@ -20,7 +20,8 @@
     "check:fairness": "python3 -I scripts/check_fairness_vectors.py",
     "handflow": "pnpm --filter @card-flex/probes handflow",
     "deploy:devnet": "bash scripts/deploy-devnet.sh",
-    "check:g2": "cargo test -p fairness-verifier --release -- --ignored"
+    "check:g2": "cargo test -p fairness-verifier --release -- --ignored",
+    "recovery": "pnpm --filter @card-flex/probes recovery"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

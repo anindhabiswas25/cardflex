@@ -126,7 +126,12 @@ export const RT = {
   occupied: 73, wallets: 74, sessions: 266, hand_no: 458, dealt: 466, locked: 467, grants: 468, phase: 469,
   hand_ctx: 470, roster_hash: 502, salts_in: 534, dealing_order: 535, dealing_count: 541, salt_commitments: 542,
   vrf_caller_seed: 734, merkle_root: 766, vrf_request_slot: 798, cancelled_hands: 806,
+  stacks: 810, commit_seq: 858,
 };
+// TableConfig byte offsets (ADR 0004 fields).
+export const TC = { status: 82, validator: 83, refund_timeout_secs: 115, min_buy_in: 119, max_buy_in: 127, seated: 135, last_sync_time: 136, last_synced_seq: 144 };
+// SeatLedger: config(8) seat(40) wallet(41) buy_in(73) synced_stack(81).
+export const SL = { seat: 40, wallet: 41, buy_in: 73, synced_stack: 81 };
 export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4, DEALT: 5, HAND_COMPLETE: 6, REVEALED: 7, POC_DONE: 8 };
 // SeatHand byte offsets (table.rs HAND_*).
 export const HAND = { cards: 49, positions: 52, leaf_salts: 55, proofs: 151, len: 727 };

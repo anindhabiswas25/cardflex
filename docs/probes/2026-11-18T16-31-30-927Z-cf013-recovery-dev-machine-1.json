@@ -1,0 +1,14 @@
+{
+  "probe": "CF-013-recovery",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T16:31:30.927Z",
+  "checks": [],
+  "timings": {},
+  "error": "Error: Simulation failed. \nMessage: Transaction simulation failed. \nLogs: \n[\n  \"Program 4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL invoke [1]\",\n  \"Program log: Instruction: DelegateTable\",\n  \"Program log: AnchorError caused by account: config. Error Code: ConstraintMut. Error Number: 2000. Error Message: A mut constraint was violated.\",\n  \"Program 4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL consumed 10057 of 200000 compute units\",\n  \"Program 4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL failed: custom program error: 0x7d0\"\n]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details.\n    at Connection.sendEncodedTransaction (/home/asus/Project/cardflex/node_modules/.pnpm/@solana+web3.js@1.98.0_bufferutil@4.2.0_utf-8-validate@6.0.6/node_modules/@solana/web3.js/lib/inde",
+  "auth_transient_failures": [],
+  "passed": 0,
+  "failed": 0,
+  "ok": false,
+  "finished_at": "2026-11-18T16:32:05.298Z"
+}

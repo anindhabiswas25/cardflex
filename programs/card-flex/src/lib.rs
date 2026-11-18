@@ -69,6 +69,12 @@ pub mod card_flex {
         config.max_seats = max_seats;
         config.runtime = ctx.accounts.runtime.key();
         config.bump = ctx.bumps.config;
+        config.status = status::ACTIVE;
+        config.refund_timeout_secs = REFUND_TIMEOUT_DEFAULT_SECS;
+        config.min_buy_in = 1;
+        config.max_buy_in = u64::MAX;
+        config.last_sync_time = Clock::get()?.unix_timestamp;
+        config.vault_bump = ctx.bumps.vault;
         let runtime = &mut ctx.accounts.runtime;
         runtime.config = config.key();
         runtime.authority = config.authority;
@@ -78,6 +84,225 @@ pub mod card_flex {
         hand_log.runtime = runtime.key();
         hand_log.config = config.key();
         hand_log.bump = ctx.bumps.hand_log;
+        Ok(())
+    }
+
+    // ---------- CF-013 money skeleton and recovery (ADR 0004) ----------
+
+    /// Sets buy-in limits and the refund timeout. Only before anyone has
+    /// bought in, so players always see the terms they joined under.
+    pub fn configure_table(
+        ctx: Context<ConfigureTable>,
+        min_buy_in: u64,
+        max_buy_in: u64,
+        refund_timeout_secs: u32,
+    ) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        require!(config.seated == 0, CardFlexError::TableLocked);
+        require!(
+            min_buy_in > 0 && min_buy_in <= max_buy_in,
+            CardFlexError::BadAmount
+        );
+        require!(
+            (REFUND_TIMEOUT_MIN_SECS..=REFUND_TIMEOUT_MAX_SECS).contains(&refund_timeout_secs),
+            CardFlexError::BadTimeout
+        );
+        config.min_buy_in = min_buy_in;
+        config.max_buy_in = max_buy_in;
+        config.refund_timeout_secs = refund_timeout_secs;
+        Ok(())
+    }
+
+    /// A wallet takes a seat and moves its buy-in into the table vault.
+    /// Base layer, before delegation (the runtime must still be owned by this
+    /// program, which Anchor checks). P6 adds re-buys and cash-out.
+    pub fn buy_in(ctx: Context<BuyIn>, seat: u8, amount: u64, session_key: Pubkey) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        let runtime = &mut ctx.accounts.runtime;
+        let wallet = ctx.accounts.wallet.key();
+        require!(
+            config.status == status::ACTIVE,
+            CardFlexError::TableNotActive
+        );
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        require!(!runtime.locked, CardFlexError::TableLocked);
+        require!(
+            runtime.occupied & (1 << seat) == 0,
+            CardFlexError::SeatTaken
+        );
+        require!(
+            !runtime.seated().any(|i| runtime.wallets[i] == wallet),
+            CardFlexError::SeatTaken
+        );
+        require!(
+            amount >= config.min_buy_in && amount <= config.max_buy_in,
+            CardFlexError::BadAmount
+        );
+        let runtime_key = runtime.key();
+        let config_key = config.key();
+        require!(
+            runtime.is_valid_new_session(&session_key, &runtime_key, &config_key, &wallet),
+            CardFlexError::BadSessionKey
+        );
+        anchor_lang::system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.key(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.wallet.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+        runtime.wallets[seat as usize] = wallet;
+        runtime.session_keys[seat as usize] = session_key;
+        runtime.stacks[seat as usize] = amount;
+        runtime.occupied |= 1 << seat;
+        config.seated |= 1 << seat;
+        let ledger = &mut ctx.accounts.ledger;
+        ledger.config = config_key;
+        ledger.seat = seat;
+        ledger.wallet = wallet;
+        ledger.buy_in = amount;
+        ledger.synced_stack = amount;
+        ledger.bump = ctx.bumps.ledger;
+        Ok(())
+    }
+
+    /// Commits `TableRuntime` and `HandLog` to the base layer without
+    /// undelegating. Anyone may call it (keeper heartbeat / end of hand).
+    pub fn commit_hand(ctx: Context<CommitHand>) -> Result<()> {
+        ctx.accounts.runtime.commit_seq = ctx
+            .accounts
+            .runtime
+            .commit_seq
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        ctx.accounts.runtime.exit(&crate::ID)?;
+        MagicIntentBundleBuilder::new(
+            ctx.accounts.payer.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .commit(&[
+            ctx.accounts.runtime.to_account_info(),
+            ctx.accounts.hand_log.to_account_info(),
+        ])
+        .build_and_invoke()?;
+        Ok(())
+    }
+
+    /// Accepts newer committed runtime state (ADR 0004 rule 4): refreshes
+    /// the liveness clock, and between hands copies stacks into the ledgers.
+    pub fn sync_hand(ctx: Context<SyncHand>) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        require!(
+            config.status == status::ACTIVE,
+            CardFlexError::TableNotActive
+        );
+        let config_key = config.key();
+        let rt_info = &ctx.accounts.runtime;
+        let (expected, _) =
+            Pubkey::find_program_address(&[RUNTIME_SEED, config_key.as_ref()], &crate::ID);
+        require_keys_eq!(rt_info.key(), expected, CardFlexError::BadRuntime);
+        let delegation_program = ephemeral_rollups_sdk::id();
+        if *rt_info.owner == delegation_program {
+            let (record, _) = Pubkey::find_program_address(
+                &[b"delegation", rt_info.key().as_ref()],
+                &delegation_program,
+            );
+            let rec = &ctx.accounts.delegation_record;
+            require_keys_eq!(rec.key(), record, CardFlexError::BadRuntime);
+            require_keys_eq!(*rec.owner, delegation_program, CardFlexError::BadRuntime);
+            let d = rec.try_borrow_data()?;
+            require!(d.len() >= 72, CardFlexError::BadRuntime);
+            require!(
+                d[8..40] == config.validator.to_bytes() && d[40..72] == crate::ID.to_bytes(),
+                CardFlexError::BadRuntime
+            );
+        } else {
+            require_keys_eq!(*rt_info.owner, crate::ID, CardFlexError::BadRuntime);
+        }
+        let rt = TableRuntime::try_deserialize(&mut &rt_info.try_borrow_data()?[..])?;
+        require_keys_eq!(rt.config, config_key, CardFlexError::BadRuntime);
+        require!(
+            rt.commit_seq > config.last_synced_seq,
+            CardFlexError::StaleCommit
+        );
+        config.last_synced_seq = rt.commit_seq;
+        config.last_sync_time = Clock::get()?.unix_timestamp;
+
+        // Stacks only between hands, so unfinished bets never become payable.
+        if !matches!(rt.phase, phase::IDLE | phase::REVEALED | phase::POC_DONE) {
+            return Ok(());
+        }
+        let seats: Vec<u8> = (0..MAX_SEATS as u8)
+            .filter(|s| config.seated & (1 << s) != 0)
+            .collect();
+        require!(
+            ctx.remaining_accounts.len() == seats.len(),
+            CardFlexError::BadLedger
+        );
+        for (&seat, acc) in seats.iter().zip(ctx.remaining_accounts) {
+            let (pda, _) = Pubkey::find_program_address(
+                &[LEDGER_SEED, config_key.as_ref(), &[seat]],
+                &crate::ID,
+            );
+            require_keys_eq!(acc.key(), pda, CardFlexError::BadLedger);
+            let mut ledger: Account<SeatLedger> = Account::try_from(acc)?;
+            ledger.synced_stack = rt.stacks[seat as usize];
+            ledger.exit(&crate::ID)?;
+        }
+        Ok(())
+    }
+
+    /// ADR 0004 rule 5: after `refund_timeout_secs` without an accepted
+    /// sync, anyone pays every seat its last synced stack from the vault and
+    /// marks the table REFUNDED. No cooperation from PER or the operator.
+    pub fn emergency_refund(ctx: Context<EmergencyRefund>) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        require!(
+            config.status == status::ACTIVE,
+            CardFlexError::TableNotActive
+        );
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            now >= config
+                .last_sync_time
+                .saturating_add(config.refund_timeout_secs as i64),
+            CardFlexError::TooEarly
+        );
+        let config_key = config.key();
+        let seats: Vec<u8> = (0..MAX_SEATS as u8)
+            .filter(|s| config.seated & (1 << s) != 0)
+            .collect();
+        require!(
+            ctx.remaining_accounts.len() == 2 * seats.len(),
+            CardFlexError::BadLedger
+        );
+        let vault_info = ctx.accounts.vault.to_account_info();
+        let rent_floor = Rent::get()?.minimum_balance(vault_info.data_len());
+        for (k, &seat) in seats.iter().enumerate() {
+            let ledger_info = &ctx.remaining_accounts[2 * k];
+            let wallet_info = &ctx.remaining_accounts[2 * k + 1];
+            let (pda, _) = Pubkey::find_program_address(
+                &[LEDGER_SEED, config_key.as_ref(), &[seat]],
+                &crate::ID,
+            );
+            require_keys_eq!(ledger_info.key(), pda, CardFlexError::BadLedger);
+            let mut ledger: Account<SeatLedger> = Account::try_from(ledger_info)?;
+            require_keys_eq!(wallet_info.key(), ledger.wallet, CardFlexError::BadLedger);
+            let pay = ledger.synced_stack;
+            require!(
+                vault_info.lamports() >= rent_floor.saturating_add(pay),
+                CardFlexError::VaultShort
+            );
+            **vault_info.try_borrow_mut_lamports()? -= pay;
+            **wallet_info.try_borrow_mut_lamports()? += pay;
+            ledger.synced_stack = 0;
+            ledger.exit(&crate::ID)?;
+        }
+        config.status = status::REFUNDED;
         Ok(())
     }
 
@@ -122,6 +347,8 @@ pub mod card_flex {
                 validator,
             },
         )?;
+        // ADR 0004: remember which validator holds the runtime.
+        ctx.accounts.config.validator = validator.ok_or(CardFlexError::ValidatorRequired)?;
         let runtime_key = ctx.accounts.runtime.key();
         ctx.accounts.delegate_hand_log(
             &ctx.accounts.authority,
@@ -1153,4 +1380,20 @@ pub enum CardFlexError {
     TooEarly,
     #[msg("wrong hand log account")]
     BadHandLog,
+    #[msg("delegation must name the validator")]
+    ValidatorRequired,
+    #[msg("amount outside the table's buy-in limits")]
+    BadAmount,
+    #[msg("refund timeout outside allowed bounds")]
+    BadTimeout,
+    #[msg("table is not active")]
+    TableNotActive,
+    #[msg("not this table's committed runtime")]
+    BadRuntime,
+    #[msg("commit is not newer than the last synced one")]
+    StaleCommit,
+    #[msg("wrong or missing seat ledger")]
+    BadLedger,
+    #[msg("vault holds less than the refund")]
+    VaultShort,
 }

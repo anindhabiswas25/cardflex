@@ -130,6 +130,8 @@ fn seeded_table(seats: u8) -> Table {
         merkle_root: [0; 32],
         vrf_request_slot: 0,
         cancelled_hands: 0,
+        stacks: [0; MAX_SEATS],
+        commit_seq: 0,
         bump,
     };
     for s in 0..seats as usize {

@@ -1,0 +1,107 @@
+{
+  "format": "cf-hand-record/1",
+  "protocol_version": 2,
+  "program_id": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "table": "8DYiaKq9PCEVGM43dj5dSUW4RZ7PEMBormXwtgSqC4fS",
+  "hand_no": "0",
+  "rules_version": 1,
+  "seats": [
+    {
+      "seat": 0,
+      "wallet": "2fcdW56MVh4APykknD1Eo4cCPmj6CafQGy63AimnTkpN"
+    },
+    {
+      "seat": 1,
+      "wallet": "DBNoRWCHrQZ863pAuULMVWPU3sUMJssewgiD9JYzwTsE"
+    },
+    {
+      "seat": 2,
+      "wallet": "2gJdKrpqwURMuAEfpNoqzkFsyV19ZcoCYow4rzyQoBxL"
+    },
+    {
+      "seat": 3,
+      "wallet": "BF1uMEJpGhM44kRQcFgz5K9QM2g85u7LRzrfA4rr1h9F"
+    },
+    {
+      "seat": 4,
+      "wallet": "2jELRVkQ1sH58WApaBEswXYdv7HPmiDhbAAb3bEu5uGL"
+    },
+    {
+      "seat": 5,
+      "wallet": "86yFefaiSezfXHyQutRdSYP3fFGRVpE9uqEHZX6u8dQ2"
+    }
+  ],
+  "salts": [
+    "00b312d37284cad62cb581ae44f2a500a7a76da56121b11a22a78546f7e5d939",
+    "2a63a9977963176f3e79a63ceb3ff2d8f17116a6bc9952ca4c87fa34d3c1564e",
+    "d33ac794815cbd7e4165e077ecef258342f19bdf2a463eccfed61f301e0cc1e3",
+    "922ef7b6c6fa7a01bf251515e90ce51ec7ffa830d9f87766529a2eb6906ab8b2",
+    "545e7fbc8635cf73bb5ce1da487e1d22d76891bda2feb8cd04d5194c084007d4",
+    "aa483b59fd09a625add9c300a8134d125df4fc9e6845c7f9491f7fa42a8f4d24"
+  ],
+  "vrf_output": "434c1146ee44c88e0a4639d5a572b16d072e0b4a4e52ef4fb2bf95900ba14d36",
+  "claimed": {
+    "roster_hash": "2b3c59acb11b92ba90ef08179c53e2b249a63362964f1c80b47caafd7e259e37",
+    "hand_ctx": "9277a1e69e00af5039946148a52ff7f733d8063dec5fc62ac266d79516bd89eb",
+    "salt_commitments": [
+      "f52278634060519751b2578353587be2001fe8fcfc55cde5e9db9e597e31dede",
+      "026e663b995bdf4b39106b331868c719d4adef2fec7f014c9fd60d6a307804ae",
+      "5dd52be7c85c2ba758c6afc7a06d50c30165b69799a4da1cb2442416a38def5e",
+      "42eca0f388a943162185901d6f1794e379e05bd5db04fbdcb30bf0b68d6ced18",
+      "fe390531f18bebe322e39253e7cf9fc972f1eb648e5f8e50a7ec973e313f7348",
+      "b2324e95397f686b76ae790eb8366e851f0ea3a2feef3897a1d37df79a2f4786"
+    ],
+    "vrf_caller_seed": "1d2bace636def1fe9025c9c1464d32e63297ad4e7859b3c41ea40d554e5dafb3",
+    "merkle_root": "0386abf4d101636aa8fe36592917e4363a72353d943ad33b177ba6e1b8e52e94"
+  },
+  "hands": [
+    {
+      "seat": 0,
+      "cards": [
+        36,
+        13,
+        21
+      ]
+    },
+    {
+      "seat": 1,
+      "cards": [
+        12,
+        45,
+        38
+      ]
+    },
+    {
+      "seat": 2,
+      "cards": [
+        9,
+        7,
+        27
+      ]
+    },
+    {
+      "seat": 3,
+      "cards": [
+        50,
+        17,
+        16
+      ]
+    },
+    {
+      "seat": 4,
+      "cards": [
+        48,
+        14,
+        40
+      ]
+    },
+    {
+      "seat": 5,
+      "cards": [
+        47,
+        23,
+        4
+      ]
+    }
+  ]
+}

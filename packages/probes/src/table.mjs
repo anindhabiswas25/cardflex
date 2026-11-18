@@ -11,7 +11,9 @@ import {
   waitFor, log, w, r, u8, u64,
 } from "./common.mjs";
 
-export async function setupTable({ seats = 6 } = {}) {
+// buyIn (lamports): use real buy_in (vault + seat ledgers, ADR 0004) instead
+// of poc_join; refundTimeout (s) is set with configure_table first.
+export async function setupTable({ seats = 6, buyIn = 0, refundTimeout = 3600 } = {}) {
   const ix = makeIx(loadDiscriminators());
   const payer = loadPayer();
   const base = new Connection(BASE_RPC, "confirmed");
@@ -22,6 +24,7 @@ export async function setupTable({ seats = 6 } = {}) {
   const config = pda(Buffer.from("table"), authority.publicKey.toBuffer(), u64(tableId));
   const runtime = pda(Buffer.from("table-runtime"), config.toBuffer());
   const handLog = pda(Buffer.from("hand-log"), runtime.toBuffer());
+  const vault = pda(Buffer.from("table-vault"), config.toBuffer());
   const dealer = pda(Buffer.from("dealer"), runtime.toBuffer());
   const hands = players.map((_, s) => pda(Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)));
   const saltAccs = players.map((_, s) => pda(Buffer.from("salt"), runtime.toBuffer(), u8(s)));
@@ -32,12 +35,25 @@ export async function setupTable({ seats = 6 } = {}) {
 
   log("setup: table, players, delegate");
   await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
-  for (let s = 0; s < seats; s++) {
-    await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
+  await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
+  const ledgers = players.map((_, s) => pda(Buffer.from("seat-ledger"), config.toBuffer(), u8(s)));
+  if (buyIn > 0) {
+    const cfgData = Buffer.alloc(20);
+    cfgData.writeBigUInt64LE(1n, 0); cfgData.writeBigUInt64LE(BigInt(buyIn) * 10n, 8); cfgData.writeUInt32LE(refundTimeout, 16);
+    await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config)], cfgData)], [authority]);
+    for (let s = 0; s < seats; s++) {
+      // Fund each wallet for its buy-in plus the seat-ledger rent.
+      await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: buyIn + 5_000_000 })], [payer]);
+      await send(base, [ix("buy_in", [w(players[s].wallet.publicKey, true), w(config), w(runtime), w(vault), w(ledgers[s]), r(SystemProgram.programId)],
+        Buffer.concat([u8(s), u64(buyIn), players[s].session.publicKey.toBuffer()]))], [players[s].wallet]);
+    }
+  } else {
+    for (let s = 0; s < seats; s++) {
+      await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]);
+    }
   }
   await send(base, [ix("delegate_table", [
-    r(authority.publicKey, true), r(config),
+    r(authority.publicKey, true), w(config),
     w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(runtime, PROGRAM_ID)),
     w(delegationRecordPdaFromDelegatedAccount(runtime)), w(delegationMetadataPdaFromDelegatedAccount(runtime)),
     w(runtime),
@@ -68,5 +84,5 @@ export async function setupTable({ seats = 6 } = {}) {
     return waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   }
 
-  return { ix, payer, base, tee, authority, players, config, runtime, handLog, dealer, hands, saltAccs, perKeys, teardown, seats };
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats };
 }

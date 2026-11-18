@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P2 done → P3 (recovery).** G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P3 (recovery) in progress.** G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -19,7 +19,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-010 | VRF request with caller_seed when SALTS_DONE; protected callback derives the seed | Done: ephemeral queue works inside PER, callback ~2.0–2.1 s; 12/12 checks ×2 | `request_shuffle`/`vrf_deal`, `pnpm handflow`, `docs/findings/cf-010-vrf.md` |
 | CF-011 | Shuffle, deal and Merkle root in-program from the seed; compute units; remove test deck from the real path | Done: Devnet 39/39 ×2, all cards verified vs public root; 56–86k CU; salt-substitution + stuck-VRF fixes | `deal_hand`/`cancel_hand`, `tests/test_deal.rs`, `docs/findings/cf-011-deal.md` |
 | CF-012 | Independent verifier v1 (CLI): reveal + rebuild a hand from public data | Done: Devnet hand revealed, read with no token, `cf-verify` VALID (PER and base-layer copies); 10,000 random hands VALID + tampers caught. **G2 passed** (one location) | `crates/fairness-verifier`, `reveal_hand`, `docs/findings/cf-012-verifier-g2.md` |
-| CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | Next (P3) | ADR 0002 rules 4–5; gate G3 |
+| CF-013 | P3 recovery: PER outage drills, pause, `emergency_refund` on base | In progress: ADR 0004, money skeleton + refund (LiteSVM 4/4), Devnet outage drill 19/19; next: validator-restart drill on the local stack, then G3 | `docs/adr/0004-recovery-policy.md`, `docs/findings/cf-013-recovery.md`, `pnpm recovery` |
 
 ## Blockers and asks for the team
 
@@ -36,6 +36,11 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-013 steps 1–3: ADR 0004 recovery policy; buy_in into a
+  never-delegated TableVault with SeatLedgers; commit_hand / sync_hand
+  (delegation-record checked, stacks only between hands); emergency_refund.
+  Devnet drill 19/19: hand dealt, PER silent, bystander refunded every
+  wallet exactly after 68.6 s; late commit couldn't move money; no redeal.
 - 2026-11-18 — Security fix: ephemeral accounts stay frozen until the hand is
   revealed (HAND_COMPLETE added to in-progress), so a hand can't be made
   unverifiable by closing salts before the reveal. Test deck uses POC_DONE.

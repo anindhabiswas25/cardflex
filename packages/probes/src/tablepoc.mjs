@@ -113,6 +113,7 @@ const tableId = BigInt(Date.now());
 const [config] = PublicKey.findProgramAddressSync([Buffer.from("table"), authority.publicKey.toBuffer(), u64(tableId)], PROGRAM_ID);
 const [runtime] = PublicKey.findProgramAddressSync([Buffer.from("table-runtime"), config.toBuffer()], PROGRAM_ID);
 const [handLog] = PublicKey.findProgramAddressSync([Buffer.from("hand-log"), runtime.toBuffer()], PROGRAM_ID);
+const [vault] = PublicKey.findProgramAddressSync([Buffer.from("table-vault"), config.toBuffer()], PROGRAM_ID);
 const [dealer] = PublicKey.findProgramAddressSync([Buffer.from("dealer"), runtime.toBuffer()], PROGRAM_ID);
 const hands = Array.from({ length: SEATS }, (_, s) => PublicKey.findProgramAddressSync([Buffer.from("seat-hand"), runtime.toBuffer(), u8(s)], PROGRAM_ID)[0]);
 report.accounts = { authority: authority.publicKey.toBase58(), config: config.toBase58(), runtime: runtime.toBase58(), dealer: dealer.toBase58(), hands: hands.map(String) };
@@ -127,14 +128,14 @@ try {
   // ---- base layer ----
   log("1/8 base: create table, seat six players, delegate");
   report.steps.fund = await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
-  report.steps.create_table = await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
+  report.steps.create_table = await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
   report.steps.joins = [];
   for (let s = 0; s < SEATS; s++) {
     // The deployer pays the fee; the player's wallet signs. Wallets need no SOL.
     report.steps.joins.push(await send(base, [ix("poc_join", [r(players[s].wallet.publicKey, true), w(runtime)], Buffer.concat([u8(s), players[s].session.publicKey.toBuffer()]))], [payer, players[s].wallet]));
   }
   report.steps.delegate = await send(base, [ix("delegate_table", [
-    r(authority.publicKey, true), r(config),
+    r(authority.publicKey, true), w(config),
     w(delegateBufferPdaFromDelegatedAccountAndOwnerProgram(runtime, PROGRAM_ID)),
     w(delegationRecordPdaFromDelegatedAccount(runtime)), w(delegationMetadataPdaFromDelegatedAccount(runtime)),
     w(runtime),
