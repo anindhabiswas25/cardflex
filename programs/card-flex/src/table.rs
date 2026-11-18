@@ -47,6 +47,12 @@ pub const TURN_SECS: i64 = 25;
 /// CF-050: seconds the dealt players have to submit their salts before
 /// anyone may cancel the hand (non-submitters are then made to leave).
 pub const SALT_SECS: i64 = 30;
+/// A seat is made to leave only after this many salt rounds missed in a row
+/// (security review of CF-050: one slow moment must not evict a player).
+pub const MAX_MISSED_SALTS: u8 = 3;
+/// Minimum seconds between the end of a hand (or a cancelled one) and the
+/// next `start_hand`, so nobody can churn hands to push players out.
+pub const HAND_GAP_SECS: i64 = 3;
 /// Highest rake the program accepts: 10% of a won pot.
 pub const MAX_RAKE_BPS: u16 = 1_000;
 
@@ -335,6 +341,10 @@ pub struct TableRuntime {
     pub departed: u8,
     /// CF-050: unix time after which `cancel_salts` may end a stalled salt round.
     pub salts_deadline: i64,
+    /// Salt rounds each seat missed in a row (reset by submitting or joining).
+    pub missed_salts: [u8; MAX_SEATS],
+    /// Unix time the last hand ended or was cancelled (HAND_GAP_SECS).
+    pub last_hand_end: i64,
     pub bump: u8,
 }
 

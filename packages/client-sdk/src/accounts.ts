@@ -36,7 +36,7 @@ export type TableRuntime = {
   merkle_root: Uint8Array; vrf_request_slot: bigint; cancelled_hands: bigint; stacks: bigint[]; commit_seq: bigint;
   boot: bigint; rake_bps: number; rake_cap: bigint; rake_owed: bigint; action_seq: bigint; game: GameState;
   side_show_viewers: number[]; side_show_hand_no: bigint; turn_deadline: bigint; button: number; seat_epoch: number[];
-  leaving: number; departed: number; salts_deadline: bigint; bump: number;
+  leaving: number; departed: number; salts_deadline: bigint; missed_salts: number[]; last_hand_end: bigint; bump: number;
 };
 export type TableConfig = {
   authority: PublicKey; table_id: bigint; max_seats: number; runtime: PublicKey; bump: number; status: number; validator: PublicKey;

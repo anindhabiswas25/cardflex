@@ -66,6 +66,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-050 fix (security review): permissionless `start_hand`
+  plus "miss one salt round and you're out" let anyone evict present but
+  briefly slow players. Now a missed round only cancels the hand and counts
+  a strike (`missed_salts`, reset by submitting or joining); a seat leaves
+  after `MAX_MISSED_SALTS` = 3 in a row; `start_hand` needs `HAND_GAP_SECS`
+  = 3 since the last hand ended or was cancelled (`last_hand_end`).
 - 2026-11-19 — P8 started. CF-050 (local): a liveness audit for the keeper
   found that a salt round had no timeout: one absent player froze the table
   and, because heartbeats kept it "alive", the refund never triggered either,

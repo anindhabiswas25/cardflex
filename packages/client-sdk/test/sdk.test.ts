@@ -29,7 +29,7 @@ test("discriminators follow Anchor's sha256 rule", () => {
 
 test("account sizes equal the program's (8-byte discriminator + struct)", () => {
   // From the Rust layout pins (tests/test_game.rs, test_recovery.rs).
-  assert.equal(8 + sizeOf({ defined: { name: "TableRuntime" } }), 1198); // bump at 1197
+  assert.equal(8 + sizeOf({ defined: { name: "TableRuntime" } }), 1212); // bump at 1211
   assert.equal(8 + sizeOf({ defined: { name: "HandLog" } }), 953); // ACTION_LOG_OFFSET
 });
 
@@ -39,7 +39,7 @@ function put(buf: Uint8Array, off: number, value: bigint, bytes: number) {
 }
 
 test("TableRuntime decoder agrees with the byte offsets the Rust tests pin", () => {
-  const d = new Uint8Array(1198);
+  const d = new Uint8Array(1212);
   d.set(discriminatorOf("TableRuntime"), 0);
   put(d, 458, 77n, 8); // hand_no
   d[469] = 5; // phase DEALT

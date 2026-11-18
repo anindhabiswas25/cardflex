@@ -19,7 +19,7 @@ import { randomBytes } from "node:crypto";
 import { Keypair, PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY, Transaction } from "@solana/web3.js";
 import { MAGIC_PROGRAM_ID, MAGIC_CONTEXT_ID, delegationRecordPdaFromDelegatedAccount } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
-  PROGRAM_ID, repoRoot, send, rejected, waitFor, log, ms, w, r, u8, authFailures,
+  PROGRAM_ID, repoRoot, send, sleep, rejected, waitFor, log, ms, w, r, u8, authFailures,
   RT, PHASE, TC, SL, SL5, GLOBAL, GC, GAME, ACTION, teeConn, tokenFor, buyInIx, ledgerPda,
 } from "./common.mjs";
 import { setupTable } from "./table.mjs";
@@ -81,6 +81,7 @@ try {
 
   // ---- one hand: salts, VRF, deal, some bets, the game ends it, reveal ----
   async function playHand(h, { leaveSeat = null } = {}) {
+    if (h > 0) await sleep(3_500); // program: HAND_GAP_SECS (3 s) since the last hand ended
     await send(tee, [ix("start_hand", [r(authority.publicKey, true), r(config), w(runtime)])], [authority], { skipPreflight: true });
     let d = await t.readRuntime();
     const order = [...d.subarray(RT.dealing_order, RT.dealing_order + d[RT.dealing_count])];

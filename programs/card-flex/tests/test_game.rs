@@ -152,6 +152,8 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         leaving: 0,
         departed: 0,
         salts_deadline: 0,
+        missed_salts: [0; MAX_SEATS],
+        last_hand_end: 0,
         bump,
     };
     let mut data = Vec::new();
@@ -596,7 +598,12 @@ fn runtime_byte_offsets() {
         i64::from_le_bytes(d[1189..1197].try_into().unwrap()),
         rt.salts_deadline
     );
-    assert_eq!(d[1197], rt.bump, "bump follows salts_deadline");
+    assert_eq!(&d[1197..1203], &rt.missed_salts);
+    assert_eq!(
+        i64::from_le_bytes(d[1203..1211].try_into().unwrap()),
+        rt.last_hand_end
+    );
+    assert_eq!(d[1211], rt.bump, "bump follows last_hand_end");
 }
 
 /// Keeps `HL` in `packages/probes/src/common.mjs` in sync with `HandLog`.

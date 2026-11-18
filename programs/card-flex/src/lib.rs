@@ -288,6 +288,7 @@ pub mod card_flex {
             runtime.seat_epoch[s] = ledger.epoch;
             runtime.occupied |= 1 << seat;
             runtime.departed &= !(1 << seat);
+            runtime.missed_salts[s] = 0;
             let mut members = vec![Member {
                 flags,
                 pubkey: runtime.authority,
@@ -1077,6 +1078,10 @@ pub mod card_flex {
         let runtime = &mut ctx.accounts.runtime;
         require!(runtime.locked, CardFlexError::TableNotLocked);
         require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+        require!(
+            Clock::get()?.unix_timestamp >= runtime.last_hand_end.saturating_add(HAND_GAP_SECS),
+            CardFlexError::TooEarly
+        );
         // Security: a reader grant from the last hand must be revoked first,
         // or the old viewer could read this seat's new cards.
         require!(runtime.grants == 0, CardFlexError::GrantActive);
@@ -1159,6 +1164,7 @@ pub mod card_flex {
         runtime.salt_commitments[seat as usize] =
             fairness_core::salt_commitment::<SolSha256>(&runtime.hand_ctx, seat, &salt);
         runtime.salts_in |= 1 << seat;
+        runtime.missed_salts[seat as usize] = 0;
         let all = runtime.dealing_order[..runtime.dealing_count as usize]
             .iter()
             .fold(0u8, |m, s| m | (1 << s));
@@ -1501,14 +1507,17 @@ pub mod card_flex {
         runtime.action_seq = 0;
         runtime.turn_deadline = 0;
         runtime.side_show_viewers = [0; MAX_SEATS];
+        runtime.last_hand_end = Clock::get()?.unix_timestamp;
         apply_leaves(runtime);
         Ok(())
     }
 
     /// Ends a salt round that stalled (CF-050): after `salts_deadline`, anyone
     /// may call it. No boots were collected yet (that happens at the deal), so
-    /// nothing is owed. Dealt players who didn't submit a salt are made to
-    /// leave (they can cash out after the next sync); the rest stay seated.
+    /// nothing is owed. Each dealt player who didn't submit a salt gets a
+    /// strike; after MAX_MISSED_SALTS in a row they're made to leave (cash-out
+    /// after the next sync), so an absent player can't freeze the table but a
+    /// briefly slow one isn't evicted.
     /// The hand number moves on, so the next hand has a new context and new
     /// salts. Without this, one absent player froze the table and everyone's
     /// money with it.
@@ -1522,10 +1531,17 @@ pub mod card_flex {
             Clock::get()?.unix_timestamp >= runtime.salts_deadline,
             CardFlexError::TooEarly
         );
-        let dealt = runtime.dealing_order[..runtime.dealing_count as usize]
-            .iter()
-            .fold(0u8, |m, s| m | (1 << s));
-        runtime.leaving |= dealt & !runtime.salts_in;
+        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
+        for s in order {
+            if runtime.salts_in & (1 << s) == 0 {
+                let m = &mut runtime.missed_salts[s as usize];
+                *m = m.saturating_add(1);
+                if *m >= MAX_MISSED_SALTS {
+                    runtime.leaving |= 1 << s;
+                }
+            }
+        }
+        runtime.last_hand_end = Clock::get()?.unix_timestamp;
         runtime.cancelled_hands = runtime.cancelled_hands.saturating_add(1);
         runtime.hand_no = runtime
             .hand_no
@@ -1559,6 +1575,7 @@ pub mod card_flex {
             .hand_no
             .checked_add(1)
             .ok_or(CardFlexError::Overflow)?;
+        runtime.last_hand_end = Clock::get()?.unix_timestamp;
         runtime.phase = phase::IDLE;
         runtime.salts_in = 0;
         runtime.salt_commitments = [[0; 32]; MAX_SEATS];
@@ -2145,7 +2162,7 @@ pub enum CardFlexError {
     HandInProgress,
     #[msg("callback is for a different hand")]
     StaleCallback,
-    #[msg("the VRF timeout has not passed yet")]
+    #[msg("too early: the timeout or the gap between hands has not passed yet")]
     TooEarly,
     #[msg("wrong hand log account")]
     BadHandLog,

@@ -199,7 +199,10 @@ Planned crates and apps are listed in PRD §7.
   a key holder: `start_hand` is permissionless; a stalled salt round is
   ended by `cancel_salts` after `salts_deadline`; a missing VRF callback by
   `cancel_hand`; a slow player by `timeout_turn`. Keep it that way: a phase
-  only a key holder can advance can freeze players' money.
+  only a key holder can advance can freeze players' money. But never let a
+  permissionless step punish present players for one slow moment: a missed
+  salt round is a strike (seat leaves after 3 in a row) and `start_hand`
+  waits `HAND_GAP_SECS` after `last_hand_end`.
 - Hand loop (CF-024): start_hand → salts → request_shuffle → VRF → deal →
   act/timeout_turn → HAND_COMPLETE → reveal_hand → (side_show_view revoke)
   → commit_hand → sync_hand (base) → next_hand → start_hand. `next_hand` is
