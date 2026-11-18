@@ -1,0 +1,32 @@
+{
+  "probe": "P2-handflow",
+  "version": 1,
+  "region": "dev-machine-1",
+  "queue": "ephemeral",
+  "started_at": "2026-11-18T15:22:30.661Z",
+  "checks": [
+    {
+      "group": "vrf",
+      "name": "request before SALTS_DONE rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "phase SALTS_DONE",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    }
+  ],
+  "timings": {
+    "teardown_ok": true
+  },
+  "error": "ReferenceError: Cannot access 'dealIx' before initialization\n    at file:///home/asus/Project/cardflex/packages/probes/src/handflow.mjs:65:75\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+  "auth_transient_failures": [],
+  "passed": 2,
+  "failed": 0,
+  "ok": false,
+  "finished_at": "2026-11-18T15:23:22.428Z"
+}

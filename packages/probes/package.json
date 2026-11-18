@@ -5,7 +5,6 @@
   "description": "CF-003: latency, access and attestation probes for MagicBlock endpoints",
   "scripts": {
     "probe": "node src/probe.mjs",
-    "roundtrip": "node src/roundtrip.mjs",
     "tablepoc": "node src/tablepoc.mjs",
     "privacy-suite": "node src/privacy-suite.mjs",
     "handflow": "node src/handflow.mjs"

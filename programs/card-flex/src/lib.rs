@@ -1,15 +1,15 @@
 //! Card Flex on-chain program.
 //!
-//! P0 contents:
+//! Contents:
 //! - `ping`: proves the pinned toolchain builds, deploys and runs (CF-001).
-//! - `probe_*`: CF-004 round trip on MagicBlock PER: create an account on the
-//!   base layer, delegate it to the TEE validator, make it private, write to it
-//!   inside PER, commit, then commit-and-undelegate back to the base layer.
-//!   This is scaffolding for measurements and P1; game instructions replace it.
-//! - Table instructions (CF-006, `table.rs`): P1 privacy POC with the real
-//!   account layout from ADR 0002 and a fixed test deck.
-//! - `probe_secret_*`: CF-006 spike for ADR 0002 assumption A1: an
-//!   ephemeral-only account inside PER, protected by an ephemeral permission.
+//! - Table (CF-006/007, `table.rs`): ADR 0002 account layout, permissions,
+//!   Side Show readers, session rotation.
+//! - Fairness (CF-009..011): salt round, MagicBlock VRF, shuffle, deal and
+//!   Merkle commitment per CF-Fairness v2.
+//! - `poc_deal`: P1 test deck, only with the `poc-test-deck` feature.
+//!
+//! The CF-004 `probe_*` scaffolding was removed after its results were
+//! recorded (docs/findings/cf-004, cf-006-a1; last present in commit e017823).
 
 pub mod table;
 
@@ -19,13 +19,9 @@ use ephemeral_rollups_sdk::{
         instructions::{
             CloseEphemeralPermissionCpi, CreateEphemeralPermissionCpi, UpdateEphemeralPermissionCpi,
         },
-        structs::{
-            EphemeralMembersArgs, EphemeralPermission, Member, PERMISSION_SEED, TX_BALANCES_FLAG,
-            TX_LOGS_FLAG, TX_MESSAGE_FLAG,
-        },
+        structs::{EphemeralMembersArgs, Member, TX_BALANCES_FLAG, TX_LOGS_FLAG, TX_MESSAGE_FLAG},
     },
-    anchor::{commit, delegate, ephemeral},
-    consts::{EPHEMERAL_VAULT_ID, MAGIC_PROGRAM_ID, PERMISSION_PROGRAM_ID},
+    anchor::ephemeral,
     cpi::DelegateConfig,
     ephem::MagicIntentBundleBuilder,
     ephemeral_accounts::EphemeralAccount,
@@ -37,12 +33,6 @@ declare_id!("4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL");
 
 /// Bumped whenever an on-chain account layout or instruction changes.
 pub const PROTOCOL_VERSION: u16 = 0;
-
-pub const PROBE_SEED: &[u8] = b"probe";
-pub const SECRET_SEED: &[u8] = b"secret";
-/// Ephemeral secret account layout: 8-byte tag + 32 bytes of secret.
-pub const SECRET_LEN: u32 = 40;
-pub const SECRET_TAG: &[u8; 8] = b"CFSECRET";
 
 #[ephemeral]
 #[program]
@@ -165,6 +155,10 @@ pub mod card_flex {
     /// Creates the ephemeral `DealerState`. Its only permission member is the
     /// `TableRuntime` PDA, which can't sign, so no one can read it.
     pub fn open_dealer(ctx: Context<TablePer>) -> Result<()> {
+        require!(
+            !ctx.accounts.runtime.hand_in_progress(),
+            CardFlexError::HandInProgress
+        );
         let runtime_key = ctx.accounts.runtime.key();
         let (dealer, dealer_bump) =
             Pubkey::find_program_address(&[DEALER_SEED, runtime_key.as_ref()], &crate::ID);
@@ -203,6 +197,10 @@ pub mod card_flex {
     /// Creates the ephemeral `SeatHand` for an occupied seat, readable only by
     /// that seat's session key.
     pub fn open_seat_hand(ctx: Context<TablePer>, seat: u8) -> Result<()> {
+        require!(
+            !ctx.accounts.runtime.hand_in_progress(),
+            CardFlexError::HandInProgress
+        );
         let runtime = &ctx.accounts.runtime;
         require!(seat < runtime.max_seats, CardFlexError::BadSeat);
         require!(
@@ -415,6 +413,10 @@ pub mod card_flex {
     /// member is the `TableRuntime` PDA, so nobody (not even the player) can
     /// read a salt back; only the program uses it (ADR 0002).
     pub fn open_salt(ctx: Context<TablePer>, seat: u8) -> Result<()> {
+        require!(
+            !ctx.accounts.runtime.hand_in_progress(),
+            CardFlexError::HandInProgress
+        );
         let runtime = &ctx.accounts.runtime;
         require!(seat < runtime.max_seats, CardFlexError::BadSeat);
         require!(
@@ -536,6 +538,10 @@ pub mod card_flex {
 
     /// Closes a seat's `SaltAccount` and its permission (before undelegate).
     pub fn close_salt(ctx: Context<TablePer>, seat: u8) -> Result<()> {
+        require!(
+            !ctx.accounts.runtime.hand_in_progress(),
+            CardFlexError::HandInProgress
+        );
         let runtime = &ctx.accounts.runtime;
         let runtime_key = runtime.key();
         let (expected, bump) =
@@ -590,7 +596,9 @@ pub mod card_flex {
         let caller_seed =
             fairness_core::vrf_caller_seed::<SolSha256>(&runtime.hand_ctx, &commitments);
         runtime.vrf_caller_seed = caller_seed;
+        runtime.vrf_request_slot = Clock::get()?.slot;
         runtime.phase = phase::VRF_PENDING;
+        let hand_no = runtime.hand_no;
 
         let runtime_key = runtime.key();
         let mut metas = vec![
@@ -624,7 +632,9 @@ pub mod card_flex {
                 callback_discriminator: instruction::VrfDeal::DISCRIMINATOR.to_vec(),
                 caller_seed,
                 accounts_metas: Some(metas),
-                ..Default::default()
+                // Echoed after `randomness` in the callback data: binds the
+                // callback to this hand so a late one for a cancelled hand fails.
+                callback_args: Some(hand_no.to_le_bytes().to_vec()),
             },
         );
         ctx.accounts
@@ -636,12 +646,13 @@ pub mod card_flex {
     /// the hand waits for randomness, so a second or stale fulfilment fails.
     /// Derives `seed` (spec §4) from the VRF output and every salt, and stores
     /// both in the private `DealerState`. The shuffle itself is CF-011.
-    pub fn vrf_deal(ctx: Context<VrfDeal>, randomness: [u8; 32]) -> Result<()> {
+    pub fn vrf_deal(ctx: Context<VrfDeal>, randomness: [u8; 32], hand_no: u64) -> Result<()> {
         let runtime = &mut ctx.accounts.runtime;
         require!(
             runtime.phase == phase::VRF_PENDING,
             CardFlexError::WrongPhase
         );
+        require!(hand_no == runtime.hand_no, CardFlexError::StaleCallback);
         let runtime_key = runtime.key();
         let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
         require!(
@@ -664,6 +675,12 @@ pub mod card_flex {
             );
             let mut salt = [0u8; 32];
             salt.copy_from_slice(&data[49..81]);
+            // Security review: the salt used must be exactly the committed one.
+            require!(
+                fairness_core::salt_commitment::<SolSha256>(&runtime.hand_ctx, seat, &salt)
+                    == runtime.salt_commitments[seat as usize],
+                CardFlexError::BadSalt
+            );
             salts.push(salt);
         }
         let seed = fairness_core::shuffle_seed::<SolSha256>(&runtime.hand_ctx, &randomness, &salts);
@@ -675,6 +692,114 @@ pub mod card_flex {
             d[DEALER_SEED_OFFSET..DEALER_SEED_OFFSET + 32].copy_from_slice(&seed);
         }
         runtime.phase = phase::SEEDED;
+        Ok(())
+    }
+
+    // ---------- CF-011 shuffle and deal (PER) ----------
+
+    /// Shuffles from the private seed (spec §5–6), commits the deck with a
+    /// Merkle root (spec §7), and writes each seat's 3 cards, positions, leaf
+    /// salts and proofs into its private `SeatHand` (spec §8). Only the root
+    /// becomes public.
+    pub fn deal_hand(ctx: Context<DealHand>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.phase == phase::SEEDED, CardFlexError::WrongPhase);
+        let runtime_key = runtime.key();
+        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
+        require!(
+            ctx.remaining_accounts.len() == order.len(),
+            CardFlexError::BadSeatHand
+        );
+        let mut seed = [0u8; 32];
+        {
+            let d = ctx.accounts.dealer.try_borrow_data()?;
+            require!(&d[..8] == DEALER_TAG, CardFlexError::BadDealer);
+            require!(
+                d[40..48] == runtime.hand_no.to_le_bytes(),
+                CardFlexError::BadDealer
+            );
+            seed.copy_from_slice(&d[DEALER_SEED_OFFSET..DEALER_SEED_OFFSET + 32]);
+        }
+        let out = compute_deal(&runtime.hand_ctx, &seed, order.len());
+        {
+            let mut d = ctx.accounts.dealer.try_borrow_mut_data()?;
+            for (i, c) in out.deck.iter().enumerate() {
+                d[48 + i] = c.id();
+            }
+        }
+        let n = order.len();
+        for (k, (&seat, acc)) in order.iter().zip(ctx.remaining_accounts).enumerate() {
+            let (expected, _) = Pubkey::find_program_address(
+                &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
+                &crate::ID,
+            );
+            require_keys_eq!(acc.key(), expected, CardFlexError::BadSeatHand);
+            require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSeatHand);
+            let mut data = acc.try_borrow_mut_data()?;
+            require!(
+                data.len() == SEAT_HAND_LEN as usize && &data[..8] == SEAT_HAND_TAG,
+                CardFlexError::BadSeatHand
+            );
+            data[41..49].copy_from_slice(&runtime.hand_no.to_le_bytes());
+            for (j, pos) in fairness_core::deal_positions(k, n).into_iter().enumerate() {
+                data[HAND_CARDS + j] = out.deck[pos].id();
+                data[HAND_POSITIONS + j] = pos as u8;
+                let salt = fairness_core::leaf_salt::<SolSha256>(&seed, pos as u8);
+                data[HAND_LEAF_SALTS + 32 * j..HAND_LEAF_SALTS + 32 * (j + 1)]
+                    .copy_from_slice(&salt);
+                for (lvl, sib) in out.proofs[3 * k + j].iter().enumerate() {
+                    let at = HAND_PROOFS + (6 * j + lvl) * 32;
+                    data[at..at + 32].copy_from_slice(sib);
+                }
+            }
+        }
+        runtime.merkle_root = out.root;
+        runtime.dealt = true;
+        runtime.phase = phase::DEALT;
+        Ok(())
+    }
+
+    /// Cancels a hand whose VRF callback hasn't arrived within
+    /// `VRF_TIMEOUT_SLOTS`. Permissionless. The cancellation is counted
+    /// publicly, the hand number moves on (so a late callback is rejected and
+    /// the next hand has new salts), and nothing is rerolled silently.
+    /// Boots are returned with the money logic in P6.
+    pub fn cancel_hand(ctx: Context<CancelHand>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(
+            runtime.phase == phase::VRF_PENDING,
+            CardFlexError::WrongPhase
+        );
+        let now = Clock::get()?.slot;
+        require!(
+            now >= runtime.vrf_request_slot.saturating_add(VRF_TIMEOUT_SLOTS),
+            CardFlexError::TooEarly
+        );
+        runtime.cancelled_hands = runtime.cancelled_hands.saturating_add(1);
+        runtime.hand_no = runtime
+            .hand_no
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        runtime.phase = phase::IDLE;
+        runtime.salts_in = 0;
+        runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+        Ok(())
+    }
+
+    /// Compute-cost benchmark of the real deal path; touches no accounts.
+    pub fn bench_deal(
+        _ctx: Context<BenchDeal>,
+        hand_ctx: [u8; 32],
+        seed: [u8; 32],
+        seats: u8,
+    ) -> Result<()> {
+        require!(
+            (2..=MAX_SEATS as u8).contains(&seats),
+            CardFlexError::BadSeat
+        );
+        let out = compute_deal(&hand_ctx, &seed, seats as usize);
+        // Keep the optimiser from discarding the work.
+        require!(out.root != [0u8; 32], CardFlexError::BadDealer);
         Ok(())
     }
 
@@ -720,12 +845,18 @@ pub mod card_flex {
             }
         }
         runtime.dealt = true;
+        // The test-deck hand counts as dealt, so cleanup is allowed afterwards.
+        runtime.phase = phase::DEALT;
         Ok(())
     }
 
     /// Closes an ephemeral account (dealer or a seat hand) and its permission,
     /// returning rent to `TableRuntime`. Must run before `undelegate_table`.
     pub fn close_ephemeral(ctx: Context<TablePer>, seat: Option<u8>) -> Result<()> {
+        require!(
+            !ctx.accounts.runtime.hand_in_progress(),
+            CardFlexError::HandInProgress
+        );
         let runtime = &ctx.accounts.runtime;
         let runtime_key = runtime.key();
         let (expected, bump) = match seat {
@@ -777,189 +908,6 @@ pub mod card_flex {
             ctx.accounts.magic_program.to_account_info(),
         )
         .commit_and_undelegate(&[ctx.accounts.runtime.to_account_info()])
-        .build_and_invoke()?;
-        Ok(())
-    }
-
-    /// Base layer. Creates the probe account and pre-funds it with the rent the
-    /// ephemeral permission account will need inside PER.
-    pub fn probe_init(ctx: Context<ProbeInit>) -> Result<()> {
-        // Rent for two ephemeral permissions (probe + secret) and the
-        // ephemeral secret account, all paid inside PER by this account.
-        let permission_rent =
-            ephemeral_rollups_sdk::ephemeral_accounts::rent(EphemeralPermission::size_of(1) as u32);
-        let rent =
-            2 * permission_rent + ephemeral_rollups_sdk::ephemeral_accounts::rent(SECRET_LEN);
-        anchor_lang::system_program::transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.key(),
-                anchor_lang::system_program::Transfer {
-                    from: ctx.accounts.authority.to_account_info(),
-                    to: ctx.accounts.probe.to_account_info(),
-                },
-            ),
-            rent,
-        )?;
-        let probe = &mut ctx.accounts.probe;
-        probe.authority = ctx.accounts.authority.key();
-        probe.value = 0;
-        probe.writes = 0;
-        Ok(())
-    }
-
-    /// Base layer. Delegates the probe account to the given (TEE) validator.
-    pub fn probe_delegate(ctx: Context<ProbeDelegate>) -> Result<()> {
-        let validator = ctx.accounts.validator.as_ref().map(|v| v.key());
-        ctx.accounts.delegate_probe(
-            &ctx.accounts.authority,
-            &[PROBE_SEED, ctx.accounts.authority.key().as_ref()],
-            DelegateConfig {
-                validator,
-                ..Default::default()
-            },
-        )?;
-        Ok(())
-    }
-
-    /// PER. Creates the ephemeral permission: private, readable only by the
-    /// authority. Idempotent.
-    pub fn probe_make_private(ctx: Context<ProbePermission>) -> Result<()> {
-        if ctx.accounts.permission.lamports() > 0 {
-            msg!("permission exists");
-            return Ok(());
-        }
-        let authority = ctx.accounts.probe.authority;
-        let seeds: &[&[u8]] = &[PROBE_SEED, authority.as_ref(), &[ctx.bumps.probe]];
-        CreateEphemeralPermissionCpi {
-            payer: ctx.accounts.probe.to_account_info(),
-            permissioned_account: ctx.accounts.probe.to_account_info(),
-            permission: ctx.accounts.permission.to_account_info(),
-            vault: ctx.accounts.ephemeral_vault.to_account_info(),
-            magic_program: ctx.accounts.magic_program.to_account_info(),
-            permission_program: ctx.accounts.permission_program.to_account_info(),
-            args: EphemeralMembersArgs {
-                is_private: true,
-                members: vec![Member {
-                    flags: TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG,
-                    pubkey: authority,
-                }],
-            },
-        }
-        .invoke_signed(&[seeds])?;
-        Ok(())
-    }
-
-    /// PER. A game-action-sized write, used to measure confirmation latency.
-    pub fn probe_write(ctx: Context<ProbeWrite>, value: u64) -> Result<()> {
-        let probe = &mut ctx.accounts.probe;
-        probe.value = value;
-        probe.writes = probe.writes.checked_add(1).ok_or(CardFlexError::Overflow)?;
-        Ok(())
-    }
-
-    /// PER. Creates an ephemeral-only secret account (sponsored by the
-    /// delegated probe), writes `secret` into it and makes it private to the
-    /// authority. CF-006 spike for ADR 0002 assumption A1.
-    pub fn probe_secret_create(ctx: Context<ProbeSecret>, secret: [u8; 32]) -> Result<()> {
-        let authority = ctx.accounts.probe.authority;
-        let probe_key = ctx.accounts.probe.key();
-        let probe_seeds: &[&[u8]] = &[PROBE_SEED, authority.as_ref(), &[ctx.bumps.probe]];
-        let secret_seeds: &[&[u8]] = &[SECRET_SEED, probe_key.as_ref(), &[ctx.bumps.secret]];
-        let probe_info = ctx.accounts.probe.to_account_info();
-
-        EphemeralAccount::new(
-            &probe_info,
-            &ctx.accounts.secret,
-            &ctx.accounts.ephemeral_vault,
-        )
-        .with_signer_seeds(&[probe_seeds, secret_seeds])
-        .create(SECRET_LEN)?;
-        {
-            let mut data = ctx.accounts.secret.try_borrow_mut_data()?;
-            data[..8].copy_from_slice(SECRET_TAG);
-            data[8..40].copy_from_slice(&secret);
-        }
-        CreateEphemeralPermissionCpi {
-            payer: probe_info.clone(),
-            permissioned_account: ctx.accounts.secret.to_account_info(),
-            permission: ctx.accounts.permission.to_account_info(),
-            vault: ctx.accounts.ephemeral_vault.to_account_info(),
-            magic_program: ctx.accounts.magic_program.to_account_info(),
-            permission_program: ctx.accounts.permission_program.to_account_info(),
-            args: EphemeralMembersArgs {
-                is_private: true,
-                members: vec![Member {
-                    flags: TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG,
-                    pubkey: authority,
-                }],
-            },
-        }
-        .invoke_signed(&[probe_seeds, secret_seeds])?;
-        Ok(())
-    }
-
-    /// PER. Overwrites the secret (owner only).
-    pub fn probe_secret_write(ctx: Context<ProbeSecretWrite>, secret: [u8; 32]) -> Result<()> {
-        let mut data = ctx.accounts.secret.try_borrow_mut_data()?;
-        require!(
-            data.len() == SECRET_LEN as usize && &data[..8] == SECRET_TAG,
-            CardFlexError::BadSecret
-        );
-        data[8..40].copy_from_slice(&secret);
-        Ok(())
-    }
-
-    /// PER. Closes the secret's permission and the ephemeral account, returning
-    /// rent to the probe. Must run before `probe_undelegate` (ADR 0002 rule 3).
-    pub fn probe_secret_close(ctx: Context<ProbeSecret>) -> Result<()> {
-        let authority = ctx.accounts.probe.authority;
-        let probe_key = ctx.accounts.probe.key();
-        let probe_seeds: &[&[u8]] = &[PROBE_SEED, authority.as_ref(), &[ctx.bumps.probe]];
-        let secret_seeds: &[&[u8]] = &[SECRET_SEED, probe_key.as_ref(), &[ctx.bumps.secret]];
-        let probe_info = ctx.accounts.probe.to_account_info();
-
-        CloseEphemeralPermissionCpi {
-            payer: probe_info.clone(),
-            permissioned_account: ctx.accounts.secret.to_account_info(),
-            permission: ctx.accounts.permission.to_account_info(),
-            vault: ctx.accounts.ephemeral_vault.to_account_info(),
-            magic_program: ctx.accounts.magic_program.to_account_info(),
-            permission_program: ctx.accounts.permission_program.to_account_info(),
-            authority: ctx.accounts.secret.to_account_info(),
-            authority_is_signer: false,
-        }
-        .invoke_signed(&[probe_seeds, secret_seeds])?;
-        EphemeralAccount::new(
-            &probe_info,
-            &ctx.accounts.secret,
-            &ctx.accounts.ephemeral_vault,
-        )
-        .with_signer_seeds(&[probe_seeds])
-        .close()?;
-        Ok(())
-    }
-
-    /// PER. Commits the probe state to the base layer and stays delegated.
-    pub fn probe_commit(ctx: Context<ProbeCommit>) -> Result<()> {
-        MagicIntentBundleBuilder::new(
-            ctx.accounts.authority.to_account_info(),
-            ctx.accounts.magic_context.to_account_info(),
-            ctx.accounts.magic_program.to_account_info(),
-        )
-        .commit(&[ctx.accounts.probe.to_account_info()])
-        .build_and_invoke()?;
-        Ok(())
-    }
-
-    /// PER. Commits and returns ownership of the probe account to this program
-    /// on the base layer.
-    pub fn probe_undelegate(ctx: Context<ProbeCommit>) -> Result<()> {
-        MagicIntentBundleBuilder::new(
-            ctx.accounts.authority.to_account_info(),
-            ctx.accounts.magic_context.to_account_info(),
-            ctx.accounts.magic_program.to_account_info(),
-        )
-        .commit_and_undelegate(&[ctx.accounts.probe.to_account_info()])
         .build_and_invoke()?;
         Ok(())
     }
@@ -1021,14 +969,6 @@ fn create_permission<'info>(
     Ok(())
 }
 
-#[account]
-#[derive(InitSpace)]
-pub struct Probe {
-    pub authority: Pubkey,
-    pub value: u64,
-    pub writes: u64,
-}
-
 #[error_code]
 pub enum CardFlexError {
     #[msg("counter overflow")]
@@ -1075,107 +1015,10 @@ pub enum CardFlexError {
     SaltAlreadySubmitted,
     #[msg("not a MagicBlock VRF queue")]
     BadQueue,
-}
-
-#[derive(Accounts)]
-pub struct ProbeSecret<'info> {
-    pub authority: Signer<'info>,
-    #[account(mut, seeds = [PROBE_SEED, probe.authority.as_ref()], bump, has_one = authority)]
-    pub probe: Account<'info, Probe>,
-    /// CHECK: ephemeral-only PDA created/closed through the magic program.
-    #[account(mut, seeds = [SECRET_SEED, probe.key().as_ref()], bump)]
-    pub secret: UncheckedAccount<'info>,
-    /// CHECK: PDA of the permission program for the secret account.
-    #[account(
-        mut,
-        seeds = [PERMISSION_SEED, secret.key().as_ref()],
-        bump,
-        seeds::program = PERMISSION_PROGRAM_ID,
-    )]
-    pub permission: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = PERMISSION_PROGRAM_ID)]
-    pub permission_program: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(mut, address = EPHEMERAL_VAULT_ID)]
-    pub ephemeral_vault: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = MAGIC_PROGRAM_ID)]
-    pub magic_program: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ProbeSecretWrite<'info> {
-    pub authority: Signer<'info>,
-    #[account(seeds = [PROBE_SEED, probe.authority.as_ref()], bump, has_one = authority)]
-    pub probe: Account<'info, Probe>,
-    /// CHECK: PDA checked by seeds, layout checked by tag; owned by this program.
-    #[account(mut, seeds = [SECRET_SEED, probe.key().as_ref()], bump, owner = crate::ID)]
-    pub secret: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ProbeInit<'info> {
-    #[account(
-        init,
-        payer = authority,
-        space = 8 + Probe::INIT_SPACE,
-        seeds = [PROBE_SEED, authority.key().as_ref()],
-        bump
-    )]
-    pub probe: Account<'info, Probe>,
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[delegate]
-#[derive(Accounts)]
-pub struct ProbeDelegate<'info> {
-    pub authority: Signer<'info>,
-    /// CHECK: the probe PDA, checked by seeds; delegated by the SDK.
-    #[account(mut, del, seeds = [PROBE_SEED, authority.key().as_ref()], bump)]
-    pub probe: UncheckedAccount<'info>,
-    /// CHECK: validator identity, checked by the delegation program.
-    pub validator: Option<UncheckedAccount<'info>>,
-}
-
-#[derive(Accounts)]
-pub struct ProbePermission<'info> {
-    pub authority: Signer<'info>,
-    #[account(mut, seeds = [PROBE_SEED, probe.authority.as_ref()], bump, has_one = authority)]
-    pub probe: Account<'info, Probe>,
-    /// CHECK: PDA of the permission program for this probe account.
-    #[account(
-        mut,
-        seeds = [PERMISSION_SEED, probe.key().as_ref()],
-        bump,
-        seeds::program = PERMISSION_PROGRAM_ID,
-    )]
-    pub permission: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = PERMISSION_PROGRAM_ID)]
-    pub permission_program: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(mut, address = EPHEMERAL_VAULT_ID)]
-    pub ephemeral_vault: UncheckedAccount<'info>,
-    /// CHECK: fixed address.
-    #[account(address = MAGIC_PROGRAM_ID)]
-    pub magic_program: UncheckedAccount<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ProbeWrite<'info> {
-    pub authority: Signer<'info>,
-    #[account(mut, seeds = [PROBE_SEED, probe.authority.as_ref()], bump, has_one = authority)]
-    pub probe: Account<'info, Probe>,
-}
-
-#[commit]
-#[derive(Accounts)]
-pub struct ProbeCommit<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    #[account(mut, seeds = [PROBE_SEED, probe.authority.as_ref()], bump, has_one = authority)]
-    pub probe: Account<'info, Probe>,
+    #[msg("a hand is in progress; ephemeral accounts can't change now")]
+    HandInProgress,
+    #[msg("callback is for a different hand")]
+    StaleCallback,
+    #[msg("the VRF timeout has not passed yet")]
+    TooEarly,
 }

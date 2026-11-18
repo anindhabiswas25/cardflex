@@ -31,7 +31,7 @@ fairness-core = { path = "../../crates/fairness-core" }
 # sol_sha256 syscall on-chain; the sha2 feature gives a software fallback for host tests.
 solana-sha256-hasher = { version = "=3.1.0", features = ["sha2"] }
 # Pulled in now so CI proves the pinned Anchor + MagicBlock SDK combination builds.
-ephemeral-rollups-sdk = { workspace = true, features = ["anchor", "vrf", "access-control", "crank"] }
+ephemeral-rollups-sdk = { workspace = true, features = ["anchor", "vrf", "access-control"] }
 
 [dev-dependencies]
 litesvm = "0.10.0"
@@ -39,6 +39,9 @@ solana-message = "3.0.1"
 solana-transaction = "3.0.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
+solana-account = "3"
+card-types = { path = "../../crates/card-types" }
+fairness-core = { path = "../../crates/fairness-core", features = ["sha2"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

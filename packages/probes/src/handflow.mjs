@@ -11,8 +11,8 @@ import { dirname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Keypair, PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY } from "@solana/web3.js";
 import {
-  PROGRAM_ID, repoRoot, send, rejected, waitFor, sleep, log, ms, w, r, u8, authFailures,
-  RT, PHASE, saltCommitment, vrfCallerSeed,
+  PROGRAM_ID, repoRoot, send, rejected, waitFor, sleep, log, ms, w, r, u8, u64, authFailures,
+  RT, PHASE, HAND, saltCommitment, vrfCallerSeed, verifyCard, teeConn, tokenFor,
 } from "./common.mjs";
 import { setupTable } from "./table.mjs";
 
@@ -46,6 +46,7 @@ try {
     r(programIdentity), r(VRF_PROGRAM_ID), r(SYSVAR_SLOT_HASHES_PUBKEY), r(SystemProgram.programId),
   ];
   const readRuntime = async () => (await tee.getAccountInfo(runtime)).data;
+  const dealIx = (payer) => ix("deal_hand", [r(payer.publicKey, true), w(runtime), w(dealer), ...t.hands.map((h) => w(h))]);
 
   // ---- salts (CF-009) ----
   log("salts");
@@ -62,9 +63,11 @@ try {
   // ---- CF-010: VRF request ----
   log(`CF-010 request VRF on the ${queueName} queue`);
   const stranger = Keypair.generate();
+  check("deal", "deal before SEEDED rejected", true, await rejected(tee, [dealIx(authority)], [authority]));
+  check("integrity", "closing a salt account mid-hand rejected", true, await rejected(tee, [ix("close_salt", t.perKeys(saltAccs[0]), u8(0))], [authority]));
   check("vrf", "unknown queue rejected", true, await rejected(tee, [ix("request_shuffle", requestKeys(authority, Keypair.generate().publicKey))], [authority]));
   // Fake callback: the scoped VRF identity can't be forged, so any signer fails.
-  const fakeCallback = (signer) => ix("vrf_deal", [r(signer.publicKey, true), w(runtime), w(dealer), ...saltAccs.map((a) => r(a))], randomBytes(32));
+  const fakeCallback = (signer) => ix("vrf_deal", [r(signer.publicKey, true), w(runtime), w(dealer), ...saltAccs.map((a) => r(a))], Buffer.concat([randomBytes(32), u64(0n)]));
   check("vrf", "fake callback before request rejected", true, await rejected(tee, [fakeCallback(stranger)], [stranger]));
 
   // Anyone may pay for the request; use a stranger to show it is permissionless.
@@ -87,6 +90,44 @@ try {
     check("vrf", "new request after fulfilment rejected", true, await rejected(tee, [ix("request_shuffle", requestKeys(authority))], [authority]));
     // The seed lives in the private DealerState; nobody can read it here.
     check("privacy", "dealer state unreadable by authority", null, await tee.getAccountInfo(dealer));
+    check("integrity", "cancel before the VRF timeout rejected", true, await rejected(tee, [ix("cancel_hand", [r(authority.publicKey, true), w(runtime)])], [authority]));
+
+    // ---- CF-011: shuffle and deal from the seed ----
+    log("CF-011 deal_hand");
+    const sessionConns = [];
+    for (const p of players) sessionConns.push(teeConn(await tokenFor(p.session)));
+    const tDeal = performance.now();
+    await send(tee, [dealIx(stranger)], [stranger], { skipPreflight: true }); // permissionless
+    report.timings.deal_confirm_ms = ms(tDeal);
+    rt = await readRuntime();
+    check("deal", "phase DEALT", PHASE.DEALT, rt[RT.phase]);
+    const root = rt.subarray(RT.merkle_root, RT.merkle_root + 32);
+    check("deal", "merkle root published", true, !root.equals(Buffer.alloc(32)));
+    check("deal", "second deal rejected", true, await rejected(tee, [dealIx(authority)], [authority]));
+    const seen = new Set();
+    let verified = 0;
+    const n = players.length;
+    const tSee = performance.now();
+    for (let s = 0; s < n; s++) {
+      const got = await waitFor(async () => {
+        const a = await sessionConns[s].getAccountInfo(t.hands[s]);
+        return a && a.data.length === HAND.len && a.data[HAND.positions + 1] !== 0 ? a : null;
+      }, 15_000, 150);
+      if (!got.value) { check("deal", `session${s} reads its hand`, true, false); continue; }
+      const d = got.value.data;
+      for (let j = 0; j < 3; j++) {
+        const card = d[HAND.cards + j], pos = d[HAND.positions + j];
+        const salt = d.subarray(HAND.leaf_salts + 32 * j, HAND.leaf_salts + 32 * (j + 1));
+        const sibs = Array.from({ length: 6 }, (_, l) => d.subarray(HAND.proofs + (6 * j + l) * 32, HAND.proofs + (6 * j + l + 1) * 32));
+        check("deal", `seat ${s} card ${j} at expected position`, s + j * n, pos);
+        if (verifyCard(root, handCtx, pos, card, salt, sibs)) verified++;
+        seen.add(card);
+      }
+    }
+    report.timings.all_players_read_hands_ms = ms(tSee);
+    check("deal", "all 18 cards verify against the public root (JS)", n * 3, verified);
+    check("deal", "18 distinct cards", n * 3, seen.size);
+    check("privacy", "session1 cannot read seat 0's hand", null, await sessionConns[1].getAccountInfo(t.hands[0]));
   }
 } catch (e) {
   report.error = (e instanceof Error ? String(e.stack ?? e) : JSON.stringify(e)).slice(0, 800);

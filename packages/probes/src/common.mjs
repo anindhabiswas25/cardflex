@@ -125,7 +125,17 @@ export const saltCommitment = (ctx, seat, salt) => sha256(Buffer.from("CF_SALT_V
 export const RT = {
   occupied: 73, wallets: 74, sessions: 266, hand_no: 458, dealt: 466, locked: 467, grants: 468, phase: 469,
   hand_ctx: 470, roster_hash: 502, salts_in: 534, dealing_order: 535, dealing_count: 541, salt_commitments: 542,
-  vrf_caller_seed: 734,
+  vrf_caller_seed: 734, merkle_root: 766, vrf_request_slot: 798, cancelled_hands: 806,
 };
-export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4 };
+export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4, DEALT: 5 };
+// SeatHand byte offsets (table.rs HAND_*).
+export const HAND = { cards: 49, positions: 52, leaf_salts: 55, proofs: 151, len: 727 };
+// Spec §7: leaf, parent and proof check.
+export const cardLeaf = (ctx, pos, card, salt) => sha256(Buffer.from([0]), Buffer.from("CF_CARD_LEAF_V2"), ctx, Buffer.from([pos]), Buffer.from([card]), salt);
+const parentHash = (l, r) => sha256(Buffer.from([1]), l, r);
+export function verifyCard(root, ctx, pos, card, salt, siblings) {
+  let h = cardLeaf(ctx, pos, card, salt), idx = pos;
+  for (const sib of siblings) { h = idx % 2 === 0 ? parentHash(h, sib) : parentHash(sib, h); idx >>= 1; }
+  return h.equals(root);
+}
 export const vrfCallerSeed = (ctx, commitments) => sha256(Buffer.from("CF_VRF_SEED_V2"), ctx, ...commitments);

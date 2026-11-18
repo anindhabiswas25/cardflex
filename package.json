@@ -14,12 +14,12 @@
     "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust && pnpm check:fairness",
     "mb-stack": "mb-stack",
     "probe": "pnpm --filter @card-flex/probes probe",
-    "roundtrip": "pnpm --filter @card-flex/probes roundtrip",
     "tablepoc": "pnpm --filter @card-flex/probes tablepoc",
     "build:program:devnet-poc": "anchor build -- --features poc-test-deck",
     "privacy-suite": "pnpm --filter @card-flex/probes privacy-suite",
     "check:fairness": "python3 -I scripts/check_fairness_vectors.py",
-    "handflow": "pnpm --filter @card-flex/probes handflow"
+    "handflow": "pnpm --filter @card-flex/probes handflow",
+    "deploy:devnet": "bash scripts/deploy-devnet.sh"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

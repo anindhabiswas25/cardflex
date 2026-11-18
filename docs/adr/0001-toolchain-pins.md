@@ -72,3 +72,14 @@ Squads multisig before public Devnet (phase P8).
    `Cargo.toml`, `Anchor.toml`, `package.json` or `.nvmrc`).
 2. Run `pnpm verify` and the local stack.
 3. Add a new ADR or amend this one with the reason and what was verified.
+
+## Amendment (2026-11-18, CF-011): build profile and deploys
+
+- `[profile.release] opt-level = "s"` for workspace crates and
+  `[profile.release.package."*"] opt-level = "z"` for dependencies. The
+  program shrank from 568 KB to 470 KB; `deal_hand` with 6 seats costs 86k
+  CU instead of 74k. Compute is far below budget; upload size and rent
+  matter more on a flaky network.
+- The `crank` SDK feature is dropped until P5 uses it.
+- Devnet deploys go through `pnpm deploy:devnet` (resumable buffer upload
+  plus on-chain byte check), never a bare `solana program deploy`.

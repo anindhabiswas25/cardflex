@@ -55,7 +55,6 @@ cargo test --workspace   # needs anchor build first (LiteSVM loads the .so)
 pnpm verify              # all of the above, same order as CI
 pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
-pnpm roundtrip -- --region <label> [--target tee|er-as]   # CF-004 devnet round trip (spends devnet SOL)
 pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet
 pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (needs devnet-poc build deployed)
 pnpm handflow -- --region <label> [--queue ephemeral|base]   # P2 salts -> VRF -> (shuffle, verify)
@@ -66,12 +65,13 @@ Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
 ## Repo map
 
 ```text
-programs/card-flex/    Anchor program: table.rs = P1 table (ADR 0002 layout, TEST deck);
-                       probe_* = CF-004/A1 scaffolding (remove when P5 lands)
+programs/card-flex/    Anchor program: table.rs = accounts/layouts; lib.rs = instructions
+                       (table, permissions, salts, VRF, deal); poc_deal = test deck (feature)
 crates/card-types/     frozen canonical card encoding (no_std)
 crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/spec/
-packages/probes/       common.mjs helpers; probe.mjs (CF-003), roundtrip.mjs (CF-004),
-                       tablepoc.mjs (CF-006), privacy-suite.mjs (CF-007)
+packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), tablepoc.mjs
+                       (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011);
+                       archive/roundtrip.mjs needs the pre-slim build (commit e017823)
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region
 scripts/               check-toolchain.sh
@@ -100,7 +100,9 @@ Planned crates and apps are listed in PRD §7.
   The upgrade authority is the devnet deployer `Cf3ux3ZqSfYutZyxLeEWLeNkpUkPBMneyU3VUwEUww8x`.
   Keys live outside the repo in `~/.config/cardflex/` on the dev machine:
   `devnet-deployer.json`, `card_flex-program-keypair.json`.
-  Redeploy (devnet POC build has the test deck on: `pnpm build:program:devnet-poc` first): `solana program deploy target/deploy/card_flex.so --program-id ~/.config/cardflex/card_flex-program-keypair.json --keypair ~/.config/cardflex/devnet-deployer.json --upgrade-authority ~/.config/cardflex/devnet-deployer.json --url https://rpc.magicblock.app/devnet --use-rpc`.
+  Redeploy with `pnpm deploy:devnet` (builds the devnet test-deck variant,
+  extends space, resumable buffer upload, byte check). Never use a bare
+  `solana program deploy`: it can't resume on a flaky network.
 - Devnet SOL: `solana airdrop 1 <pk> --url https://rpc.magicblock.app/devnet`
   (the public faucet is often rate-limited).
 - PER round trip works (CF-004): write seen by others in about 90 ms p50
@@ -158,6 +160,8 @@ Planned crates and apps are listed in PRD §7.
 - If `solana program deploy` fails mid-way, close the leftover buffer
   (`solana program show --buffers`, `solana program close <buffer>`) to get
   the SOL back, then redeploy.
+- Program size matters for deploys (~1 KB per upload transaction): keep
+  scaffolding out of the program; size-optimized profile is set (ADR 0001).
 - Program upgrades need room: check `solana program show` Data Length vs the
   new `.so` size and run `solana program extend <id> <bytes>` first.
 - MagicBlock IDs and endpoints: PRD §5.1.2 and ADR 0001.

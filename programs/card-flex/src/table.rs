@@ -36,6 +36,9 @@ pub const SALT_TAG: &[u8; 8] = b"CFSALT02";
 pub const SALT_LEN: u32 = 81;
 /// Teen Patti rules version bound into the hand context (PRD §11).
 pub const RULES_VERSION: u16 = 1;
+/// Slots to wait for a VRF callback before the hand may be cancelled.
+/// About 30 s at the ~10 ms PER slot time measured in CF-003.
+pub const VRF_TIMEOUT_SLOTS: u64 = 3_000;
 
 /// SHA-256 for `fairness-core`: the `sol_sha256` syscall on-chain, software
 /// on the host. Same bytes either way (checked against the CF-Fairness v2
@@ -56,12 +59,21 @@ pub mod phase {
     pub const VRF_PENDING: u8 = 3;
     /// Callback arrived; shuffle seed derived and stored privately.
     pub const SEEDED: u8 = 4;
+    /// Deck shuffled from the seed, hands written, Merkle root public (CF-011).
+    pub const DEALT: u8 = 5;
 }
 
 pub const SEAT_HAND_TAG: &[u8; 8] = b"CFSEATHD";
 pub const DEALER_TAG: &[u8; 8] = b"CFDEALER";
-/// tag(8) + runtime(32) + seat(1) + hand_no(8) + cards(3)
-pub const SEAT_HAND_LEN: u32 = 52;
+/// SeatHand layout (CF-011): tag(8), runtime(32), seat(1), hand_no(8),
+/// cards(3), positions(3), leaf_salts(3×32), proofs(3×6×32).
+/// Everything a player needs to check their own cards against the public
+/// Merkle root during play (spec §7).
+pub const SEAT_HAND_LEN: u32 = 727;
+pub const HAND_CARDS: usize = 49;
+pub const HAND_POSITIONS: usize = 52;
+pub const HAND_LEAF_SALTS: usize = 55;
+pub const HAND_PROOFS: usize = 151;
 /// tag(8) + runtime(32) + hand_no(8) + deck(52) + vrf_output(32) + seed(32)
 pub const DEALER_LEN: u32 = 164;
 pub const DEALER_VRF_OFFSET: usize = 100;
@@ -122,10 +134,27 @@ pub struct TableRuntime {
     pub salt_commitments: [[u8; 32]; MAX_SEATS],
     /// `caller_seed` sent with the VRF request (spec §3), public for audit.
     pub vrf_caller_seed: [u8; 32],
+    /// Deck commitment (spec §7), public once dealt.
+    pub merkle_root: [u8; 32],
+    /// Slot of the VRF request; `cancel_hand` is allowed after
+    /// `VRF_TIMEOUT_SLOTS` without a callback.
+    pub vrf_request_slot: u64,
+    /// Hands cancelled at this table (public, for selective-abort monitoring).
+    pub cancelled_hands: u32,
     pub bump: u8,
 }
 
 impl TableRuntime {
+    /// True while a hand is between `start_hand` and the deal. The
+    /// ephemeral accounts that hold its salts, deck and hands must not be
+    /// opened or closed then (security review: it would change the seed).
+    pub fn hand_in_progress(&self) -> bool {
+        matches!(
+            self.phase,
+            phase::SALTS_PENDING | phase::SALTS_DONE | phase::VRF_PENDING | phase::SEEDED
+        )
+    }
+
     pub fn seated(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.max_seats as usize).filter(move |i| self.occupied & (1 << i) != 0)
     }
@@ -161,6 +190,28 @@ pub fn poc_test_deck(hand_no: u64) -> [Card; DECK_SIZE] {
         *slot = ordered[(i + shift) % DECK_SIZE];
     }
     deck
+}
+
+/// Result of dealing from a seed (spec §5–8), computed on the heap because
+/// the full Merkle tree doesn't fit one 4 KB SBF stack frame.
+pub struct DealOut {
+    pub deck: [Card; DECK_SIZE],
+    pub root: [u8; 32],
+    /// For dealing-order seat k, card j: proofs[3k + j].
+    pub proofs: Vec<[[u8; 32]; fairness_core::TREE_DEPTH]>,
+}
+
+pub fn compute_deal(hand_ctx: &[u8; 32], seed: &[u8; 32], seats: usize) -> DealOut {
+    let (deck, _) = fairness_core::shuffle::<SolSha256>(seed);
+    let mut level = vec![[0u8; 32]; fairness_core::TREE_LEAVES];
+    fairness_core::fill_leaves::<SolSha256>(hand_ctx, seed, &deck, &mut level);
+    let positions: Vec<usize> = (0..seats)
+        .flat_map(|k| fairness_core::deal_positions(k, seats))
+        .collect();
+    let mut proofs = vec![[[0u8; 32]; fairness_core::TREE_DEPTH]; positions.len()];
+    let root =
+        fairness_core::root_and_proofs_in_place::<SolSha256>(&mut level, &positions, &mut proofs);
+    DealOut { deck, root, proofs }
 }
 
 /// Round-robin deal: the k-th occupied seat (in seat order) of n receives deck
@@ -300,6 +351,33 @@ pub struct SubmitSalt<'info> {
     #[account(mut, owner = crate::ID)]
     pub salt: UncheckedAccount<'info>,
 }
+
+/// `deal_hand`: anyone may trigger it once seeded; the result is fully
+/// determined by the private seed. Seat hands follow in `remaining_accounts`
+/// in dealing order.
+#[derive(Accounts)]
+pub struct DealHand<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Account<'info, TableRuntime>,
+    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
+    #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    pub dealer: UncheckedAccount<'info>,
+}
+
+/// `cancel_hand`: anyone may cancel a hand whose VRF callback is overdue.
+#[derive(Accounts)]
+pub struct CancelHand<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Account<'info, TableRuntime>,
+}
+
+/// `bench_deal`: no accounts, no state. Lets LiteSVM measure the compute
+/// cost of the real deal path (PER hides compute units from clients).
+/// TODO(P8): remove before public Devnet.
+#[derive(Accounts)]
+pub struct BenchDeal {}
 
 /// `rotate_session`: signed by the seat's wallet inside PER.
 #[derive(Accounts)]

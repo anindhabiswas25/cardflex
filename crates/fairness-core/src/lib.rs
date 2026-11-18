@@ -342,6 +342,47 @@ pub fn verify_card<H: Sha256>(
     &h == root
 }
 
+/// In-place variant of [`leaves`] for constrained stacks (the on-chain
+/// program passes a heap buffer). Same output.
+pub fn fill_leaves<H: Sha256>(
+    hand_ctx: &Hash,
+    seed: &Hash,
+    deck: &[Card; DECK_SIZE],
+    out: &mut [Hash],
+) {
+    assert!(out.len() == TREE_LEAVES);
+    for (i, leaf) in out.iter_mut().enumerate() {
+        *leaf = if i < DECK_SIZE {
+            card_leaf::<H>(hand_ctx, i as u8, deck[i], &leaf_salt::<H>(seed, i as u8))
+        } else {
+            empty_leaf::<H>(i as u8)
+        };
+    }
+}
+
+/// Builds the tree in place over `level` (64 leaves, destroyed), returning
+/// the root and writing the proof of each `positions[k]` into `proofs[k]`.
+/// One pass, 63 parent hashes total, no extra buffers. Same results as
+/// [`merkle_root`] and [`merkle_proof`].
+pub fn root_and_proofs_in_place<H: Sha256>(
+    level: &mut [Hash],
+    positions: &[usize],
+    proofs: &mut [[Hash; TREE_DEPTH]],
+) -> Hash {
+    assert!(level.len() == TREE_LEAVES && positions.len() == proofs.len());
+    let mut width = TREE_LEAVES;
+    for depth in 0..TREE_DEPTH {
+        for (k, &p) in positions.iter().enumerate() {
+            proofs[k][depth] = level[(p >> depth) ^ 1];
+        }
+        for i in 0..width / 2 {
+            level[i] = parent::<H>(&level[2 * i], &level[2 * i + 1]);
+        }
+        width /= 2;
+    }
+    level[0]
+}
+
 // ---------------------------------------------------------------------- deal
 
 /// Deck positions for the `k`-th seat in dealing order among `n` seats:
@@ -440,6 +481,24 @@ mod tests {
             &[0; 32],
             &[[0; 32]; TREE_DEPTH]
         ));
+    }
+
+    #[test]
+    fn in_place_tree_matches_reference() {
+        let ctx = [4u8; 32];
+        let seed = [6u8; 32];
+        let (deck, _) = shuffle::<H>(&seed);
+        let reference = leaves::<H>(&ctx, &seed, &deck);
+        let mut level = [[0u8; 32]; TREE_LEAVES];
+        fill_leaves::<H>(&ctx, &seed, &deck, &mut level);
+        assert_eq!(level, reference);
+        let positions = [0usize, 5, 17, 33, 51];
+        let mut proofs = [[[0u8; 32]; TREE_DEPTH]; 5];
+        let root = root_and_proofs_in_place::<H>(&mut level, &positions, &mut proofs);
+        assert_eq!(root, merkle_root::<H>(&reference));
+        for (k, &p) in positions.iter().enumerate() {
+            assert_eq!(proofs[k], merkle_proof::<H>(&reference, p));
+        }
     }
 
     #[test]
