@@ -141,7 +141,9 @@ export const GAME = {
 };
 export const ACTION = { SEE: 0, CHAAL: 1, PACK: 2, SHOW: 3, SIDE_SHOW: 4, SIDE_SHOW_RESPOND: 5 };
 // TableConfig byte offsets (ADR 0004 fields).
-export const TC = { status: 82, validator: 83, refund_timeout_secs: 115, min_buy_in: 119, max_buy_in: 127, seated: 135, last_sync_time: 136, last_synced_seq: 144 };
+export const TC = { status: 82, validator: 83, refund_timeout_secs: 115, min_buy_in: 119, max_buy_in: 127, seated: 135, last_sync_time: 136, last_synced_seq: 144,
+  // ADR 0005 (P6)
+  seat_epochs: 153, wallets: 177, sessions: 369, ever_delegated: 561, synced_rake: 562, rake_swept: 570 };
 // SeatLedger: config(8) seat(40) wallet(41) buy_in(73) synced_stack(81).
 export const SL = { seat: 40, wallet: 41, buy_in: 73, synced_stack: 81 };
 export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4, DEALT: 5, HAND_COMPLETE: 6, REVEALED: 7, POC_DONE: 8 };

@@ -167,6 +167,10 @@ pub struct TableConfig {
     /// Set by the first `delegate_table`. From then on PER may hold a clone
     /// of any ledger, so `cancel_buy_in` is never allowed again.
     pub ever_delegated: bool,
+    /// CF-033: `TableRuntime.rake_owed` as last synced (between hands).
+    pub synced_rake: u64,
+    /// Rake already paid to the treasury.
+    pub rake_swept: u64,
 }
 
 /// Program-wide settings (ADR 0005 decision 7). Base layer, never delegated.
@@ -773,6 +777,21 @@ pub struct JoinSeat<'info> {
     pub ephemeral_vault: Option<UncheckedAccount<'info>>,
     /// CHECK: fixed address, checked in the handler.
     pub magic_program: Option<UncheckedAccount<'info>>,
+}
+
+/// `sweep_rake`: anyone moves synced rake from the vault to the treasury.
+#[derive(Accounts)]
+pub struct SweepRake<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
+    #[account(seeds = [GLOBAL_SEED], bump = global.bump, has_one = treasury)]
+    pub global: Box<Account<'info, GlobalConfig>>,
+    /// CHECK: `GlobalConfig.treasury` (`has_one`).
+    #[account(mut)]
+    pub treasury: UncheckedAccount<'info>,
 }
 
 /// `leave_seat`: the seat's session key or wallet asks to leave.

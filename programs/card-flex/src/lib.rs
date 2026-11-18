@@ -427,6 +427,28 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// Pays rake to the treasury (ADR 0005 decision 6): only rake of hands
+    /// that were committed and synced (`synced_rake`), each lamport once.
+    /// Permissionless; allowed while paused and after a refund.
+    pub fn sweep_rake(ctx: Context<SweepRake>) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        let pay = config
+            .synced_rake
+            .checked_sub(config.rake_swept)
+            .ok_or(CardFlexError::Overflow)?;
+        require!(pay > 0, CardFlexError::NothingToClaim);
+        let vault_info = ctx.accounts.vault.to_account_info();
+        let rent_floor = Rent::get()?.minimum_balance(vault_info.data_len());
+        require!(
+            vault_info.lamports() >= rent_floor.saturating_add(pay),
+            CardFlexError::VaultShort
+        );
+        config.rake_swept = config.synced_rake;
+        **vault_info.try_borrow_mut_lamports()? -= pay;
+        **ctx.accounts.treasury.try_borrow_mut_lamports()? += pay;
+        Ok(())
+    }
+
     /// Refunds a buy-in that never joined (ADR 0005). Only while the runtime
     /// is on the base layer and owned by this program: then the base copy is
     /// the truth, and no join in PER can race the refund, and only if the
@@ -532,6 +554,9 @@ pub mod card_flex {
         if !matches!(rt.phase, phase::IDLE | phase::REVEALED | phase::POC_DONE) {
             return Ok(());
         }
+        // CF-033: rake of settled hands. It only ever grows.
+        require!(rt.rake_owed >= config.synced_rake, CardFlexError::BadStacks);
+        config.synced_rake = rt.rake_owed;
         let seats: Vec<u8> = (0..MAX_SEATS as u8)
             .filter(|s| config.seated & (1 << s) != 0)
             .collect();

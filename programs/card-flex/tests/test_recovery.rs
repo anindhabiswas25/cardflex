@@ -1036,3 +1036,149 @@ fn leave_during_a_hand_applies_at_next_hand() {
         (0b01, 0, 0b10, 900_000)
     );
 }
+
+fn sweep_ix(t: &T, payer: Pubkey, treasury: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::SweepRake {}.data(),
+        card_flex::accounts::SweepRake {
+            payer,
+            config: t.config,
+            vault: t.vault,
+            global: common::global_address(),
+            treasury,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn set_rake_owed(t: &mut T, rake: u64) {
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+    rt.rake_owed = rake;
+    let mut d = Vec::new();
+    rt.try_serialize(&mut d).unwrap();
+    d.resize(acc.data.len(), 0);
+    acc.data = d;
+    t.svm.set_account(t.runtime, acc).unwrap();
+}
+
+/// CF-033: rake reaches the treasury only from synced, settled hands, each
+/// lamport once, and the vault then matches ADR 0005's formula exactly.
+#[test]
+fn rake_is_swept_once_and_only_from_synced_results() {
+    let mut t = setup(2);
+    let payer = t.authority.insecure_clone();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    buy_in(&mut t, 1, 1_000_000).unwrap();
+    let treasury = GlobalConfig::try_deserialize(
+        &mut t
+            .svm
+            .get_account(&common::global_address())
+            .unwrap()
+            .data
+            .as_slice(),
+    )
+    .unwrap()
+    .treasury;
+    let ledgers = [ledger(&t, 0), ledger(&t, 1)];
+    // Mid-hand commit: neither stacks nor rake may sync.
+    commit(&mut t, 1, phase::DEALT, [1_190_000, 800_000, 0, 0, 0, 0]);
+    set_rake_owed(&mut t, 10_000);
+    send_ix(
+        vec![sync_ix(&t, Pubkey::new_unique(), &ledgers)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_eq!(config(&t).synced_rake, 0);
+    let e = send_ix(
+        vec![sweep_ix(&t, payer.pubkey(), treasury)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::NothingToClaim)),
+        "{e}"
+    );
+    // Settled: rake syncs, then sweeps once, only to the treasury.
+    commit(&mut t, 2, phase::REVEALED, [1_190_000, 800_000, 0, 0, 0, 0]);
+    set_rake_owed(&mut t, 10_000);
+    send_ix(
+        vec![sync_ix(&t, Pubkey::new_unique(), &ledgers)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_eq!(config(&t).synced_rake, 10_000);
+    assert!(
+        send_ix(
+            vec![sweep_ix(&t, payer.pubkey(), Pubkey::new_unique())],
+            &mut t.svm,
+            &[&payer]
+        )
+        .is_err(),
+        "not the treasury"
+    );
+    let (tb, vb) = (
+        t.svm.get_balance(&treasury).unwrap_or(0),
+        t.svm.get_balance(&t.vault).unwrap(),
+    );
+    send_ix(
+        vec![sweep_ix(&t, payer.pubkey(), treasury)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_eq!(t.svm.get_balance(&treasury).unwrap(), tb + 10_000);
+    assert_eq!(t.svm.get_balance(&t.vault).unwrap(), vb - 10_000);
+    assert!(
+        send_ix(
+            vec![sweep_ix(&t, payer.pubkey(), treasury)],
+            &mut t.svm,
+            &[&payer]
+        )
+        .is_err(),
+        "only once"
+    );
+    // Vault invariant (ADR 0005 decision 8), to the lamport.
+    let c = config(&t);
+    let vault = t.svm.get_account(&t.vault).unwrap();
+    let rent = t.svm.minimum_balance_for_rent_exemption(vault.data.len());
+    let stacks: u64 = (0..2).map(|s| ledger_state(&t, s).synced_stack).sum();
+    assert_eq!(
+        vault.lamports,
+        rent + stacks + (c.synced_rake - c.rake_swept)
+    );
+    // Rake of the next hand adds up.
+    commit(&mut t, 3, phase::REVEALED, [1_180_000, 795_000, 0, 0, 0, 0]);
+    set_rake_owed(&mut t, 25_000);
+    send_ix(
+        vec![sync_ix(&t, Pubkey::new_unique(), &ledgers)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    send_ix(
+        vec![sweep_ix(&t, payer.pubkey(), treasury)],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap();
+    assert_eq!(t.svm.get_balance(&treasury).unwrap(), tb + 25_000);
+    // TableConfig byte offsets used by packages/probes/src/common.mjs (TC).
+    let d = t.svm.get_account(&t.config).unwrap().data;
+    let u64_at = |o: usize| u64::from_le_bytes(d[o..o + 8].try_into().unwrap());
+    let c = config(&t);
+    assert_eq!(d[135], c.seated);
+    assert_eq!(u64_at(144), c.last_synced_seq);
+    assert_eq!(
+        u32::from_le_bytes(d[153..157].try_into().unwrap()),
+        c.seat_epochs[0]
+    );
+    assert_eq!(&d[177..209], c.wallets[0].as_ref());
+    assert_eq!(&d[369..401], c.sessions[0].as_ref());
+    assert_eq!(d[561], c.ever_delegated as u8);
+    assert_eq!((u64_at(562), u64_at(570)), (c.synced_rake, c.rake_swept));
+}

@@ -31,8 +31,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-030 | P6: ADR 0005 (seat lifecycle + money) and `GlobalConfig` (treasury, max rake, pause) | Done locally (Devnet in CF-035) | `docs/adr/0005-seat-lifecycle-and-money.md`, `tests/test_global.rs` |
 | CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Done locally (Devnet in CF-035): `cancel_buy_in` for unjoined seats while not delegated; seat hands and salts opened for empty seats | `tests/test_recovery.rs` |
 | CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Done locally (Devnet in CF-035); also fixed two CF-031 review findings (seat bricking after cancel, stale-clone race) | `tests/test_recovery.rs`, ADR 0005 amendment |
-| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Next | |
-| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Planned | |
+| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Done locally (Devnet in CF-035) | `tests/test_recovery.rs` |
+| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Next | |
 | CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Planned | |
 
 ## Blockers and asks for the team
@@ -51,6 +51,11 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-033 (local): `sync_hand` copies the committed
+  `rake_owed` into `TableConfig.synced_rake` between hands (never lower);
+  permissionless `sweep_rake` pays `synced_rake − rake_swept` to
+  `GlobalConfig.treasury`, once. Test checks the ADR 0005 vault formula to
+  the lamport after the sweep.
 - 2026-11-19 — CF-032 (local): `leave_seat` (session key or wallet; at once
   between hands, otherwise at `next_hand`); `sync_hand` marks a departed
   matching-epoch ledger `left` with its final stack; `cash_out` pays it once
