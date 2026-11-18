@@ -16,7 +16,8 @@
     "probe": "pnpm --filter @card-flex/probes probe",
     "roundtrip": "pnpm --filter @card-flex/probes roundtrip",
     "tablepoc": "pnpm --filter @card-flex/probes tablepoc",
-    "build:program:devnet-poc": "anchor build -- --features poc-test-deck"
+    "build:program:devnet-poc": "anchor build -- --features poc-test-deck",
+    "privacy-suite": "pnpm --filter @card-flex/probes privacy-suite"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

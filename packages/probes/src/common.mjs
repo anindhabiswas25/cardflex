@@ -1,0 +1,111 @@
+// Shared helpers for the Devnet probes (CF-007 onward).
+
+import { readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import nacl from "tweetnacl";
+import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { getAuthToken } from "@magicblock-labs/ephemeral-rollups-sdk";
+
+export const PROGRAM_ID = new PublicKey("4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL");
+export const TEE_VALIDATOR = new PublicKey("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
+export const BASE_RPC = process.env.CARDFLEX_BASE_RPC ?? "https://rpc.magicblock.app/devnet";
+export const TEE_RPC = process.env.CARDFLEX_TEE_RPC ?? "https://devnet-tee.magicblock.app";
+export const KEYPAIR = process.env.CARDFLEX_DEVNET_KEYPAIR ?? `${homedir()}/.config/cardflex/devnet-deployer.json`;
+export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+export function loadDiscriminators() {
+  const p = `${repoRoot}/target/idl/card_flex.json`;
+  if (!existsSync(p)) throw new Error("Run `pnpm build:program:devnet-poc` first (needs target/idl/card_flex.json).");
+  const idl = JSON.parse(readFileSync(p, "utf8"));
+  return Object.fromEntries(idl.instructions.map((i) => [i.name, Buffer.from(i.discriminator)]));
+}
+export const loadPayer = () => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(KEYPAIR, "utf8"))));
+
+export const ms = (t0) => Math.round((performance.now() - t0) * 10) / 10;
+const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)]; };
+export const stats = (xs) => (xs.length ? { n: xs.length, min: Math.min(...xs), p50: pct(xs, 50), p95: pct(xs, 95), max: Math.max(...xs) } : { n: 0 });
+export const sleep = (t) => new Promise((r) => setTimeout(r, t));
+export const log = (...a) => console.error(...a);
+export const w = (pubkey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
+export const r = (pubkey, isSigner = false) => ({ pubkey, isSigner, isWritable: false });
+export const u8 = (v) => Buffer.from([v]);
+export const u64 = (v) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(v)); return b; };
+export const vecPubkeys = (keys) => { const n = Buffer.alloc(4); n.writeUInt32LE(keys.length); return Buffer.concat([n, ...keys.map((k) => k.toBuffer())]); };
+
+export function makeIx(disc) {
+  return (name, keys, data = Buffer.alloc(0)) => {
+    if (!disc[name]) throw new Error(`unknown instruction ${name}; rebuild the IDL`);
+    return new TransactionInstruction({ programId: PROGRAM_ID, keys, data: Buffer.concat([disc[name], data]) });
+  };
+}
+
+/** Sends and confirms; retries transport errors only, never program errors. */
+export async function send(conn, instructions, signers, { skipPreflight = false, retries = 2 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const tx = new Transaction().add(...instructions);
+      const bh = await conn.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = bh.blockhash;
+      tx.feePayer = signers[0].publicKey;
+      tx.sign(...signers);
+      const t0 = performance.now();
+      const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
+      const res = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
+      if (res.value.err) { const e = new Error(`tx ${sig} failed: ${JSON.stringify(res.value.err)}`); e.programError = true; e.sig = sig; throw e; }
+      return { sig, ms: ms(t0) };
+    } catch (e) {
+      if (e.programError || attempt >= retries) throw e;
+      log(`  retry after: ${String(e.message ?? e).slice(0, 80)}`);
+      await sleep(1000);
+    }
+  }
+}
+
+/** Expects the transaction to fail; returns true if it did. */
+export async function rejected(conn, instructions, signers) {
+  try { await send(conn, instructions, signers, { skipPreflight: true, retries: 0 }); return false; }
+  catch (e) { return true; }
+}
+
+export const authFailures = [];
+export async function tokenFor(kp) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { token } = await getAuthToken(TEE_RPC, kp.publicKey, async (m) => nacl.sign.detached(m, kp.secretKey));
+      return token;
+    } catch (e) {
+      const cause = String(e.cause?.code ?? e.cause?.message ?? e.message ?? e).slice(0, 100);
+      authFailures.push(cause);
+      if (attempt >= 4) throw new Error(`auth failed after retries: ${cause}`);
+      await sleep(1000 * 2 ** attempt);
+    }
+  }
+}
+export const teeUrl = (token) => (token ? `${TEE_RPC}?token=${token}` : TEE_RPC);
+export const teeConn = (token) =>
+  new Connection(teeUrl(token), { commitment: "confirmed", wsEndpoint: `${TEE_RPC.replace(/^http/, "ws")}${token ? `?token=${token}` : ""}` });
+
+/** Raw JSON-RPC call (for methods/encodings web3.js hides). */
+export async function rawRpc(url, method, params) {
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  return res.json();
+}
+
+export async function waitFor(fn, timeoutMs, everyMs = 250) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < timeoutMs) {
+    const v = await fn().catch(() => null);
+    if (v) return { value: v, ms: ms(t0) };
+    await sleep(everyMs);
+  }
+  return { value: null, ms: ms(t0) };
+}
+
+// Mirror of table.rs poc_test_deck + deal_positions (P1 TEST deck, not random).
+export function testDeck(handNo) {
+  const shift = Number((BigInt(handNo) * 7n + 3n) % 52n);
+  return Array.from({ length: 52 }, (_, i) => (i + shift) % 52);
+}
+export const dealPositions = (k, n) => [k, k + n, k + 2 * n];

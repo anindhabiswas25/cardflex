@@ -22,6 +22,8 @@ use ephemeral_rollups_sdk::{
 
 pub const MAX_SEATS: usize = 6;
 pub const CARDS_PER_SEAT: usize = 3;
+/// Maximum readers of one seat hand (owner + Side Show opponent + spare).
+pub const MAX_HAND_READERS: usize = 3;
 
 pub const TABLE_SEED: &[u8] = b"table";
 pub const RUNTIME_SEED: &[u8] = b"table-runtime";
@@ -38,8 +40,11 @@ pub const DEALER_LEN: u32 = 100;
 /// Lamports `TableRuntime` must carry into PER to sponsor every ephemeral
 /// account and permission it creates.
 pub const fn ephemeral_budget() -> u64 {
-    let seat =
-        ephemeral_rent(SEAT_HAND_LEN) + ephemeral_rent(EphemeralPermission::size_of(1) as u32);
+    // Seat permissions are budgeted at their maximum size (MAX_HAND_READERS)
+    // because Side Show grows them; an update that grows the permission is
+    // paid by this budget (CF-007 found InsufficientFundsForRent otherwise).
+    let seat = ephemeral_rent(SEAT_HAND_LEN)
+        + ephemeral_rent(EphemeralPermission::size_of(MAX_HAND_READERS) as u32);
     let dealer =
         ephemeral_rent(DEALER_LEN) + ephemeral_rent(EphemeralPermission::size_of(1) as u32);
     let runtime_permission = ephemeral_rent(EphemeralPermission::size_of(MAX_SEATS + 1) as u32);

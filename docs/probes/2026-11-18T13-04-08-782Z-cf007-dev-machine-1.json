@@ -1,0 +1,1032 @@
+{
+  "probe": "CF-007",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T13:04:08.782Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "checks": [
+    {
+      "group": "subscriptions",
+      "name": "stranger notifications on secret accounts during deal",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "subscriptions",
+      "name": "no-token notifications on secret accounts during deal",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "own cards",
+      "name": "session0 reads its 3 dealt cards",
+      "expected": [
+        3,
+        9,
+        15
+      ],
+      "actual": [
+        3,
+        9,
+        15
+      ],
+      "pass": true
+    },
+    {
+      "group": "own cards",
+      "name": "session1 reads its 3 dealt cards",
+      "expected": [
+        4,
+        10,
+        16
+      ],
+      "actual": [
+        4,
+        10,
+        16
+      ],
+      "pass": true
+    },
+    {
+      "group": "own cards",
+      "name": "session2 reads its 3 dealt cards",
+      "expected": [
+        5,
+        11,
+        17
+      ],
+      "actual": [
+        5,
+        11,
+        17
+      ],
+      "pass": true
+    },
+    {
+      "group": "own cards",
+      "name": "session3 reads its 3 dealt cards",
+      "expected": [
+        6,
+        12,
+        18
+      ],
+      "actual": [
+        6,
+        12,
+        18
+      ],
+      "pass": true
+    },
+    {
+      "group": "own cards",
+      "name": "session4 reads its 3 dealt cards",
+      "expected": [
+        7,
+        13,
+        19
+      ],
+      "actual": [
+        7,
+        13,
+        19
+      ],
+      "pass": true
+    },
+    {
+      "group": "own cards",
+      "name": "session5 reads its 3 dealt cards",
+      "expected": [
+        8,
+        14,
+        20
+      ],
+      "actual": [
+        8,
+        14,
+        20
+      ],
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "authority getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo runtime",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "stranger getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo runtime",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "no_token getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo hand0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session0 getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo hand1",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session1 getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo hand2",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session2 getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo hand3",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session3 getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo hand4",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session4 getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo runtime",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "session5 getAccountInfo hand5",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo runtime",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo dealer",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo hand1",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo hand2",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo hand3",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo hand4",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "matrix",
+      "name": "wallet0 getAccountInfo hand5",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "stranger getAccountInfo hand0 {\"encoding\":\"base64\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "stranger getAccountInfo hand0 {\"encoding\":\"base64\",\"dataSlice\":{\"offset\":49,\"length\":3}}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "stranger getAccountInfo hand0 {\"encoding\":\"jsonParsed\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "stranger getAccountInfo hand0 {\"encoding\":\"base58\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "no_token getAccountInfo hand0 {\"encoding\":\"base64\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "no_token getAccountInfo hand0 {\"encoding\":\"base64\",\"dataSlice\":{\"offset\":49,\"length\":3}}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "no_token getAccountInfo hand0 {\"encoding\":\"jsonParsed\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "no_token getAccountInfo hand0 {\"encoding\":\"base58\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "session1 getAccountInfo hand0 {\"encoding\":\"base64\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "session1 getAccountInfo hand0 {\"encoding\":\"base64\",\"dataSlice\":{\"offset\":49,\"length\":3}}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "session1 getAccountInfo hand0 {\"encoding\":\"jsonParsed\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "session1 getAccountInfo hand0 {\"encoding\":\"base58\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "wallet0 getAccountInfo hand0 {\"encoding\":\"base64\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "wallet0 getAccountInfo hand0 {\"encoding\":\"base64\",\"dataSlice\":{\"offset\":49,\"length\":3}}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "wallet0 getAccountInfo hand0 {\"encoding\":\"jsonParsed\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "encodings",
+      "name": "wallet0 getAccountInfo hand0 {\"encoding\":\"base58\"}",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "multi",
+      "name": "session0 getMultipleAccounts [hand0, hand1, dealer, runtime]",
+      "expected": [
+        true,
+        false,
+        false,
+        true
+      ],
+      "actual": [
+        true,
+        false,
+        false,
+        true
+      ],
+      "pass": true
+    },
+    {
+      "group": "enumeration",
+      "name": "stranger getProgramAccounts exposes only allowed secret accounts",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": "listed 2 accounts, secret: []"
+    },
+    {
+      "group": "enumeration",
+      "name": "no_token getProgramAccounts exposes only allowed secret accounts",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": "listed 2 accounts, secret: []"
+    },
+    {
+      "group": "enumeration",
+      "name": "session0 getProgramAccounts exposes only allowed secret accounts",
+      "expected": [
+        "hand0"
+      ],
+      "actual": [
+        "hand0"
+      ],
+      "pass": true,
+      "note": "listed 4 accounts, secret: [\"hand0\"]"
+    },
+    {
+      "group": "enumeration",
+      "name": "authority getProgramAccounts exposes only allowed secret accounts",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": "listed 3 accounts, secret: []"
+    },
+    {
+      "group": "enumeration",
+      "name": "stranger transactions touching hand0 are redacted",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": "0 signatures listed"
+    },
+    {
+      "group": "enumeration",
+      "name": "no_token transactions touching hand0 are redacted",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": "0 signatures listed"
+    },
+    {
+      "group": "side show",
+      "name": "session1 can read hand0 after grant",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "took 71.6 ms"
+    },
+    {
+      "group": "side show",
+      "name": "session2 still cannot read hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "side show",
+      "name": "session0 still reads hand0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "side show",
+      "name": "session1 loses hand0 after revoke (same token)",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "took 76.3 ms"
+    },
+    {
+      "group": "rotation",
+      "name": "old session2 token denied after removal",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "took 71.7 ms"
+    },
+    {
+      "group": "rotation",
+      "name": "new session key reads hand2",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "stranger cannot set hand0 readers",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "session1 cannot set hand0 readers",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "session1 still cannot read hand0",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "stranger cannot close hand0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "stranger cannot deal",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "authority cannot redeal a dealt hand",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "empty reader list rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "authorization",
+      "name": "hand0 cards unchanged after attempts",
+      "expected": [
+        3,
+        9,
+        15
+      ],
+      "actual": [
+        3,
+        9,
+        15
+      ],
+      "pass": true
+    },
+    {
+      "group": "logs",
+      "name": "deal logs contain only standard lines",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": "0 lines"
+    },
+    {
+      "group": "base layer",
+      "name": "runtime back on base",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "BoVWro… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "2ZhRk6… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "CxReVf… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "DjUbhr… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "7gMj3K… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "61UphL… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "base layer",
+      "name": "DfUSQ7… absent on Solana",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    }
+  ],
+  "auth_transient_failures": [],
+  "passed": 134,
+  "failed": 0,
+  "ok": true,
+  "finished_at": "2026-11-18T13:04:51.588Z"
+}

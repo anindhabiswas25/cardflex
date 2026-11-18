@@ -16,7 +16,9 @@ pub mod table;
 use anchor_lang::prelude::*;
 use ephemeral_rollups_sdk::{
     access_control::{
-        instructions::{CloseEphemeralPermissionCpi, CreateEphemeralPermissionCpi},
+        instructions::{
+            CloseEphemeralPermissionCpi, CreateEphemeralPermissionCpi, UpdateEphemeralPermissionCpi,
+        },
         structs::{
             EphemeralMembersArgs, EphemeralPermission, Member, PERMISSION_SEED, TX_BALANCES_FLAG,
             TX_LOGS_FLAG, TX_MESSAGE_FLAG,
@@ -234,6 +236,50 @@ pub mod card_flex {
             members,
             &[runtime_seeds, hand_seeds],
         )
+    }
+
+    /// Replaces the reader list of a seat's hand (CF-007; the mechanism Side
+    /// Show uses: grant the opponent's session key, then restore). At most 3
+    /// readers; an empty list is rejected because its meaning is ambiguous in
+    /// the docs (ADR 0002 / PRD §15.2).
+    pub fn set_hand_readers(ctx: Context<TablePer>, seat: u8, readers: Vec<Pubkey>) -> Result<()> {
+        require!(
+            !readers.is_empty() && readers.len() <= MAX_HAND_READERS,
+            CardFlexError::BadReaders
+        );
+        let runtime = &ctx.accounts.runtime;
+        require!(
+            runtime.occupied & (1 << seat) != 0,
+            CardFlexError::SeatEmpty
+        );
+        let runtime_key = runtime.key();
+        let (hand, hand_bump) = Pubkey::find_program_address(
+            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
+            &crate::ID,
+        );
+        require_keys_eq!(ctx.accounts.target.key(), hand, CardFlexError::BadSeatHand);
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
+        let hand_seeds: &[&[u8]] = &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat], &[hand_bump]];
+        let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+        UpdateEphemeralPermissionCpi {
+            payer: ctx.accounts.runtime.to_account_info(),
+            permissioned_account: ctx.accounts.target.to_account_info(),
+            permission: ctx.accounts.permission.to_account_info(),
+            vault: ctx.accounts.ephemeral_vault.to_account_info(),
+            magic_program: ctx.accounts.magic_program.to_account_info(),
+            permission_program: ctx.accounts.permission_program.to_account_info(),
+            authority: ctx.accounts.target.to_account_info(),
+            authority_is_signer: false,
+            args: EphemeralMembersArgs {
+                is_private: true,
+                members: readers
+                    .into_iter()
+                    .map(|pubkey| Member { flags, pubkey })
+                    .collect(),
+            },
+        }
+        .invoke_signed(&[runtime_seeds, hand_seeds])?;
+        Ok(())
     }
 
     /// Deals the P1 **test deck** (not random). `remaining_accounts` = the
@@ -583,6 +629,8 @@ pub enum CardFlexError {
     TableNotLocked,
     #[msg("test deck is disabled in this build")]
     TestDeckDisabled,
+    #[msg("reader list must have 1 to 3 entries")]
+    BadReaders,
 }
 
 #[derive(Accounts)]

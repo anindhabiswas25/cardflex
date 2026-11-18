@@ -55,7 +55,8 @@ pnpm verify              # all of the above, same order as CI
 pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
 pnpm roundtrip -- --region <label> [--target tee|er-as]   # CF-004 devnet round trip (spends devnet SOL)
-pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet (needs anchor build)
+pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet
+pnpm privacy-suite -- --region <label>   # CF-007 G1 suite, 134 checks (needs devnet-poc build deployed)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -66,7 +67,8 @@ Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
 programs/card-flex/    Anchor program: table.rs = P1 table (ADR 0002 layout, TEST deck);
                        probe_* = CF-004/A1 scaffolding (remove when P5 lands)
 crates/card-types/     frozen canonical card encoding (no_std)
-packages/probes/       CF-003 probe.mjs, CF-004 roundtrip.mjs, CF-006 tablepoc.mjs
+packages/probes/       common.mjs helpers; probe.mjs (CF-003), roundtrip.mjs (CF-004),
+                       tablepoc.mjs (CF-006), privacy-suite.mjs (CF-007)
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region
 scripts/               check-toolchain.sh
@@ -118,6 +120,17 @@ Planned crates and apps are listed in PRD §7.
 - `poc_deal` (predictable P1 test deck) only works in builds with the
   `poc-test-deck` cargo feature; never deploy that build anywhere shared or
   real-value. `anchor build` (default, CI) has it off.
+- In PER an account WITHOUT a permission is readable by anyone. Create and
+  permission secret accounts in the same instruction; never write table data
+  before its permission exists.
+- Growing a permission (more readers) costs ephemeral rent; budget
+  permissions at their max size (`MAX_HAND_READERS`).
+- Program logs are invisible to clients in PER; `tests/test_no_secret_logs.rs`
+  allow-lists every `msg!`. Add new log lines to its list only if they carry
+  no hand, salt or seed data.
+- `pnpm verify` rebuilds `target/deploy/card_flex.so` WITHOUT the test-deck
+  feature; rebuild with `pnpm build:program:devnet-poc` before deploying to
+  devnet.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

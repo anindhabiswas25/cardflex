@@ -148,7 +148,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | CF-004 | Minimal program delegated to devnet-tee, commit + undelegate round-trip | PROG | 2 | P0 | Done (2026-11-18): docs/findings/cf-004-devnet-roundtrip.md |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | PROG | 2 | P0 | Done (2026-11-18): docs/adr/0002-account-lifecycle.md |
 | CF-006 | TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | PROG | 3–4 | P0 | Done (2026-11-18): docs/findings/cf-006-six-player-table.md |
-| CF-007 | Privacy probe suite: RPC, WS, getTransaction, logs, session reuse | QA | 3–5 | P0 | Not started |
+| CF-007 | Privacy probe suite: RPC, WS, getTransaction, logs, session reuse | QA | 3–5 | P0 | Done from one location (2026-11-18): 134/134; G1 provisional, docs/findings/cf-007-privacy-suite-g1.md |
 | CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | FAIR | 3–5 | P0 | Not started |
 | CF-009 | Salt round: private salt tx into SaltAccount, public commitment | PROG | 4–5 | P0 | Not started |
 | CF-010 | VRF request/callback; test ephemeral queue inside PER vs base queue | PROG | 5–6 | P0 | Not started |

@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P1 — Privacy POC** (P0 done except CF-003 runs from other regions). Update this file whenever a ticket
+Current phase: **P1 → P2.** G1 provisionally passed from one location; P2 (fairness) can start while other regions run the probes. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -13,12 +13,14 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-004 | Minimal program on devnet-tee: delegate, write, commit, undelegate; measure write latency | Done | `programs/card-flex` probe_* instructions, `packages/probes/src/roundtrip.mjs`, `docs/findings/cf-004-devnet-roundtrip.md` |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | Done | `docs/adr/0002-account-lifecycle.md`; PRD v1.2 amendment 1 |
 | CF-006 | P1: TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | Done: six-player privacy matrix passes 2/2 on Devnet; WS delivery unreliable | `programs/card-flex/src/table.rs`, `pnpm tablepoc`, `docs/findings/cf-006-six-player-table.md`, `docs/findings/cf-006-a1-ephemeral-privacy.md` |
-| CF-007 | Privacy probe suite to close G1 (getProgramAccounts, signatures, token reuse after removal, Side Show permission swap, unauthorized writes, logs, other regions) | Next | extend `tablepoc.mjs` |
+| CF-007 | Privacy probe suite for G1 | Done from `dev-machine-1`: 134/134 checks, 2/2 runs. **G1 provisionally passed**; needs other regions + a second day | `pnpm privacy-suite`, `docs/findings/cf-007-privacy-suite-g1.md` |
+| CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | Next (P2) | PRD v1.2 §13.3–13.4 |
 
 ## Blockers and asks for the team
 
-- Run `pnpm probe -- --region <label>` from every target region and commit the
-  JSON (CF-003).
+- From every target region run `pnpm probe`, `pnpm privacy-suite` (and
+  optionally `pnpm roundtrip`) with `-- --region <label>` and commit the JSON
+  (CF-003, G1 sign-off).
 - Move the devnet keys from `~/.config/cardflex/` (dev machine only) into the
   team secret store: `card_flex-program-keypair.json` (program address) and
   `devnet-deployer.json` (fee payer + current upgrade authority).
@@ -29,6 +31,11 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-007 done from dev-machine-1: privacy suite 134/134 in 2/2
+  runs (matrix, encodings, getProgramAccounts, signatures, subscriptions,
+  Side Show grant/revoke, session rotation, unauthorized calls, base layer).
+  Fixed Side Show rent bug (budget permissions at 3 readers). Logs invisible
+  to clients, so a CI test allow-lists every `msg!`. G1 provisionally passed.
 - 2026-11-18 — Security review fixes for CF-006: test deck gated behind the
   `poc-test-deck` feature (devnet build only), seating locked once permissions
   exist. Devnet rerun passed; WS delivered 2/6 hands.
