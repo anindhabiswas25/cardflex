@@ -1,0 +1,13 @@
+{
+  "probe": "CF-035-money",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T21:12:16.059Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "checks": [],
+  "timings": {},
+  "steps": [],
+  "error": "Error: Simulation failed. \nMessage: Transaction simulation failed. \nLogs: \n[\n  \"Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh invoke [2]\",\n  \"Program 11111111111111111111111111111111 invoke [3]\",\n  \"Program 11111111111111111111111111111111 success\",\n  \"Program 11111111111111111111111111111111 invoke [3]\",\n  \"Transfer: insufficient lamports 318720, need 1593840\",\n  \"Program 11111111111111111111111111111111 failed: custom program error: 0x1\",\n  \"Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh consumed 24208 of 87755 compute units\",\n  \"Program DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh failed: custom program error: 0x1\",\n  \"Program 4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL consumed 136453 of 200000 compute units\",\n  \"Program 4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL failed",
+  "auth_transient_failures": [],
+  "finished_at": "2026-11-18T21:12:34.198Z"
+}

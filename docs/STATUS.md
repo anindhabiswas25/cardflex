@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P6 (money).** P4 and P5 done 2026-11-19. Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P6 done (2026-11-19) → next P7 (client app) / P8 (hardening).** P4, P5, P6 done. Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Tickets
@@ -28,12 +28,12 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-023 | P5: turn deadlines, permissionless timeout, MagicBlock crank | Done (Devnet verified in CF-025): `turn_deadline`, `timeout_turn`. Crank: the pinned SDK has no crank feature (ADR 0001), so a keeper calls `timeout_turn`; scheduling it is P8 keeper work | `programs/card-flex/tests/test_game.rs` |
 | CF-024 | P5: multi-hand loop (button moves, next hand, commit + sync per hand) | Done (Devnet verified in CF-025): `button`, `next_hand`; fix: only dealt seats may submit salts | `programs/card-flex/tests/test_table.rs` |
 | CF-025 | P5: six-player full game on Devnet, verified end to end | Done: 3- and 5-hand games 39/39 and 66/66; handflow 67/67, privacy suite 230/230, recovery 20/20; fix: Side Show viewers cleared by `next_hand` | `pnpm game`, `docs/findings/cf-025-full-game.md` |
-| CF-030 | P6: ADR 0005 (seat lifecycle + money) and `GlobalConfig` (treasury, max rake, pause) | Done locally (Devnet in CF-035) | `docs/adr/0005-seat-lifecycle-and-money.md`, `tests/test_global.rs` |
-| CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Done locally (Devnet in CF-035): `cancel_buy_in` for unjoined seats while not delegated; seat hands and salts opened for empty seats | `tests/test_recovery.rs` |
-| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Done locally (Devnet in CF-035); also fixed two CF-031 review findings (seat bricking after cancel, stale-clone race) | `tests/test_recovery.rs`, ADR 0005 amendment |
-| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Done locally (Devnet in CF-035) | `tests/test_recovery.rs` |
-| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Done locally (Devnet in CF-035): exact after every money step in LiteSVM | `tests/test_recovery.rs`, `packages/probes/src/reconcile.mjs` |
-| CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Next | |
+| CF-030 | P6: ADR 0005 (seat lifecycle + money) and `GlobalConfig` (treasury, max rake, pause) | Done (Devnet verified in CF-035) | `docs/adr/0005-seat-lifecycle-and-money.md`, `tests/test_global.rs` |
+| CF-031 | P6: seat epochs; `buy_in` ledger-only + `join_seat` (base or PER) | Done (Devnet verified in CF-035): `cancel_buy_in` for unjoined seats while not delegated; seat hands and salts opened for empty seats | `tests/test_recovery.rs` |
+| CF-032 | P6: `leave_seat` → sync marks left → `cash_out` (once, recorded wallet) | Done (Devnet verified in CF-035); also fixed two CF-031 review findings (seat bricking after cancel, stale-clone race) | `tests/test_recovery.rs`, ADR 0005 amendment |
+| CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Done (Devnet verified in CF-035) | `tests/test_recovery.rs` |
+| CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Done (Devnet verified in CF-035): exact after every money step in LiteSVM | `tests/test_recovery.rs`, `packages/probes/src/reconcile.mjs` |
+| CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Done: 53/53; vault exact after all 7 money steps; join in PER reads the base ledger first try (~1 s) | `pnpm money`, `docs/findings/cf-035-money-drill.md` |
 
 ## Blockers and asks for the team
 
@@ -51,6 +51,16 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-035: P6 exit met on Devnet. Money drill 53/53: a player
+  bought in on base while the table was live and joined inside PER on the
+  first try (~1 s, the open ADR 0005 assumption holds); a mid-hand leave,
+  sync, one exact cash-out (second refused); a new player reused the seat
+  and the old session lost access; rake swept to the treasury once; the
+  vault matched rent + synced stacks + unswept rake exactly after all 7
+  steps. handflow 67/67, privacy suite 230/230, recovery 20/20, game
+  (3 hands) 39/39 on the same build. Found: delegation needs more rent now (probes fund 0.06 SOL per
+  table); deploy needs a 4.35 SOL buffer for the 856 KB program, and the
+  deploy script now prints the real error instead of retrying.
 - 2026-11-19 — CF-034 (local): `check_vault(strict)` — read-only,
   permissionless; fails if the vault is short of rent + Σ synced stacks +
   unswept rake, and with `strict` on any surplus. A LiteSVM test runs it

@@ -14,7 +14,9 @@ import {
 // Every seat buys in for real (vault + seat ledgers, ADR 0004). The table is
 // configured first: boot (lamports), rake and refund timeout. Buy-in must be
 // 40-200 boots (rules v1 section 6); the defaults give 40 boots.
-export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, rakeBps = 0, rakeCap = 0, refundTimeout = 3600 } = {}) {
+// players: how many seats (0..players-1) buy in at setup; the rest start empty
+// but get their seat hand and salt accounts, so they can join later (CF-031).
+export async function setupTable({ seats = 6, players: nPlayers = seats, boot = 25_000, buyIn = 40 * boot, rakeBps = 0, rakeCap = 0, refundTimeout = 3600 } = {}) {
   const ix = makeIx(loadDiscriminators());
   const payer = loadPayer();
   const base = new Connection(BASE_RPC, "confirmed");
@@ -36,7 +38,7 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
 
   if (await ensureGlobal(base, ix, payer)) log("setup: created GlobalConfig (first run on this cluster)");
   log("setup: table, players, delegate");
-  await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
+  await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 60_000_000 })], [payer]);
   await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(GLOBAL), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(seats)]))], [authority]);
   const ledgers = players.map((_, s) => pda(Buffer.from("seat-ledger"), config.toBuffer(), u8(s)));
   {
@@ -45,7 +47,7 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     cfgData.writeBigUInt64LE(BigInt(boot), 0); cfgData.writeUInt16LE(rakeBps, 8);
     cfgData.writeBigUInt64LE(BigInt(rakeCap), 10); cfgData.writeUInt32LE(refundTimeout, 18);
     await send(base, [ix("configure_table", [r(authority.publicKey, true), w(config), w(runtime), r(GLOBAL)], cfgData)], [authority]);
-    for (let s = 0; s < seats; s++) {
+    for (let s = 0; s < nPlayers; s++) {
       // Fund each wallet for its buy-in plus the seat-ledger rent.
       await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: players[s].wallet.publicKey, lamports: buyIn + 5_000_000 })], [payer]);
       await send(base, [buyInIx(ix, players[s].wallet.publicKey, config, vault, s, buyIn, players[s].session.publicKey)], [players[s].wallet]);
@@ -121,6 +123,12 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     }
     return (await readRuntime(conn))[RT.phase];
   }
+  // CF-031: join_seat inside PER (permissions exist): swaps the seat hand and
+  // runtime reader lists to the ledger's session key.
+  const joinSeatPerIx = (payer, seat) => joinSeatIx(ix, payer.publicKey, runtime, config, seat, {
+    hand: hands[seat], handPermission: permissionPdaFromAccount(hands[seat]), runtimePermission: permissionPdaFromAccount(runtime),
+    permissionProgram: PERMISSION_PROGRAM_ID, vault: EPHEMERAL_VAULT_ID, magic: MAGIC_PROGRAM_ID,
+  });
   // CF-024: after reveal_hand, anyone moves the table to the next hand.
   const nextHandIx = (payer) => ix("next_hand", [r(payer.publicKey, true), w(runtime)]);
   // CF-023: anyone may time out the player to act after turn_deadline.
@@ -137,5 +145,5 @@ export async function setupTable({ seats = 6, boot = 25_000, buyIn = 40 * boot, 
     w(hands[b]), w(permissionPdaFromAccount(hands[b])), r(PERMISSION_PROGRAM_ID), w(EPHEMERAL_VAULT_ID), r(MAGIC_PROGRAM_ID),
   ], Buffer.concat([u8(a), u8(b), u8(grant ? 1 : 0)]));
 
-  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx, timeoutIx, nextHandIx };
+  return { ix, payer, base, tee, authority, players, config, runtime, handLog, vault, ledgers, dealer, hands, saltAccs, perKeys, teardown, seats, readRuntime, actIx, act, packOut, sideShowViewIx, timeoutIx, nextHandIx, joinSeatPerIx };
 }

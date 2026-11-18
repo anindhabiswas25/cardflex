@@ -40,11 +40,17 @@ buffer="$(solana-keygen pubkey "$buffer_kp")"
 echo "== write buffer $buffer (resumable)"
 for attempt in 1 2 3 4 5 6; do
   url=$rpc; (( attempt % 2 == 0 )) && url=$fallback_rpc
-  if solana program write-buffer "$so" --buffer "$buffer_kp" --keypair "$deployer" \
-       --url "$url" --use-rpc --with-compute-unit-price 20000 --max-sign-attempts 50 >/dev/null 2>&1; then
+  if out=$(solana program write-buffer "$so" --buffer "$buffer_kp" --keypair "$deployer" \
+       --url "$url" --use-rpc --with-compute-unit-price 20000 --max-sign-attempts 50 2>&1); then
     echo "   buffer complete (attempt $attempt via $url)"; break
   fi
-  echo "   attempt $attempt via $url incomplete; resuming"
+  # Don't retry what can't succeed (e.g. the deployer can't pay the buffer rent).
+  if grep -q "insufficient funds" <<<"$out"; then
+    echo "$out" | tail -1
+    echo "   the buffer needs about $(solana rent "$size" --url "$rpc" | awk '{print $3}') SOL of rent (refunded by the upgrade); fund the deployer"
+    exit 1
+  fi
+  echo "   attempt $attempt via $url incomplete ($(echo "$out" | tail -1 | cut -c1-120)); resuming"
   (( attempt == 6 )) && { echo "buffer upload failed; re-run this script to resume"; exit 1; }
 done
 

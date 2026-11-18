@@ -62,6 +62,7 @@ pnpm game -- --region <label> [--hands N]   # CF-025 full six-player multi-hand 
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
 pnpm check:rules         # rules v1 vectors, independent Python
 pnpm reconcile -- --table <config> [--strict]   # CF-034 vault reconciliation on devnet
+pnpm money -- --region <label>   # CF-035 P6 money drill: live join/leave/cash-out/rake, reconciled each step
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
 pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, refund + claims (~3 min)
 bash scripts/restart-drill.sh   # local validator restart mid-hand (stop mb-stack first)
@@ -233,6 +234,9 @@ Planned crates and apps are listed in PRD §7.
 - If `solana program deploy` fails mid-way, close the leftover buffer
   (`solana program show --buffers`, `solana program close <buffer>`) to get
   the SOL back, then redeploy.
+- Deploying the 856 KB program needs a temporary buffer ≈ 4.35 SOL (refunded
+  by the upgrade) on the deployer; keep ≥ 6 SOL there. Delegating a table
+  costs ≈ 0.05 SOL of rent (probes fund the table authority 0.06 SOL).
 - Program size matters for deploys (~1 KB per upload transaction): keep
   scaffolding out of the program; size-optimized profile is set (ADR 0001).
 - Program upgrades need room: check `solana program show` Data Length vs the

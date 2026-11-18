@@ -21,6 +21,7 @@
     "handflow": "pnpm --filter @card-flex/probes handflow",
     "game": "pnpm --filter @card-flex/probes game",
     "reconcile": "pnpm --filter @card-flex/probes reconcile",
+    "money": "pnpm --filter @card-flex/probes money",
     "deploy:devnet": "bash scripts/deploy-devnet.sh",
     "check:g2": "cargo test -p fairness-verifier --release -- --ignored",
     "recovery": "pnpm --filter @card-flex/probes recovery"

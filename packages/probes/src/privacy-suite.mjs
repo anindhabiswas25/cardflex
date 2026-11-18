@@ -69,7 +69,7 @@ try {
   // ---------------- setup ----------------
   log("setup: table, six players, delegate");
   await ensureGlobal(base, ix, payer);
-  await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 30_000_000 })], [payer]);
+  await send(base, [SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: authority.publicKey, lamports: 60_000_000 })], [payer]);
   await send(base, [ix("create_table", [w(config), w(runtime), w(handLog), w(vault), w(authority.publicKey, true), r(GLOBAL), r(SystemProgram.programId)], Buffer.concat([u64(tableId), u8(SEATS)]))], [authority]);
   // Seat with real buy-ins (CF-020): boot 25,000, buy-in 40 boots.
   const cfgData = Buffer.alloc(22);
