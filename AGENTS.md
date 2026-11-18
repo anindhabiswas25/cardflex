@@ -61,6 +61,10 @@ pnpm handflow -- --region <label>   # salts -> VRF -> deal -> Side Show -> timeo
 pnpm game -- --region <label> [--hands N]   # CF-025 full six-player multi-hand game, every hand verified
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
 pnpm check:rules         # rules v1 vectors, independent Python
+pnpm test:sdk            # client SDK tests (rebuilds the WASM verifier first)
+pnpm test:api            # indexer + API tests (offline, real Devnet hand records)
+pnpm api                 # run the Devnet indexer + API on :4000 (CARDFLEX_DB, PORT, POLL_MS)
+pnpm admin -- table create --boot 25000 --rake-bps 250 --rake-cap 10000   # CF-041 operator CLI (see services/admin/src/cli.ts)
 pnpm reconcile -- --table <config> [--strict]   # CF-034 vault reconciliation on devnet
 pnpm money -- --region <label>   # CF-035 P6 money drill: live join/leave/cash-out/rake, reconciled each step
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
@@ -79,9 +83,14 @@ crates/card-types/     frozen canonical card encoding (no_std)
 crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/spec/
 crates/fairness-verifier/  offline verifier lib + `cf-verify <record.json>` CLI
 crates/teen-patti-core/    rules v1: ranking + betting state machine (no_std); spec in docs/spec/teen-patti-rules-v1.md
+crates/fairness-wasm/      cf-verify as WebAssembly (C ABI; JS glue in client-sdk/src/verifier.ts)
+packages/client-sdk/   CF-016 TS client: PDAs, IDL-driven decoders + instruction builders, PER login,
+                       own TEE attestation, fairness, rules v1 in TS (run `pnpm test:sdk`)
 packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), archive/tablepoc.mjs
                        (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011), game.mjs (CF-025);
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
+services/api/          CF-018 Devnet indexer + read-only HTTP API (ADR 0006)
+services/admin/        CF-041 cf-admin operator CLI (signs locally; never a key-holding server)
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region
 scripts/               check-toolchain.sh
@@ -199,6 +208,12 @@ Planned crates and apps are listed in PRD §7.
   Byte offsets for JS are pinned by tests in `tests/test_game.rs`
   (`runtime_byte_offsets`, `hand_log_byte_offsets`); keep `RT`, `GAME`, `HL`
   in `common.mjs` in sync.
+- Client SDK (CF-016): layouts and instructions come from `src/card_flex.json`
+  (a copy of `target/idl`). After any program change run
+  `pnpm --filter @card-flex/client-sdk sync-idl`; `pnpm test:sdk` fails until
+  you do. Clients must use `verifyTee` (pinned measurements), never only the
+  MagicBlock SDK's check. Update `DEVNET_TEE_MEASUREMENTS` only after
+  confirming a MagicBlock release.
 - Seats and money while live (ADR 0005, P6): seat epochs (`seat_epoch` /
   `SeatLedger.epoch`) — never copy a stack between different epochs;
   `GlobalConfig` (`["global"]`) holds treasury, max rake and pause; only the
@@ -213,6 +228,9 @@ Planned crates and apps are listed in PRD §7.
   `cancel_buy_in` only on never-delegated tables, wallet-signed: PER may
   hold stale clones of base accounts, so never add a base-side path that
   closes or zeroes a ledger a PER join could still read as valid.
+- Closing a table: ALWAYS `commit_hand` before `undelegate_table`
+  (undelegate doesn't bump `commit_seq`; `sync_hand` would refuse the final
+  state). `cf-admin table close` does this.
 - Money (ADR 0004): lamports only in TableVault (never delegated); only
   `SeatLedger.synced_stack` is ever paid; `sync_hand` trusts committed runtime
   state only after checking the delegation record (validator + owner) and

@@ -34,6 +34,18 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Done (Devnet verified in CF-035) | `tests/test_recovery.rs` |
 | CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Done (Devnet verified in CF-035): exact after every money step in LiteSVM | `tests/test_recovery.rs`, `packages/probes/src/reconcile.mjs` |
 | CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Done: 53/53; vault exact after all 7 money steps; join in PER reads the base ledger first try (~1 s) | `pnpm money`, `docs/findings/cf-035-money-drill.md` |
+| CF-016 | P7: client SDK (`packages/client-sdk`): PDAs, IDL-driven accounts + instructions, PER login, own TEE attestation, fairness, rules v1 in TS | Done (not committed): 10 offline tests (incl. all 128 rules vectors, fairness vectors, byte-level match with the probes); live Devnet check OK | `pnpm test:sdk`, `pnpm --filter @card-flex/client-sdk live` |
+| CF-018 | P7: backend / indexer (lobby, hand history, player records) | Done (not committed): `services/api` (node:http + node:sqlite, ADR 0006); every hand verified with the WASM verifier and replayed for per-seat bets/nets; live on Devnet: 6 tables, 4 hands, all VALID | `pnpm api`, `pnpm test:api` |
+| CF-040 | P7: `cf-verify` as WASM for the browser Verify page | Done (not committed): `crates/fairness-wasm` (277 KB, no imports) + `loadVerifier` in the SDK; same verdicts as the native CLI on 6 Devnet hands; tampering caught | `pnpm build:wasm`, `packages/client-sdk/test/verifier.test.ts` |
+| CF-041 | P7: admin backend (create/configure tables, pause, sweep rake) | Done (not committed): `cf-admin` CLI signing locally (no key-holding server); live on Devnet: create → open (15 PER steps) → status → strict reconcile → sweep → close | `pnpm admin -- …`, `pnpm test:admin` |
+
+## Open program items (P8)
+
+- `undelegate_table` doesn't bump `commit_seq`, so `sync_hand` refuses the
+  state it writes back: a player who left just before a table was closed can
+  only cash out after another commit (or via the refund). `cf-admin table
+  close` now commits first; the program should bump `commit_seq` on
+  undelegate too (found live in CF-041).
 
 ## Blockers and asks for the team
 
@@ -51,6 +63,43 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-041 (not committed): `services/admin` → `cf-admin`, an
+  operator CLI that signs locally (a server holding the admin key would be
+  the most valuable target; the authority moves to a Squads multisig in P8).
+  Commands: global show/set (pause), tables, table create/open/status/check/
+  sweep/close, `--dry-run`. Live on Devnet: created a table, took it live,
+  reconciled exactly, closed it. A live check of the SDK's player builders on
+  that table also passed (buy-in on base, join inside PER, session-only hand
+  access, session-signed leave, sync, cash-out). Found: undelegating without
+  a fresh commit leaves the final state unsyncable (see open program items);
+  close now commits first. The test player's 0.001 SOL was recovered through
+  the normal path; the vault reconciled back to rent only.
+- 2026-11-19 — CF-018 (not committed): `services/api` indexer + read-only
+  API (ADR 0006: Node built-ins, no new dependencies; PostgreSQL later).
+  Finds tables on the base layer, reads each public HandLog from PER,
+  rebuilds `cf-hand-record/2`, verifies it with the WASM verifier, replays it
+  with the TS rules for per-seat bets and nets (nets sum to minus the rake),
+  stores invalid hands flagged rather than hidden. Routes: /health, /tables,
+  /tables/:config, /tables/:config/hands, /hands/:config/:hand,
+  /players/:wallet. Found and fixed an SDK bug on the way: short u8 arrays
+  decoded as Uint8Array, so `.map` silently produced zeros (seat lists).
+  Live on Devnet: 6 tables and 4 revealed hands indexed, all VALID. Gap
+  (documented): only the latest hand per table is visible between polls.
+- 2026-11-19 — CF-040 (not committed): the hand verifier runs in the
+  browser and Node. `crates/fairness-wasm` wraps `fairness-verifier` behind a
+  3-function C ABI (no wasm-bindgen, no new tool; only the wasm32 target was
+  added to the pinned toolchain, ADR 0001 amendment). SDK `loadVerifier`;
+  agrees with the native `cf-verify` check by check on 6 Devnet hands.
+- 2026-11-19 — CF-016 (not committed): `packages/client-sdk`. Account
+  decoders and instruction builders come from the program's IDL (a test
+  fails if the copy drifts from `target/idl`); decoders cross-checked
+  against the byte offsets the Rust tests pin; instruction bytes match the
+  probes. Own TEE attestation closes 3 of the 4 SDK gaps from CF-003 (CSPRNG
+  challenge, TCB must be UpToDate, MRTD/RTMR0-2 allow-list); gap 4 (quote
+  not bound to TLS) remains and is documented. Rules v1 in TypeScript
+  replays all 128 frozen games exactly; `legalActions` drives the buttons.
+  Live on Devnet: attestation OK (measurements unchanged since CF-003), PER
+  login with a session key, real GlobalConfig decoded.
 - 2026-11-19 — CF-035: P6 exit met on Devnet. Money drill 53/53: a player
   bought in on base while the table was live and joined inside PER on the
   first try (~1 s, the open ADR 0005 assumption holds); a mid-hand leave,
