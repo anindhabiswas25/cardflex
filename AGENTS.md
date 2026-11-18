@@ -20,7 +20,8 @@ Solana base layer. Players buy in to a table, play hands with session keys
 3. `Card_Flex_Delivery_Plan.md` — phases P0–P9, gates G1–G3, ticket backlog
    (CF-xxx), risks, open questions for MagicBlock.
 4. `docs/adr/` — architecture decisions. ADR 0001 = pinned toolchain,
-   ADR 0002 = account lifecycle (amends the PRD).
+   ADR 0002 = account lifecycle, ADR 0003 = fairness encoding (both amend the PRD).
+   `docs/spec/cf-fairness-v2.md` is the normative byte spec for fairness.
 5. `docs/findings/` — measured facts from tickets (e.g. CF-003 latency and
    attestation).
 6. `Card_Flex_MagicBlock_Implementation_Research_v1.2.md` — background
@@ -67,6 +68,7 @@ Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
 programs/card-flex/    Anchor program: table.rs = P1 table (ADR 0002 layout, TEST deck);
                        probe_* = CF-004/A1 scaffolding (remove when P5 lands)
 crates/card-types/     frozen canonical card encoding (no_std)
+crates/fairness-core/  CF-Fairness v2 (no_std, SHA-256 injected); spec in docs/spec/
 packages/probes/       common.mjs helpers; probe.mjs (CF-003), roundtrip.mjs (CF-004),
                        tablepoc.mjs (CF-006), privacy-suite.mjs (CF-007)
 docs/adr/              decisions     docs/findings/  measured results
@@ -135,6 +137,9 @@ Planned crates and apps are listed in PRD §7.
   Side Show, with the owner's session key co-signing). Session keys can
   never be the authority, a wallet, another session or a table address. Never add an instruction path that lets the authority, backend
   or a wallet become a reader; the privacy suite checks this.
+- Fairness bytes are frozen: any change to `crates/fairness-core` output
+  fails `cargo test` (vectors) and `pnpm check:fairness` (independent
+  Python). Only change them with a protocol version bump + new ADR.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

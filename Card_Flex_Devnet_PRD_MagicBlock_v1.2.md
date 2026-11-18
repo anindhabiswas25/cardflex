@@ -80,6 +80,11 @@ Other corrections:
     `HandLog`. Money follows committed state through a base-layer
     `sync_hand`, and a refunded table ignores later commits instead of
     "rejecting" them. ADR 0002 overrides this document where they differ.
+-   **Amendment 2 (ADR 0003, CF-008):** the byte-level fairness protocol is
+    frozen in `docs/spec/cf-fairness-v2.md` with test vectors. The stream
+    is a SHA-256 counter construction (not ChaCha20); leaf salts are
+    `SHA256("CF_LEAF_SALT_V2" || seed || i)`; `caller_seed` has its own
+    domain string. The spec overrides §13.3–13.4 where they differ.
 -   In unchanged sections kept from v1.1, "game" means one **hand**, and
     "deposit/withdrawal/game balance" means **buy-in/cash-out/table stack**.
 

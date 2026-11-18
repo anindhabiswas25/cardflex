@@ -1,0 +1,21 @@
+[package]
+name = "fairness-core"
+version = "0.1.0"
+description = "CF-Fairness v2: canonical encodings, seed derivation, shuffle and Merkle commitment"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Software SHA-256 for hosts (verifier, tests). The on-chain program supplies
+# its own Sha256 implementation backed by the Solana syscall instead.
+sha2 = ["dep:sha2"]
+
+[dependencies]
+card-types = { path = "../card-types" }
+sha2 = { version = "=0.10.9", default-features = false, optional = true }
+
+[dev-dependencies]
+fairness-core = { path = ".", features = ["sha2"] }
