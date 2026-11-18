@@ -1,0 +1,15 @@
+[package]
+name = "fairness-wasm"
+version = "0.1.0"
+description = "CF-040: cf-verify as a WebAssembly module (JSON in, JSON out) for the browser and Node"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fairness-verifier = { path = "../fairness-verifier" }
+serde_json = "=1.0.154"

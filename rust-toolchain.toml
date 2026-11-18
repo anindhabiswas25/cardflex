@@ -1,4 +1,6 @@
 [toolchain]
 channel = "1.89.0"
 components = ["rustfmt", "clippy"]
+# CF-040: the hand verifier also builds for the browser.
+targets = ["wasm32-unknown-unknown"]
 profile = "minimal"

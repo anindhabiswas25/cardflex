@@ -1539,6 +1539,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fairness-wasm"
+version = "0.1.0"
+dependencies = [
+ "fairness-verifier",
+ "serde_json",
+]
+
+[[package]]
 name = "feature-probe"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

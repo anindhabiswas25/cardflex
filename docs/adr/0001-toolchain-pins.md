@@ -83,3 +83,10 @@ Squads multisig before public Devnet (phase P8).
 - The `crank` SDK feature is dropped until P5 uses it.
 - Devnet deploys go through `pnpm deploy:devnet` (resumable buffer upload
   plus on-chain byte check), never a bare `solana program deploy`.
+
+## Amendment (2026-11-19, CF-040)
+
+`rust-toolchain.toml` also installs the `wasm32-unknown-unknown` target for
+the pinned Rust 1.89.0, so `crates/fairness-wasm` (the hand verifier for the
+browser) builds with the same compiler. No version changed and no new tool
+was added: the module exposes a plain C ABI, so `wasm-bindgen` isn't needed.
