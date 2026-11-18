@@ -156,3 +156,10 @@ fn same_wallet_cannot_take_two_seats() {
     assert!(join(&mut t, &w, 0, Pubkey::new_unique()));
     assert!(!join(&mut t, &w, 1, Pubkey::new_unique()));
 }
+
+#[test]
+fn default_build_has_test_deck_disabled() {
+    // CI builds without `poc-test-deck`; the guard must be compiled out of
+    // the allowed path. (poc_deal itself needs PER and is tested on Devnet.)
+    assert!(!cfg!(feature = "poc-test-deck"));
+}

@@ -68,6 +68,22 @@ suggests Devnet PER is under variable load, not that dealing is inherently
 slow. That is an inference; it needs runs at other times and from other
 regions.
 
+## Security review follow-up (same day)
+
+The automated security review flagged two issues; both are fixed:
+
+1. **Predictable deck.** `poc_deal` now fails with `TestDeckDisabled` unless
+   the program was built with the `poc-test-deck` cargo feature. CI and
+   default builds have it off. Devnet uses `pnpm build:program:devnet-poc`.
+2. **Seats could change after permissions were built.** `TableRuntime.locked`
+   is set by `open_runtime_permission`. `poc_join` then fails with
+   `TableLocked`, and `poc_deal` requires the lock.
+
+Third Devnet run with both fixes: PASSED. A late join after the lock was
+rejected, the privacy matrix had no violations, nothing secret was on the
+base layer, and WebSocket delivered 2 of 6 hands (about 170 ms when it
+arrived). That's more evidence for the polling decision.
+
 ## Decisions
 
 1. **The client polls for its own hand.** After the deal (seen via

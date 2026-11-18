@@ -69,6 +69,8 @@ pub struct TableRuntime {
     pub session_keys: [Pubkey; MAX_SEATS],
     pub hand_no: u64,
     pub dealt: bool,
+    /// Set once permissions are built; no seat changes afterwards.
+    pub locked: bool,
     pub bump: u8,
 }
 

@@ -96,6 +96,7 @@ pub mod card_flex {
             CardFlexError::SeatTaken
         );
         require!(!runtime.dealt, CardFlexError::AlreadyDealt);
+        require!(!runtime.locked, CardFlexError::TableLocked);
         require!(
             !runtime.seated().any(|i| runtime.wallets[i] == wallet),
             CardFlexError::SeatTaken
@@ -127,6 +128,8 @@ pub mod card_flex {
     /// Makes `TableRuntime` readable only by the table authority and the
     /// seated session keys.
     pub fn open_runtime_permission(ctx: Context<TablePer>) -> Result<()> {
+        // Seating closes here, so the reader lists can't go stale.
+        ctx.accounts.runtime.locked = true;
         let runtime = &ctx.accounts.runtime;
         require_keys_eq!(
             ctx.accounts.target.key(),
@@ -236,7 +239,12 @@ pub mod card_flex {
     /// Deals the P1 **test deck** (not random). `remaining_accounts` = the
     /// seat hands of every occupied seat, in seat order.
     pub fn poc_deal(ctx: Context<PocDeal>) -> Result<()> {
+        require!(
+            cfg!(feature = "poc-test-deck"),
+            CardFlexError::TestDeckDisabled
+        );
         let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.locked, CardFlexError::TableNotLocked);
         require!(!runtime.dealt, CardFlexError::AlreadyDealt);
         let seats: Vec<usize> = runtime.seated().collect();
         require!(seats.len() >= 2, CardFlexError::NotEnoughPlayers);
@@ -569,6 +577,12 @@ pub enum CardFlexError {
     BadSeatHand,
     #[msg("wrong dealer account")]
     BadDealer,
+    #[msg("table is locked; seats can't change")]
+    TableLocked,
+    #[msg("table permissions are not set up yet")]
+    TableNotLocked,
+    #[msg("test deck is disabled in this build")]
+    TestDeckDisabled,
 }
 
 #[derive(Accounts)]

@@ -95,7 +95,7 @@ Planned crates and apps are listed in PRD §7.
   The upgrade authority is the devnet deployer `Cf3ux3ZqSfYutZyxLeEWLeNkpUkPBMneyU3VUwEUww8x`.
   Keys live outside the repo in `~/.config/cardflex/` on the dev machine:
   `devnet-deployer.json`, `card_flex-program-keypair.json`.
-  Redeploy: `solana program deploy target/deploy/card_flex.so --program-id ~/.config/cardflex/card_flex-program-keypair.json --keypair ~/.config/cardflex/devnet-deployer.json --upgrade-authority ~/.config/cardflex/devnet-deployer.json --url https://rpc.magicblock.app/devnet --use-rpc`.
+  Redeploy (devnet POC build has the test deck on: `pnpm build:program:devnet-poc` first): `solana program deploy target/deploy/card_flex.so --program-id ~/.config/cardflex/card_flex-program-keypair.json --keypair ~/.config/cardflex/devnet-deployer.json --upgrade-authority ~/.config/cardflex/devnet-deployer.json --url https://rpc.magicblock.app/devnet --use-rpc`.
 - Devnet SOL: `solana airdrop 1 <pk> --url https://rpc.magicblock.app/devnet`
   (the public faucet is often rate-limited).
 - PER round trip works (CF-004): write seen by others in about 90 ms p50
@@ -115,6 +115,9 @@ Planned crates and apps are listed in PRD §7.
 - Six-player privacy matrix passes on Devnet (CF-006): session key reads only
   its own SeatHand, wallets read nothing, DealerState unreadable. Clients must
   POLL their own SeatHand after a deal; WebSocket delivered 0/6 in one run.
+- `poc_deal` (predictable P1 test deck) only works in builds with the
+  `poc-test-deck` cargo feature; never deploy that build anywhere shared or
+  real-value. `anchor build` (default, CI) has it off.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

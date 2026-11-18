@@ -157,6 +157,16 @@ try {
 
   log("3/8 PER: permissions, dealer state, six seat hands");
   report.steps.open_runtime_permission = await send(tee, [ix("open_runtime_permission", perKeys(runtime))], [authority], { skipPreflight: true });
+  // Seating must be closed once permissions exist (security review fix).
+  {
+    const late = Keypair.generate();
+    let accepted;
+    try {
+      await send(tee, [ix("poc_join", [r(late.publicKey, true), w(runtime)], Buffer.concat([u8(0), late.publicKey.toBuffer()]))], [late], { skipPreflight: true, retries: 0 });
+      accepted = true;
+    } catch { accepted = false; }
+    report.steps.late_join_rejected = !accepted;
+  }
   report.steps.open_dealer = await send(tee, [ix("open_dealer", perKeys(dealer))], [authority], { skipPreflight: true });
   report.steps.open_seat_hands = [];
   for (let s = 0; s < SEATS; s++) {
@@ -249,7 +259,7 @@ try {
     return rt.includes(cards);
   }) : null;
   report.steps.base_layer = { secret_accounts: onBase, runtime_contains_hand_bytes: leaked };
-  report.ok = report.steps.privacy.pass
+  report.ok = report.steps.privacy.pass && report.steps.late_join_rejected
     && correct === SEATS && seen.size === SEATS * 3
     && !!home.value && Object.values(onBase).every((v) => v === "absent") && leaked === false;
 } catch (e) {
@@ -273,6 +283,7 @@ if (s.privacy) {
   for (const [who, row] of Object.entries(s.privacy.matrix)) console.log(`${who.padEnd(16)} ${cols.map((c) => row[c].padStart(7)).join("")}`);
   console.log(`\nviolations: ${s.privacy.violations.length ? s.privacy.violations.join("; ") : "none"}`);
 }
+if (s.late_join_rejected !== undefined) console.log(`late join after lock rejected: ${s.late_join_rejected}`);
 if (s.base_layer) console.log(`base layer: ${JSON.stringify(s.base_layer)}`);
 console.log(`\nFull results: ${out}`);
 process.exit(report.ok ? 0 : 1);

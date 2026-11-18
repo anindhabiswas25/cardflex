@@ -29,6 +29,9 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — Security review fixes for CF-006: test deck gated behind the
+  `poc-test-deck` feature (devnet build only), seating locked once permissions
+  exist. Devnet rerun passed; WS delivered 2/6 hands.
 - 2026-11-18 — CF-006 done. Six-player table on Devnet PER: each session key
   reads only its own hand, wallets read nothing, dealer state unreadable,
   nothing secret on Solana (2/2 runs). WS card delivery 6/6 then 0/6, so the
