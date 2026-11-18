@@ -1,0 +1,32 @@
+{
+  "probe": "CF-004",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T11:17:14.682Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "steps": {
+    "fund": {
+      "sig": "2wUSPMfeEYs2dp9W2Scq2jpgxFcv6s6VGEbk2ZZhZ1ehLX1P9Ggm5AvyXc1wZvxPq2LwiwJqnifNtXLaNwGi4h5W",
+      "ms": 1421.5,
+      "send_ms": 146
+    },
+    "init": {
+      "sig": "52TCnLiHisemcsFhcQvqWwYpkTKxQ6CpZUKApE8Yyt2HqtzPnXwj9gGhWfwMAvqHVGgxjhTzARurQjEMvper1CA8",
+      "ms": 1314.7,
+      "send_ms": 115
+    },
+    "delegate": {
+      "sig": "43ek8oeo2LXKmL3GnSYckKobgXppYm37J3QEFxt631zmae6xDP3CZTwnuEQrubj8xL3mBitEp58EAngc3x9F3Dwp",
+      "ms": 2131.6,
+      "send_ms": 110.9
+    }
+  },
+  "accounts": {
+    "authority": "8VXQX3W1U4p9doYC6Zdbox7Yh1Mi6hUi9EcSChAavZVS",
+    "probe": "3mavJZLYwwdGMr8ELgT4UpBPYn2WsS7JFStHqSo3VDRf",
+    "permission": "J7DX9LsodCGdDpTojSt4TXuzQKVsRnFTzwm8og6f5cqL"
+  },
+  "ok": false,
+  "error": "TypeError: fetch failed",
+  "finished_at": "2026-11-18T11:17:31.887Z"
+}

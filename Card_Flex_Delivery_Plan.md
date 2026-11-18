@@ -145,7 +145,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | CF-001 | Pin toolchain, monorepo, CI with clean-checkout build | PROG | 1 | P0 | Done (2026-11-18) |
 | CF-002 | Rewrite PRD to v1.2 with decisions D1–D10 | PM | 1–2 | P0 | Done (2026-11-18) |
 | CF-003 | Latency and geofence probe from each target region to devnet-tee | QA | 1–2 | P0 | In progress: probe built, dev-machine-1 measured; other regions pending (docs/findings/cf-003-devnet-access.md) |
-| CF-004 | Minimal program delegated to devnet-tee, commit + undelegate round-trip | PROG | 2 | P0 | Not started |
+| CF-004 | Minimal program delegated to devnet-tee, commit + undelegate round-trip | PROG | 2 | P0 | Done (2026-11-18): docs/findings/cf-004-devnet-roundtrip.md |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | PROG | 2 | P0 | Not started |
 | CF-006 | TableRuntime + 6 SeatHand + DealerState with EphemeralPermission | PROG | 3–4 | P0 | Not started |
 | CF-007 | Privacy probe suite: RPC, WS, getTransaction, logs, session reuse | QA | 3–5 | P0 | Not started |
@@ -234,6 +234,7 @@ The top risk is trusting the TEE operator; every fallback keeps the provider-neu
 | Commit fees and limits (10 commits without fee payer) | Stalled commits, cost | Commit once per hand; fund a fee payer; model cost in P8 |
 | Permission docs contradict (empty member list) | Wrong visibility | Test both cases in CF-007; always set an explicit member list |
 | Geofencing at PER ingress blocks target users | Market loss | Probe in CF-003 before choosing markets |
+| Write latency p95 over target (measured 436–518 ms on Devnet in CF-004; p50 is 86–92 ms) | Actions feel slow for 15–25% of moves | Measure from every target region; ask MagicBlock about Devnet ingress queueing and Mainnet PER latency; warm-up write after sit-down; pending-state UI; retest in P8 |
 | Single hot upgrade key | Program hijack | Squads multisig + timelock before public Devnet |
 | Copying SolPoker code | Licence breach (PolyForm Noncommercial) | Design reference only |
 

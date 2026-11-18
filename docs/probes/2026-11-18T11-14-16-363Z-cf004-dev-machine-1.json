@@ -1,0 +1,74 @@
+{
+  "probe": "CF-004",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-18T11:14:16.363Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "steps": {
+    "fund": {
+      "sig": "sykXpm7kmSQNPDvD6tRSxjkWbJgGGsFhMPnpEmydiuMeMhztYreWZqvWWwM6CUzAjTGSeJjCVkQsM2xt4oNxXgB",
+      "ms": 919
+    },
+    "init": {
+      "sig": "yxNXLJrEt3tEYod5hN3z8b32FJsGy5GFTQe89RLrL6zmDEDhPmHD98yqnHV9tzhYUVgkxnpfjovgzGsi4z5VJYc",
+      "ms": 1054.1
+    },
+    "delegate": {
+      "sig": "3ywPF8C9hUBFoBV3p1DgrnYeCw3KDHFYxWDvE9hAF9BeY12DSSJHwgSEgSfuAu77rUTCKAkRmEjLxhFYBJ9zJtZk",
+      "ms": 805.5
+    },
+    "auth": {
+      "ms": 1776
+    },
+    "delegation_visible_in_per": {
+      "ms": 136.8,
+      "ok": true
+    },
+    "make_private": {
+      "sig": "4E1sar8RxH2stDrSubGBZb4q6KhSzWrscNXYPoPESrMsdihxsUwFxDb7phFmVRDHg2TqnsDnQdYj4RvDSEZ6yf9J",
+      "ms": 944.6
+    },
+    "writes": {
+      "confirm_ms": {
+        "n": 50,
+        "min": 152,
+        "p50": 359.7,
+        "p95": 1221.9,
+        "max": 6596.3
+      },
+      "notify_ms": {
+        "n": 50,
+        "min": 149.4,
+        "p50": 180.6,
+        "p95": 1072.5,
+        "max": 2841.3
+      },
+      "missed_notifications": 0,
+      "failures": []
+    },
+    "privacy_smoke": {
+      "owner_can_read": true,
+      "stranger_token_can_read": false,
+      "no_token_can_read": false
+    },
+    "commit": {
+      "per_tx_ms": 759.9,
+      "base_signature": "4WgM6GvvhGtF2n3cESoLbQe3Zq1WFnK6kKyZgzvC9RbuMRsun2LfREKT3EHLoLK2kWZDfQLp7ZFaBJL4LMtpwULi",
+      "until_base_has_value_ms": 839.2,
+      "base_value_matches": true
+    },
+    "undelegate": {
+      "per_tx_ms": 765.6,
+      "until_owned_by_program_on_base_ms": 1023.9,
+      "ok": true
+    }
+  },
+  "accounts": {
+    "authority": "8jwk39H4VWdkzxt2b92C5K7jksKhaikC592EfHbZqYFV",
+    "probe": "4WGm5QR5Pz3LMQCcgVnUVt9VVBrdnT5HuPLAmFoTrsf5",
+    "permission": "2yugmodRoQbXkRagjXcmHxUpy4XHraRoDTGjLv2Lo3x8"
+  },
+  "last_value": "1795000501131050",
+  "ok": true,
+  "finished_at": "2026-11-18T11:15:07.687Z"
+}

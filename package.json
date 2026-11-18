@@ -13,7 +13,8 @@
     "lint:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
     "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust",
     "mb-stack": "mb-stack",
-    "probe": "pnpm --filter @card-flex/probes probe"
+    "probe": "pnpm --filter @card-flex/probes probe",
+    "roundtrip": "pnpm --filter @card-flex/probes roundtrip"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

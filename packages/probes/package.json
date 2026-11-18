@@ -4,7 +4,8 @@
   "type": "module",
   "description": "CF-003: latency, access and attestation probes for MagicBlock endpoints",
   "scripts": {
-    "probe": "node src/probe.mjs"
+    "probe": "node src/probe.mjs",
+    "roundtrip": "node src/roundtrip.mjs"
   },
   "dependencies": {
     "@magicblock-labs/ephemeral-rollups-sdk": "0.17.3",

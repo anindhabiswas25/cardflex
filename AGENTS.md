@@ -53,6 +53,7 @@ cargo test --workspace   # needs anchor build first (LiteSVM loads the .so)
 pnpm verify              # all of the above, same order as CI
 pnpm mb-stack            # local MagicBlock stack: 8899 base, 7799 ER, 6699 QFS
 pnpm probe -- --region <label>   # CF-003 latency/attestation probe
+pnpm roundtrip -- --region <label> [--target tee|er-as]   # CF-004 devnet round trip (spends devnet SOL)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -60,9 +61,9 @@ Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
 ## Repo map
 
 ```text
-programs/card-flex/    Anchor program (base + PER instructions); ping only so far
+programs/card-flex/    Anchor program; ping + CF-004 probe_* scaffolding (replace in P1)
 crates/card-types/     frozen canonical card encoding (no_std)
-packages/probes/       CF-003 network/attestation probe
+packages/probes/       CF-003 probe.mjs, CF-004 roundtrip.mjs
 docs/adr/              decisions     docs/findings/  measured results
 docs/probes/           raw probe JSON per region
 scripts/               check-toolchain.sh
@@ -87,4 +88,15 @@ Planned crates and apps are listed in PRD §7.
   per-seat session key as the reader of `SeatHand` (findings CF-003).
 - The SDK's attestation check doesn't pin measurements or check TCB status;
   the client must do its own check (findings CF-003).
+- Program is deployed on devnet at `4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL`.
+  The upgrade authority is the devnet deployer `Cf3ux3ZqSfYutZyxLeEWLeNkpUkPBMneyU3VUwEUww8x`.
+  Keys live outside the repo in `~/.config/cardflex/` on the dev machine:
+  `devnet-deployer.json`, `card_flex-program-keypair.json`.
+  Redeploy: `solana program deploy target/deploy/card_flex.so --program-id ~/.config/cardflex/card_flex-program-keypair.json --keypair ~/.config/cardflex/devnet-deployer.json --upgrade-authority ~/.config/cardflex/devnet-deployer.json --url https://rpc.magicblock.app/devnet --use-rpc`.
+- Devnet SOL: `solana airdrop 1 <pk> --url https://rpc.magicblock.app/devnet`
+  (the public faucet is often rate-limited).
+- PER round trip works (CF-004): write seen by others in about 90 ms p50
+  and about 0.5 s p95 on Devnet. Run `pnpm roundtrip -- --region <label>`.
+- Permission flag bits: AUTHORITY 1, TX_LOGS 2, TX_BALANCES 4, TX_MESSAGE 8,
+  ACCOUNT_SIGNATURES 16.
 - MagicBlock IDs and endpoints: PRD §5.1.2 and ADR 0001.
