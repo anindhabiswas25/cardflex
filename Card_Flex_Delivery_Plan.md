@@ -154,7 +154,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | CF-010 | VRF request/callback; test ephemeral queue inside PER vs base queue | PROG | 5–6 | P0 | Done (2026-11-18): ephemeral queue works in PER, ~2 s; docs/findings/cf-010-vrf.md |
 | CF-011 | In-program HKDF, shuffle, Merkle; compute-unit benchmark (SHA-256 DRBG chosen in ADR 0003; measure CU) | FAIR | 6–7 | P0 | Done (2026-11-18): 56–86k CU; docs/findings/cf-011-deal.md |
 | CF-012 | Independent verifier v1 (CLI) | FAIR | 7–8 | P0 | Done (2026-11-18): G2 passed; docs/findings/cf-012-verifier-g2.md |
-| CF-013 | Recovery: PER kill drills, pause state, `emergency_refund` on base | PROG | 8–10 | P0 | Not started |
+| CF-013 | Recovery: PER kill drills, pause state, `emergency_refund` on base | PROG | 8–10 | P0 | Done (2026-11-18): G3 recommended GO (conditional); docs/findings/cf-013-recovery.md |
 | CF-014 | Teen Patti rules v1 sign-off (section 8) | PM | 3 | P1 | Not started |
 | CF-015 | `teen-patti-core` crate with property tests | FAIR | 3–10 | P1 | Not started |
 | CF-016 | Client: session keys + PER auth token + TDX attestation check | CLIENT | 6–9 | P1 | Not started |
@@ -254,7 +254,7 @@ The docs don't answer these; PM raises them on MagicBlock Discord at kickoff and
 - [ ] Which TDX measurements can we pin, and are they published per release?
 - [x] Can an EphemeralPermission protect an ephemeral-only account (ADR 0002, assumption A1)? Yes in 4/4 Devnet runs (CF-006 spike); confirm in CF-007.
 - [ ] Why do owner WebSocket subscriptions to ephemeral accounts miss updates (1 of 4 runs in the spike; 0 of 6 players in one CF-006 run)?
-- [ ] Do ephemeral-only accounts survive a PER restart?
+- [ ] Do ephemeral-only accounts survive a PER restart? Yes for the validator software (local restart drill, CF-013); still to confirm for the Devnet/Mainnet TEE deployment (enclave restart).
 - [ ] What is the fee-payer setup so per-hand commits never stop (10-commit limit)?
 
 ---

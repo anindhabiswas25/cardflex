@@ -60,7 +60,8 @@ pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (nee
 pnpm handflow -- --region <label>   # P2: salts -> VRF -> deal -> reveal -> cf-verify (48 checks)
 cargo run -p fairness-verifier --bin cf-verify -- <record.json>   # verify one hand offline
 pnpm check:g2            # 10,000-hand verifier gate (release mode)
-pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, emergency refund (~3 min)
+pnpm recovery -- --region <label>   # CF-013 outage drill: buy-ins, silent PER, refund + claims (~3 min)
+bash scripts/restart-drill.sh   # local validator restart mid-hand (stop mb-stack first)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -171,6 +172,16 @@ Planned crates and apps are listed in PRD §7.
   state only after checking the delegation record (validator + owner) and
   copies stacks only between hands; `emergency_refund` is permissionless after
   `refund_timeout_secs` without a sync. `delegate_table` needs config writable.
+- Only MagicBlock's TEE validator (`TEE_VALIDATOR`) may hold a table; the
+  local validator only with feature `local-stack` (drills). Refunds are
+  pull-based: `emergency_refund` then one `claim_refund` per seat.
+- Local stack commits to the base layer FAIL: our Agave 3.1.10
+  `solana-test-validator` can't parse MagicBlock validator 1.1.1 (solana
+  4.0) transactions. Devnet commits work. Don't debug this again; it needs an
+  Agave 4.x local validator (pending team approval).
+- The 16 "Stack offset … exceeded" warnings from `anchor build` come from
+  unused sha2 serialization code in dependencies; they predate P3 and are
+  harmless.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer
