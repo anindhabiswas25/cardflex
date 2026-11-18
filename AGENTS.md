@@ -106,7 +106,7 @@ Planned crates and apps are listed in PRD §7.
 - Devnet SOL: `solana airdrop 1 <pk> --url https://rpc.magicblock.app/devnet`
   (the public faucet is often rate-limited).
 - PER round trip works (CF-004): write seen by others in about 90 ms p50
-  and about 0.5 s p95 on Devnet. Run `pnpm roundtrip -- --region <label>`.
+  and about 0.5 s p95 on Devnet (script archived: packages/probes/src/archive/).
 - Permission flag bits: AUTHORITY 1, TX_LOGS 2, TX_BALANCES 4, TX_MESSAGE 8,
   ACCOUNT_SIGNATURES 16.
 - Account placement (ADR 0002): base = GlobalConfig, TableConfig, TableVault,
