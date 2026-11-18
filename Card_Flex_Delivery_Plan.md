@@ -151,7 +151,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | CF-007 | Privacy probe suite: RPC, WS, getTransaction, logs, session reuse | QA | 3–5 | P0 | Done from one location (2026-11-18): 134/134; G1 provisional, docs/findings/cf-007-privacy-suite-g1.md |
 | CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | FAIR | 3–5 | P0 | Done (2026-11-18): docs/spec/cf-fairness-v2.md, ADR 0003 |
 | CF-009 | Salt round: private salt tx into SaltAccount, public commitment | PROG | 4–5 | P0 | Done (2026-11-18): docs/findings/cf-009-salt-round.md |
-| CF-010 | VRF request/callback; test ephemeral queue inside PER vs base queue | PROG | 5–6 | P0 | Not started |
+| CF-010 | VRF request/callback; test ephemeral queue inside PER vs base queue | PROG | 5–6 | P0 | Done (2026-11-18): ephemeral queue works in PER, ~2 s; docs/findings/cf-010-vrf.md |
 | CF-011 | In-program HKDF, shuffle, Merkle; compute-unit benchmark (SHA-256 DRBG chosen in ADR 0003; measure CU) | FAIR | 6–7 | P0 | Not started |
 | CF-012 | Independent verifier v1 (CLI) | FAIR | 7–8 | P0 | Not started |
 | CF-013 | Recovery: PER kill drills, pause state, `emergency_refund` on base | PROG | 8–10 | P0 | Not started |
@@ -244,7 +244,7 @@ The top risk is trusting the TEE operator; every fallback keeps the provider-neu
 
 The docs don't answer these; PM raises them on MagicBlock Discord at kickoff and QA turns each into a P1 test.
 
-- [ ] Does `DEFAULT_EPHEMERAL_QUEUE` VRF work inside the TEE rollup (PER)?
+- [x] Does `DEFAULT_EPHEMERAL_QUEUE` VRF work inside the TEE rollup (PER)? Yes (CF-010): callback ~2 s after request; the base queue fails inside PER.
 - [x] Are transaction messages (`TX_MESSAGE`) hidden from non-members, so salt transactions stay private? Yes for non-members: `getTransaction` returns signature and status only (CF-006 spike). Existence and timing stay visible.
 - [ ] What does an empty member list mean: public or fully private?
 - [x] PER auth token lifetime, refresh method and challenge format? Answered in CF-003: JWT valid 30 days, no refresh endpoint, timestamped challenge (docs/findings/cf-003-devnet-access.md).

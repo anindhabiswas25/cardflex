@@ -52,14 +52,20 @@ pub mod phase {
     pub const IDLE: u8 = 0;
     pub const SALTS_PENDING: u8 = 1;
     pub const SALTS_DONE: u8 = 2;
+    /// VRF requested; waiting for the callback (CF-010).
+    pub const VRF_PENDING: u8 = 3;
+    /// Callback arrived; shuffle seed derived and stored privately.
+    pub const SEEDED: u8 = 4;
 }
 
 pub const SEAT_HAND_TAG: &[u8; 8] = b"CFSEATHD";
 pub const DEALER_TAG: &[u8; 8] = b"CFDEALER";
 /// tag(8) + runtime(32) + seat(1) + hand_no(8) + cards(3)
 pub const SEAT_HAND_LEN: u32 = 52;
-/// tag(8) + runtime(32) + hand_no(8) + deck(52)
-pub const DEALER_LEN: u32 = 100;
+/// tag(8) + runtime(32) + hand_no(8) + deck(52) + vrf_output(32) + seed(32)
+pub const DEALER_LEN: u32 = 164;
+pub const DEALER_VRF_OFFSET: usize = 100;
+pub const DEALER_SEED_OFFSET: usize = 132;
 
 /// Lamports `TableRuntime` must carry into PER to sponsor every ephemeral
 /// account and permission it creates.
@@ -114,6 +120,8 @@ pub struct TableRuntime {
     pub dealing_count: u8,
     /// `c_i` per seat index (spec §3); zero until submitted.
     pub salt_commitments: [[u8; 32]; MAX_SEATS],
+    /// `caller_seed` sent with the VRF request (spec §3), public for audit.
+    pub vrf_caller_seed: [u8; 32],
     pub bump: u8,
 }
 

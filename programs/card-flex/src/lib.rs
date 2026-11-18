@@ -565,6 +565,119 @@ pub mod card_flex {
         Ok(())
     }
 
+    // ---------- CF-010 VRF (PER) ----------
+
+    /// Requests MagicBlock VRF once every dealt seat has a salt. `caller_seed`
+    /// = `vrf_caller_seed(hand_ctx, c_0..c_n)` (spec §3), computed here.
+    pub fn request_shuffle(ctx: Context<RequestShuffle>) -> Result<()> {
+        let queue = ctx.accounts.oracle_queue.key();
+        require!(
+            queue == ephemeral_rollups_sdk::vrf::consts::DEFAULT_EPHEMERAL_QUEUE
+                || queue == ephemeral_rollups_sdk::vrf::consts::DEFAULT_QUEUE
+                || queue == ephemeral_rollups_sdk::vrf::consts::DEFAULT_EPHEMERAL_TEST_QUEUE,
+            CardFlexError::BadQueue
+        );
+        let runtime = &mut ctx.accounts.runtime;
+        require!(
+            runtime.phase == phase::SALTS_DONE,
+            CardFlexError::WrongPhase
+        );
+        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
+        let commitments: Vec<[u8; 32]> = order
+            .iter()
+            .map(|&s| runtime.salt_commitments[s as usize])
+            .collect();
+        let caller_seed =
+            fairness_core::vrf_caller_seed::<SolSha256>(&runtime.hand_ctx, &commitments);
+        runtime.vrf_caller_seed = caller_seed;
+        runtime.phase = phase::VRF_PENDING;
+
+        let runtime_key = runtime.key();
+        let mut metas = vec![
+            ephemeral_rollups_sdk::vrf::types::SerializableAccountMeta {
+                pubkey: runtime_key,
+                is_signer: false,
+                is_writable: true,
+            },
+            ephemeral_rollups_sdk::vrf::types::SerializableAccountMeta {
+                pubkey: ctx.accounts.dealer.key(),
+                is_signer: false,
+                is_writable: true,
+            },
+        ];
+        for &s in &order {
+            metas.push(ephemeral_rollups_sdk::vrf::types::SerializableAccountMeta {
+                pubkey: Pubkey::find_program_address(
+                    &[SALT_SEED, runtime_key.as_ref(), &[s]],
+                    &crate::ID,
+                )
+                .0,
+                is_signer: false,
+                is_writable: false,
+            });
+        }
+        let ix = ephemeral_rollups_sdk::vrf::instructions::create_request_randomness_ix(
+            ephemeral_rollups_sdk::vrf::instructions::RequestRandomnessParams {
+                payer: ctx.accounts.payer.key(),
+                oracle_queue: queue,
+                callback_program_id: crate::ID,
+                callback_discriminator: instruction::VrfDeal::DISCRIMINATOR.to_vec(),
+                caller_seed,
+                accounts_metas: Some(metas),
+                ..Default::default()
+            },
+        );
+        ctx.accounts
+            .invoke_signed_vrf(&ctx.accounts.payer.to_account_info(), &ix)?;
+        Ok(())
+    }
+
+    /// VRF callback. Only the scoped VRF identity can call it, and only while
+    /// the hand waits for randomness, so a second or stale fulfilment fails.
+    /// Derives `seed` (spec §4) from the VRF output and every salt, and stores
+    /// both in the private `DealerState`. The shuffle itself is CF-011.
+    pub fn vrf_deal(ctx: Context<VrfDeal>, randomness: [u8; 32]) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(
+            runtime.phase == phase::VRF_PENDING,
+            CardFlexError::WrongPhase
+        );
+        let runtime_key = runtime.key();
+        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
+        require!(
+            ctx.remaining_accounts.len() == order.len(),
+            CardFlexError::BadSalt
+        );
+        let mut salts = Vec::with_capacity(order.len());
+        for (&seat, acc) in order.iter().zip(ctx.remaining_accounts) {
+            let (expected, _) = Pubkey::find_program_address(
+                &[SALT_SEED, runtime_key.as_ref(), &[seat]],
+                &crate::ID,
+            );
+            require_keys_eq!(acc.key(), expected, CardFlexError::BadSalt);
+            require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSalt);
+            let data = acc.try_borrow_data()?;
+            require!(&data[..8] == SALT_TAG, CardFlexError::BadSalt);
+            require!(
+                data[41..49] == runtime.hand_no.to_le_bytes(),
+                CardFlexError::BadSalt
+            );
+            let mut salt = [0u8; 32];
+            salt.copy_from_slice(&data[49..81]);
+            salts.push(salt);
+        }
+        let seed = fairness_core::shuffle_seed::<SolSha256>(&runtime.hand_ctx, &randomness, &salts);
+        {
+            let mut d = ctx.accounts.dealer.try_borrow_mut_data()?;
+            require!(&d[..8] == DEALER_TAG, CardFlexError::BadDealer);
+            d[40..48].copy_from_slice(&runtime.hand_no.to_le_bytes());
+            d[DEALER_VRF_OFFSET..DEALER_VRF_OFFSET + 32].copy_from_slice(&randomness);
+            d[DEALER_SEED_OFFSET..DEALER_SEED_OFFSET + 32].copy_from_slice(&seed);
+        }
+        runtime.phase = phase::SEEDED;
+        Ok(())
+    }
+
     /// Deals the P1 **test deck** (not random). `remaining_accounts` = the
     /// seat hands of every occupied seat, in seat order.
     pub fn poc_deal(ctx: Context<PocDeal>) -> Result<()> {
@@ -855,6 +968,36 @@ pub mod card_flex {
 #[derive(Accounts)]
 pub struct Ping {}
 
+/// `request_shuffle`: anyone may pay for the request once all salts are in;
+/// the program fixes `caller_seed`, so the caller can't influence it.
+#[ephemeral_rollups_sdk::anchor::vrf]
+#[derive(Accounts)]
+pub struct RequestShuffle<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Account<'info, TableRuntime>,
+    /// CHECK: ephemeral dealer PDA (callback target), checked by seeds.
+    #[account(seeds = [DEALER_SEED, runtime.key().as_ref()], bump)]
+    pub dealer: UncheckedAccount<'info>,
+    /// CHECK: must be one of MagicBlock's VRF queues (checked in the handler).
+    #[account(mut)]
+    pub oracle_queue: UncheckedAccount<'info>,
+}
+
+/// `vrf_deal`: called only by the VRF program through the scoped identity
+/// PDA (injected by `#[vrf_callback]`). Salt accounts follow in
+/// `remaining_accounts`, in dealing order.
+#[ephemeral_rollups_sdk::anchor::vrf_callback]
+#[derive(Accounts)]
+pub struct VrfDeal<'info> {
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Account<'info, TableRuntime>,
+    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
+    #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    pub dealer: UncheckedAccount<'info>,
+}
+
 /// Creates a private ephemeral permission for `account` with `members`.
 fn create_permission<'info>(
     accs: &TablePer<'info>,
@@ -930,6 +1073,8 @@ pub enum CardFlexError {
     WrongPhase,
     #[msg("salt already submitted for this hand")]
     SaltAlreadySubmitted,
+    #[msg("not a MagicBlock VRF queue")]
+    BadQueue,
 }
 
 #[derive(Accounts)]

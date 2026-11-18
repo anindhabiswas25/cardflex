@@ -125,4 +125,7 @@ export const saltCommitment = (ctx, seat, salt) => sha256(Buffer.from("CF_SALT_V
 export const RT = {
   occupied: 73, wallets: 74, sessions: 266, hand_no: 458, dealt: 466, locked: 467, grants: 468, phase: 469,
   hand_ctx: 470, roster_hash: 502, salts_in: 534, dealing_order: 535, dealing_count: 541, salt_commitments: 542,
+  vrf_caller_seed: 734,
 };
+export const PHASE = { IDLE: 0, SALTS_PENDING: 1, SALTS_DONE: 2, VRF_PENDING: 3, SEEDED: 4 };
+export const vrfCallerSeed = (ctx, commitments) => sha256(Buffer.from("CF_VRF_SEED_V2"), ctx, ...commitments);

@@ -1,0 +1,46 @@
+{
+  "probe": "P2-handflow",
+  "version": 1,
+  "region": "dev-machine-1",
+  "queue": "base",
+  "started_at": "2026-11-18T14:29:31.358Z",
+  "checks": [
+    {
+      "group": "vrf",
+      "name": "request before SALTS_DONE rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "phase SALTS_DONE",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "unknown queue rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "vrf",
+      "name": "fake callback before request rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    }
+  ],
+  "timings": {
+    "teardown_ok": true
+  },
+  "error": "{\"InstructionError\":[0,{\"Custom\":1}]}",
+  "auth_transient_failures": [],
+  "passed": 4,
+  "failed": 0,
+  "ok": false,
+  "finished_at": "2026-11-18T14:30:11.624Z"
+}

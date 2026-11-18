@@ -7,7 +7,8 @@
     "probe": "node src/probe.mjs",
     "roundtrip": "node src/roundtrip.mjs",
     "tablepoc": "node src/tablepoc.mjs",
-    "privacy-suite": "node src/privacy-suite.mjs"
+    "privacy-suite": "node src/privacy-suite.mjs",
+    "handflow": "node src/handflow.mjs"
   },
   "dependencies": {
     "@magicblock-labs/ephemeral-rollups-sdk": "0.17.3",

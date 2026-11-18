@@ -18,7 +18,8 @@
     "tablepoc": "pnpm --filter @card-flex/probes tablepoc",
     "build:program:devnet-poc": "anchor build -- --features poc-test-deck",
     "privacy-suite": "pnpm --filter @card-flex/probes privacy-suite",
-    "check:fairness": "python3 -I scripts/check_fairness_vectors.py"
+    "check:fairness": "python3 -I scripts/check_fairness_vectors.py",
+    "handflow": "pnpm --filter @card-flex/probes handflow"
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"

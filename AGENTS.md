@@ -58,6 +58,7 @@ pnpm probe -- --region <label>   # CF-003 latency/attestation probe
 pnpm roundtrip -- --region <label> [--target tee|er-as]   # CF-004 devnet round trip (spends devnet SOL)
 pnpm tablepoc -- --region <label>   # CF-006 six-player privacy matrix on devnet
 pnpm privacy-suite -- --region <label>   # G1 suite incl. salts, 231 checks (needs devnet-poc build deployed)
+pnpm handflow -- --region <label> [--queue ephemeral|base]   # P2 salts -> VRF -> (shuffle, verify)
 ```
 
 Note: `pnpm ci` is a built-in pnpm 11 command; use `pnpm verify`.
@@ -147,6 +148,11 @@ Planned crates and apps are listed in PRD §7.
 - `packages/probes/src/common.mjs` has a JS implementation of the
   CF-Fairness v2 hashes and the TableRuntime byte offsets (`RT`); keep the
   offsets in sync when TableRuntime changes.
+- VRF inside PER: use the EPHEMERAL queue (`5hBR571…`); the base queue fails.
+  Callbacks must use `#[vrf_callback]` (scoped identity PDA), not the
+  deprecated global `VRF_PROGRAM_IDENTITY`. `#[vrf]`/`#[vrf_callback]`
+  account structs must live in lib.rs (the generated `invoke_signed_vrf` is
+  module-private). Request -> callback takes ~2 s on Devnet.
 - An Anchor program may have only ONE `#[error_code]` enum (IDL build fails
   otherwise); use `CardFlexError` in lib.rs.
 - If `solana program deploy` fails mid-way, close the leftover buffer

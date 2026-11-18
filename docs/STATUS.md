@@ -16,7 +16,8 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-007 | Privacy probe suite for G1 | Done from `dev-machine-1`: 134/134 checks, 2/2 runs. **G1 provisionally passed**; needs other regions + a second day | `pnpm privacy-suite`, `docs/findings/cf-007-privacy-suite-g1.md` |
 | CF-008 | Canonical encoding spec (CF-Fairness v2) + test vectors | Done | `crates/fairness-core`, `docs/spec/cf-fairness-v2.md`, `docs/spec/vectors/`, `scripts/check_fairness_vectors.py`, ADR 0003 |
 | CF-009 | Salt round: private `submit_salt` into SaltAccount, public commitment | Done: suite 231/231 (2/2 runs) incl. salts; salt tx redacted to everyone | `open_salt`/`start_hand`/`submit_salt`, `docs/findings/cf-009-salt-round.md` |
-| CF-010 | VRF request with caller_seed when SALTS_DONE; protected callback derives the seed | Next (P2) | spec §3–4; test ephemeral queue inside PER |
+| CF-010 | VRF request with caller_seed when SALTS_DONE; protected callback derives the seed | Done: ephemeral queue works inside PER, callback ~2.0–2.1 s; 12/12 checks ×2 | `request_shuffle`/`vrf_deal`, `pnpm handflow`, `docs/findings/cf-010-vrf.md` |
+| CF-011 | Shuffle, deal and Merkle root in-program from the seed; compute units; remove test deck from the real path | Next (P2) | spec §5–8 |
 
 ## Blockers and asks for the team
 
@@ -33,6 +34,10 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-18 — CF-010 done. MagicBlock VRF works inside Devnet PER via the
+  ephemeral queue (base queue fails cleanly). Callback guarded by the scoped
+  VRF identity; fake/duplicate/stale callbacks and second requests rejected;
+  on-chain caller_seed matches the JS spec. Request→seed ~2.0–2.1 s.
 - 2026-11-18 — CF-009 done. Salt round on Devnet: on-chain hand_ctx and
   commitments match an independent JS implementation; wrong signer, wrong
   account and double submit rejected; salts unreadable by everyone (even the
