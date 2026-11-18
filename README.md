@@ -1,8 +1,9 @@
 # Card Flex
 
 Provably fair Teen Patti on Solana, with gameplay running inside MagicBlock's
-Private Ephemeral Rollup (PER). See `Card_Flex_Delivery_Plan.md` for the plan
-and `docs/adr/` for decisions.
+Private Ephemeral Rollup (PER). The engineering spec is
+`Card_Flex_Devnet_PRD_MagicBlock_v1.2.md`; see `Card_Flex_Delivery_Plan.md`
+for the plan and `docs/adr/` for decisions.
 
 ## Prerequisites (exact versions, see `toolchain.env`)
 

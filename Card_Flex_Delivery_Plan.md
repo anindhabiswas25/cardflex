@@ -8,7 +8,7 @@ Card Flex ships a production-grade, provably fair Teen Patti on Solana Devnet, w
 
 ## 1. Decisions locked
 
-These ten decisions replace the conflicting parts of PRD v1.1; PRD v1.2 must be updated to match before coding starts.
+These ten decisions replace the conflicting parts of PRD v1.1 and are written into `Card_Flex_Devnet_PRD_MagicBlock_v1.2.md`.
 
 | # | Decision | Replaces | Why |
 | --- | --- | --- | --- |
@@ -143,7 +143,7 @@ All P0 tickets must close before G3; no polished UI work starts before G1 passes
 | Ticket | Deliverable | Stream | Est. weeks | Priority | Status |
 | --- | --- | --- | --- | --- | --- |
 | CF-001 | Pin toolchain, monorepo, CI with clean-checkout build | PROG | 1 | P0 | Done (2026-11-18) |
-| CF-002 | Rewrite PRD to v1.2 with decisions D1–D10 | PM | 1–2 | P0 | Not started |
+| CF-002 | Rewrite PRD to v1.2 with decisions D1–D10 | PM | 1–2 | P0 | Done (2026-11-18) |
 | CF-003 | Latency and geofence probe from each target region to devnet-tee | QA | 1–2 | P0 | Not started |
 | CF-004 | Minimal program delegated to devnet-tee, commit + undelegate round-trip | PROG | 2 | P0 | Not started |
 | CF-005 | ADR: every account marked base / delegated / ephemeral-only | PROG | 2 | P0 | Not started |
