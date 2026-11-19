@@ -1,0 +1,117 @@
+{
+  "ticket": "CF-054",
+  "region": "dev-machine-1",
+  "at": "2026-11-19T11:55:36.596Z",
+  "tables": 50,
+  "botsPerTable": 2,
+  "handsTarget": 3,
+  "setupSecs": 344.718,
+  "runSecs": 981.389,
+  "handsCompleted": 66,
+  "handsPerMinute": 4.035097193875211,
+  "tablesFinished": 0,
+  "actionConfirmMs": {
+    "n": 533,
+    "p50": 483,
+    "p95": 5157,
+    "max": 22136
+  },
+  "saltConfirmMs": {
+    "n": 159,
+    "p50": 932,
+    "p95": 9146,
+    "max": 10868
+  },
+  "saltsToDealtMs": {
+    "n": 60,
+    "p50": 12886,
+    "p95": 324709,
+    "max": 329435
+  },
+  "botLoopRoundMs": {
+    "n": 200,
+    "p50": 571,
+    "p95": 16926,
+    "max": 140843
+  },
+  "actionsPerHand": {
+    "n": 60,
+    "p50": 8,
+    "p95": 8,
+    "max": 8
+  },
+  "failures": {
+    "net:login": 6,
+    "setup": 1,
+    "keeper:start_hand": 56,
+    "keeper:loop": 27,
+    "bot:salt": 478,
+    "bot:act": 156,
+    "keeper:request_shuffle": 43,
+    "keeper:abort_lost_hand": 117,
+    "keeper:cancel_salts": 63,
+    "keeper:timeout_turn": 35,
+    "keeper:deal_hand": 13,
+    "keeper:reveal_hand": 31,
+    "keeper:finish_hand": 12
+  },
+  "failureSamples": {
+    "keeper:start_hand": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed"
+    ],
+    "bot:salt": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed",
+      "{\"InstructionError\":[0,{\"Custom\":6018}]}"
+    ],
+    "bot:act": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "{\"InstructionError\":[0,{\"Custom\":6018}]}",
+      "{\"InstructionError\":[0,{\"Custom\":6039}]}"
+    ],
+    "keeper:request_shuffle": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed"
+    ],
+    "keeper:abort_lost_hand": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed",
+      "abort_lost_hand: {\"InstructionError\":[0,{\"Custom\":6052}]}"
+    ],
+    "keeper:cancel_salts": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed",
+      "cancel_salts: {\"InstructionError\":[0,{\"Custom\":6018}]}"
+    ],
+    "keeper:timeout_turn": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "timeout_turn: {\"InstructionError\":[0,{\"Custom\":6018}]}",
+      "timeout_turn: {\"InstructionError\":[0,{\"Custom\":6039}]}"
+    ],
+    "keeper:deal_hand": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed"
+    ],
+    "keeper:reveal_hand": [
+      "failed to get recent blockhash: TypeError: fetch failed",
+      "fetch failed"
+    ],
+    "keeper:finish_hand": [
+      "failed to get info about account 9279gDcZTwET1Zr3cuqkgnYiTbhozzis135a7dHSBnsA: TypeError: fetch failed",
+      "failed to get info about account 96uLJ6xCAkwLKZxF86zSwpfHne57FhxUzKpRcmxBGJfP: TypeError: fetch failed",
+      "failed to get info about account EyEqPdWSZKkwtszU3HPkogLmdzs95dFT2qEHMcFogieV: TypeError: fetch failed"
+    ]
+  },
+  "botSockets": 32,
+  "vaultsExact": "49/49",
+  "setupFailed": [
+    "4g2oNULJioifjfXStQPudCegK3QmPDzfXTGySaBrfeeJ"
+  ],
+  "baseCostLamports": {
+    "setupPerTable": 39391880,
+    "netPerTableAfterTeardown": 43391980,
+    "keeperPerHand": 5076,
+    "keeperTotal": 335000
+  }
+}

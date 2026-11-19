@@ -1,0 +1,61 @@
+{
+  "ticket": "CF-054",
+  "region": "dev-machine-1",
+  "at": "2026-11-19T11:25:47.632Z",
+  "tables": 50,
+  "botsPerTable": 2,
+  "handsTarget": 3,
+  "setupSecs": 298.013,
+  "runSecs": 304.258,
+  "handsCompleted": 211,
+  "handsPerMinute": 41.609423581302714,
+  "tablesFinished": 50,
+  "actionConfirmMs": {
+    "n": 2138,
+    "p50": 916,
+    "p95": 6067,
+    "max": 15881
+  },
+  "saltConfirmMs": {
+    "n": 494,
+    "p50": 1039,
+    "p95": 7857,
+    "max": 15416
+  },
+  "saltsToDealtMs": {
+    "n": 245,
+    "p50": 9917,
+    "p95": 18890,
+    "max": 39109
+  },
+  "botLoopRoundMs": {
+    "n": 135,
+    "p50": 1352,
+    "p95": 4458,
+    "max": 6826
+  },
+  "actionsPerHand": {
+    "n": 235,
+    "p50": 8,
+    "p95": 8,
+    "max": 8
+  },
+  "failures": {
+    "keeper:start_hand": 35,
+    "bot:salt": 183,
+    "bot:act": 304,
+    "keeper:finish_hand": 2,
+    "keeper:timeout_turn": 22,
+    "keeper:request_shuffle": 3,
+    "keeper:cancel_salts": 2,
+    "keeper:deal_hand": 1
+  },
+  "vaultsExact": "50/50",
+  "setupFailed": [],
+  "baseCostLamports": {
+    "setupPerTable": 39391880,
+    "netPerTableAfterTeardown": 43391980,
+    "keeperPerHand": 5000,
+    "keeperTotal": 1055000
+  }
+}

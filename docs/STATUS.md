@@ -1,8 +1,7 @@
 # Status
 
-Current phase: **P8 (hardening).** P4–P6 done; P7 non-UI parts done (CF-016/018/040/041), UI in progress (not committed). Rules v1 signed off 2026-11-19. G3 signed off as GO (conditional) 2026-11-18. G1 and G2 passed from one location (other regions still to run the probes); next gate is G3, the MagicBlock go/no-go. Update this file whenever a ticket
+Current phase: **P8 (hardening).** CF-052/053/054/061 done; next CF-055 (security review). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
-
 ## Tickets
 
 | Ticket | What | Status | Where |
@@ -34,17 +33,23 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-033 | P6: rake synced from committed results; `sweep_rake` to the treasury | Done (Devnet verified in CF-035) | `tests/test_recovery.rs` |
 | CF-034 | P6: reconciliation (`check_vault`, `pnpm reconcile`) | Done (Devnet verified in CF-035): exact after every money step in LiteSVM | `tests/test_recovery.rs`, `packages/probes/src/reconcile.mjs` |
 | CF-035 | P6: Devnet money drill (join/leave mid-session, reconcile to the lamport, double cash-out refused) | Done: 53/53; vault exact after all 7 money steps; join in PER reads the base ledger first try (~1 s) | `pnpm money`, `docs/findings/cf-035-money-drill.md` |
-| CF-016 | P7: client SDK (`packages/client-sdk`): PDAs, IDL-driven accounts + instructions, PER login, own TEE attestation, fairness, rules v1 in TS | Done (not committed): 10 offline tests (incl. all 128 rules vectors, fairness vectors, byte-level match with the probes); live Devnet check OK | `pnpm test:sdk`, `pnpm --filter @card-flex/client-sdk live` |
-| CF-018 | P7: backend / indexer (lobby, hand history, player records) | Done (not committed): `services/api` (node:http + node:sqlite, ADR 0006); every hand verified with the WASM verifier and replayed for per-seat bets/nets; live on Devnet: 6 tables, 4 hands, all VALID | `pnpm api`, `pnpm test:api` |
-| CF-040 | P7: `cf-verify` as WASM for the browser Verify page | Done (not committed): `crates/fairness-wasm` (277 KB, no imports) + `loadVerifier` in the SDK; same verdicts as the native CLI on 6 Devnet hands; tampering caught | `pnpm build:wasm`, `packages/client-sdk/test/verifier.test.ts` |
-| CF-041 | P7: admin backend (create/configure tables, pause, sweep rake) | Done (not committed): `cf-admin` CLI signing locally (no key-holding server); live on Devnet: create → open (15 PER steps) → status → strict reconcile → sweep → close | `pnpm admin -- …`, `pnpm test:admin` |
+| CF-016 | P7: client SDK (`packages/client-sdk`): PDAs, IDL-driven accounts + instructions, PER login, own TEE attestation, fairness, rules v1 in TS | Done: 10 offline tests (incl. all 128 rules vectors, fairness vectors, byte-level match with the probes); live Devnet check OK | `pnpm test:sdk`, `pnpm --filter @card-flex/client-sdk live` |
+| CF-018 | P7: backend / indexer (lobby, hand history, player records) | Done: `services/api` (node:http + node:sqlite, ADR 0006); every hand verified with the WASM verifier and replayed for per-seat bets/nets; live on Devnet: 6 tables, 4 hands, all VALID | `pnpm api`, `pnpm test:api` |
+| CF-040 | P7: `cf-verify` as WASM for the browser Verify page | Done: `crates/fairness-wasm` (277 KB, no imports) + `loadVerifier` in the SDK; same verdicts as the native CLI on 6 Devnet hands; tampering caught | `pnpm build:wasm`, `packages/client-sdk/test/verifier.test.ts` |
+| CF-041 | P7: admin backend (create/configure tables, pause, sweep rake) | Done: `cf-admin` CLI signing locally (no key-holding server); live on Devnet: create → open (15 PER steps) → status → strict reconcile → sweep → close | `pnpm admin -- …`, `pnpm test:admin` |
 | CF-050 | P8: program liveness: salt-round timeout (`cancel_salts`, absent players leave), permissionless `start_hand`, `undelegate_table` bumps `commit_seq` | Done locally (Devnet with CF-051) | `tests/test_table.rs` |
 | CF-051 | P8: keeper service (drives every phase, commit + sync per hand + heartbeat, indexes each hand before next_hand) | Done: `services/keeper` (pure `decide` + executor, permissionless instructions only, PER read token); Devnet drill 7/7 | `pnpm keeper`, `pnpm keeper-drill`, `pnpm test:keeper` |
-| CF-052 | P8: program slimming (drop test-only code from production builds, size) | Next | |
-| CF-053 | P8: recovery abort path for a hand whose ephemeral state was lost (ADR 0004 #8) | Planned | |
-| CF-054 | P8: load test, 50 concurrent tables | Planned | |
-| CF-055 | P8: security review pass | Planned | |
+| CF-052 | P8: program slimming (drop test-only code from production builds, size) | Done: `bench_deal` removed, `poc_deal` compiled out of production builds, `opt-level = "z"` (864 → 802 KB; deal 106k CU, act ≤ 66k CU, ceilings in tests) | ADR 0001 amendment |
+| CF-053 | P8: recovery abort path for a hand whose ephemeral state was lost (ADR 0004 #8) | Done: `abort_lost_hand` + keeper (`STUCK_SECS`); Devnet drill 11/11 ×2; privacy 230/230 (final build), handflow 67/67 and keeper drill 7/7 (first CF-053 build) | `pnpm lost-drill`, `docs/findings/cf-053-lost-state.md`, ADR 0004 amendment |
+| CF-054 | P8: load test, 5 → 10 → 25 → 50 concurrent tables (latency, VRF time, errors, keeper lag, commit cost) | Done: 50 tables stable and exact (150/150 hands, 50/50 vaults) but too slow (salts → dealt 18 s p50 / 35 s p95); bottleneck is our keeper → CF-061 | `pnpm load-test`, `docs/findings/cf-054-load.md` |
+| CF-055 | P8: security review pass (incl. a keeper key that is not authority-derived) | Planned | |
 | CF-056 | P8: ops: Squads multisig, production refund timeout, reconcile alarms, runbooks | Planned | |
+| CF-057 | P8: commit-fee model (cost per table-hour, keeper wallet budget, behaviour past 10 commits) from CF-054 data | Planned (CF-054 measured 5,000 lamports per hand on base) | |
+| CF-058 | P8: TEE measurement-change alert (we pin what we observe; alert when Devnet's changes) | Planned | |
+| CF-059 | P8: privacy-suite check for an empty permission member list (answer MagicBlock open question 3 ourselves) | Planned | |
+| CF-060 | P8: monitoring and alerts (keeper health, cancel rate, tables near refund, reconcile failures) | Planned | |
+| CF-061 | P8: keeper scaling: one loop per table, batched reads; re-run the CF-054 staircase | Done: per-table loops, batched reads, HTTP-polling confirms (fixes an OOM), bounded keep-alive pools. 50-table capacity not measurable from one IP (PER per-IP limit); PM accepted for P8 (option 3), re-test in CF-062 | `services/keeper/src/run.ts`, `docs/findings/cf-054-load.md` |
+| CF-062 | P9 prerequisite: multi-machine load test (bots spread over several machines/IPs, one keeper), 50 tables, latency targets | Planned (before public Devnet) | `pnpm load-test` per machine |
 
 ## Open program items (P8)
 
@@ -68,9 +73,63 @@ starts, finishes or gets blocked. Newest entries first in the log.
 - Ask MagicBlock which local base-layer (solana-test-validator) version their
   validator 1.1.1 expects for commits (local commits fail with 3.1.10 and 4.0.3).
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
+  Non-blocking: P8 proceeds on worst-case assumptions (TEE restart may lose
+  ephemeral state → CF-053; measurements may change unannounced → CF-058;
+  commit fees measured in CF-057; empty member list tested in CF-059).
+  Answers still matter for Mainnet.
 
 ## Log
 
+- 2026-11-19 — PM decision on the 50-table criterion (option 3): accepted
+  for P8 on correctness (every vault exact in every run up to 50 tables,
+  fast up to 25 tables); the capacity number is re-measured with bots on
+  several machines before public Devnet (CF-062, P9 prerequisite). Next:
+  CF-055 security review.
+- 2026-11-19 — CF-061: keeper scheduler rewritten (`run.ts`): one batched
+  reader (getMultipleAccountsInfo + one getSlot per round) and one worker
+  per table, so a table in commit + sync no longer stalls the rest (50-table
+  deal wait p50 18 → 10 s). Found and fixed a keeper crash: a PER WebSocket
+  closing during `confirmTransaction` made web3.js spin on
+  `signatureSubscribe` until out of memory; all sends now confirm by HTTP
+  polling (`confirmByPolling`, 150 ms → 1 s backoff). Keeper uses a bounded
+  keep-alive pool (`PER_SOCKETS`, 16). Load probes show the PER throttles
+  per IP (new-connection bursts time out; sustained load from one machine
+  got connections refused for minutes), so 50-table capacity can't be
+  measured with 100 bots on one machine. Money stayed exact in every run.
+- 2026-11-19 — CF-054: load staircase on Devnet with one keeper and 2 bots
+  per table playing 8-action hands. 5/10/25/50 tables: every hand finished
+  (150/150 at 50), every vault exact, only transient send failures. Action
+  confirm p95 0.7/1.1/1.2/5.8 s; salts → cards dealt p50 3.9/6.1/13.1/18.1 s
+  (p95 35 s at 50). The deal wait grows with table count because the keeper
+  ticks all tables together and waits for the slowest (a table's
+  commit + sync takes seconds), so the bottleneck is ours, not the PER's →
+  CF-061. Base cost 5,000 lamports per hand. Harness hardened after a PER
+  connect timeout crashed the first 10-table run (its 10 tables were closed).
+- 2026-11-19 — CF-053: a hand whose secret state was lost froze money
+  indefinitely (nothing could finish it, and heartbeat syncs kept the refund
+  timer from ever firing). New permissionless `abort_lost_hand`: given the
+  dealer, seat hands and salts of the dealt seats, it ends the hand only if
+  one is missing or zeroed; before settlement nothing moved, a settled but
+  unrevealable hand is voided (start stacks back, rake back). The keeper
+  tries it after `STUCK_SECS` (120 s) without progress, since private
+  accounts read as null to it either way. `open_seat_hand` clears the seat's
+  grant bit. Devnet: PER accepts a transaction naming a missing ephemeral
+  account; drill 11/11 twice (keeper aborted in 11–13 s, no strikes, then a
+  full VALID hand, vault exact). Regression: privacy 230/230 on the final
+  build; handflow 67/67 and keeper drill 7/7 on the first CF-053 build. Program 818,744 B (devnet build).
+- 2026-11-19 — CF-052: production builds carry no test-only code:
+  `bench_deal` removed (its CU check moved onto the real `deal_hand` test),
+  `poc_deal` and the test deck compiled only with `poc-test-deck` (gone from
+  the default IDL). Workspace crates now `opt-level = "z"`: 864,208 →
+  801,632 B for +18% CU on a 6-seat deal (106k) and +25% per action (66k),
+  both far under 200k; tests fail above 150k / 100k. Unused error variants
+  kept so error codes don't shift. The probes derive a missing instruction
+  discriminator from its name, so they work whichever build sits in
+  `target/` (found when the privacy suite stopped at `poc_deal`).
+- 2026-11-19 — P8 plan: PM decided not to wait on MagicBlock answers. New
+  tickets CF-057…CF-061 turn the open questions into our own measurements
+  and safeguards; CF-054 becomes a 5 → 50 table staircase. Status table
+  corrected (P7 non-UI tickets are committed; G3 already signed off).
 - 2026-11-19 — CF-051: keeper. `services/keeper`: a pure `decide(runtime)`
   picks the one permissionless step for each phase (start, cancel stalled
   salts, request VRF, cancel a missing callback, deal, grant Side Show views,

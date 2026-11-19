@@ -1,0 +1,54 @@
+{
+  "ticket": "CF-054",
+  "region": "dev-machine-1",
+  "at": "2026-11-19T10:44:07.342Z",
+  "tables": 10,
+  "botsPerTable": 2,
+  "handsTarget": 3,
+  "setupSecs": 63.634,
+  "runSecs": 83.533,
+  "handsCompleted": 30,
+  "handsPerMinute": 21.548370105227875,
+  "tablesFinished": 10,
+  "actionConfirmMs": {
+    "n": 270,
+    "p50": 485,
+    "p95": 1091,
+    "max": 3743
+  },
+  "saltConfirmMs": {
+    "n": 60,
+    "p50": 768,
+    "p95": 2962,
+    "max": 3676
+  },
+  "saltsToDealtMs": {
+    "n": 30,
+    "p50": 6111,
+    "p95": 6981,
+    "max": 6998
+  },
+  "keeperRoundMs": {
+    "n": 46,
+    "p50": 594,
+    "p95": 4505,
+    "max": 8259
+  },
+  "actionsPerHand": {
+    "n": 30,
+    "p50": 8,
+    "p95": 8,
+    "max": 8
+  },
+  "failures": {
+    "bot:salt": 3
+  },
+  "vaultsExact": "10/10",
+  "setupFailed": [],
+  "baseCostLamports": {
+    "setupPerTable": 39391880,
+    "netPerTableAfterTeardown": 43392380,
+    "keeperPerHand": 5000,
+    "keeperTotal": 150000
+  }
+}
