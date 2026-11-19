@@ -27,6 +27,7 @@ import {
   DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, TABLE_STATUS, decodeGlobal, decodeLedger, decodeRuntime, decodeTableConfig,
   globalPda, perConnection, perLogin, sizeOf, tableAddresses,
 } from "@card-flex/client-sdk";
+import { confirmByPolling } from "@card-flex/client-sdk";
 import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, updateGlobal } from "./admin.ts";
 
 const argv = process.argv.slice(2);
@@ -54,8 +55,8 @@ async function send(conn: Connection, ixs: TransactionInstruction[], kp: Keypair
       tx.feePayer = kp.publicKey;
       tx.sign(kp);
       const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
-      const res = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
-      if (res.value.err) throw new Error(`${label} failed: ${JSON.stringify(res.value.err)} (${sig})`);
+      const err = await confirmByPolling(conn, sig);
+      if (err) throw new Error(`${label} failed: ${JSON.stringify(err)} (${sig})`);
       console.log(`✓ ${label}  ${sig}`);
       return;
     } catch (e) {

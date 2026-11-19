@@ -129,3 +129,14 @@ test("instruction bytes match what the Devnet-proven probes send", () => {
   // a missing account is an error, not a silent wrong transaction
   assert.throws(() => buildIx("act", { session }, { action: 0, amount: 0n, expected_seq: 0n }), /missing account runtime/);
 });
+
+test("CF-061: confirmByPolling uses HTTP status polls only: confirmed, error, timeout", async () => {
+  const { confirmByPolling } = await import("../src/per.ts");
+  const fake = (seq: unknown[]) => {
+    let i = 0;
+    return { getSignatureStatuses: async () => ({ value: [seq[Math.min(i++, seq.length - 1)]] }) } as never;
+  };
+  assert.equal(await confirmByPolling(fake([null, { confirmationStatus: "processed", err: null }, { confirmationStatus: "confirmed", err: null }]), "s", 5_000, 1), null);
+  assert.deepEqual(await confirmByPolling(fake([{ confirmationStatus: "confirmed", err: { InstructionError: [0, { Custom: 6052 }] } }]), "s", 5_000, 1), { InstructionError: [0, { Custom: 6052 }] });
+  await assert.rejects(confirmByPolling(fake([null]), "s", 20, 1), /not confirmed within 20 ms/);
+});

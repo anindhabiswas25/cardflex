@@ -17,6 +17,7 @@ import {
   newSalt, newSessionKey, perConnection, perLogin, permissionPda, startHand, submitSalt, tableAddresses, verifierWasmUrl,
   type TableRuntime,
 } from "@card-flex/client-sdk";
+import { confirmByPolling } from "@card-flex/client-sdk";
 import { Store } from "@card-flex/api/store";
 import { checkVault, closeTablePer, createTable, delegateTable, openTablePer } from "../../admin/src/admin.ts";
 import { Keeper } from "../src/keeper.ts";
@@ -34,8 +35,8 @@ async function send(conn: Connection, ixs: TransactionInstruction[], signers: Ke
   const bh = await conn.getLatestBlockhash("confirmed");
   tx.recentBlockhash = bh.blockhash; tx.feePayer = signers[0].publicKey; tx.sign(...signers);
   const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
-  const r = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
-  return r.value.err ? JSON.stringify(r.value.err) : null;
+  const err = await confirmByPolling(conn, sig);
+  return err ? JSON.stringify(err) : null;
 }
 async function mustSend(conn: Connection, ixs: TransactionInstruction[], signers: Keypair[], skipPreflight = false) {
   for (let a = 0; ; a++) {

@@ -7,12 +7,15 @@
 //                        the keeper never pays fees for strangers' tables). One of the two is required.
 //   CARDFLEX_DB          SQLite file shared with the API (index every hand); optional
 //   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (600), HAND_GAP_SECS (5),
-//   STUCK_SECS (120: a hand with no progress this long is checked for lost secret state, CF-053)
+//   STUCK_SECS (120: a hand with no progress this long is checked for lost secret state, CF-053),
+//   PER_SOCKETS (16: keep-alive sockets to the PER, CF-061)
 import { readFileSync } from "node:fs";
+import { Agent } from "node:https";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, loadVerifier, perConnection, runtimePda, sizeOf, verifierWasmUrl } from "@card-flex/client-sdk";
 import { Store } from "@card-flex/api/store";
 import { Keeper } from "./keeper.ts";
+import { runKeeper } from "./run.ts";
 
 const env = process.env;
 if (!env.CARDFLEX_PER_TOKEN || !env.CARDFLEX_KEEPER_KEY || !(env.CARDFLEX_TABLES || env.CARDFLEX_AUTHORITY)) {
@@ -20,7 +23,8 @@ if (!env.CARDFLEX_PER_TOKEN || !env.CARDFLEX_KEEPER_KEY || !(env.CARDFLEX_TABLES
   process.exit(2);
 }
 const base = new Connection(env.CARDFLEX_BASE_RPC ?? ENDPOINTS.devnet.base, "confirmed");
-const per = perConnection(env.CARDFLEX_PER_TOKEN, env.CARDFLEX_PER_RPC ?? ENDPOINTS.devnet.per);
+// CF-061: a small, explicit keep-alive pool; the PER throttles new connections per IP.
+const per = perConnection(env.CARDFLEX_PER_TOKEN, env.CARDFLEX_PER_RPC ?? ENDPOINTS.devnet.per, "confirmed", new Agent({ keepAlive: true, maxSockets: Number(env.PER_SOCKETS ?? 16) }));
 const key = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(env.CARDFLEX_KEEPER_KEY, "utf8"))));
 const store = env.CARDFLEX_DB ? new Store(env.CARDFLEX_DB) : undefined;
 const verifier = store ? await loadVerifier(readFileSync(verifierWasmUrl)) : undefined;
@@ -44,12 +48,5 @@ async function tables(): Promise<PublicKey[]> {
 }
 
 console.log(`keeper ${key.publicKey.toBase58()} (tick ${tick} ms)`);
-let list: PublicKey[] = [];
-let lastScan = 0;
-for (;;) {
-  if (Date.now() - lastScan > 30_000) {
-    try { list = await tables(); lastScan = Date.now(); console.log(`driving ${list.length} table(s)`); } catch (e) { console.error("table scan failed:", String((e as Error).message ?? e)); }
-  }
-  await Promise.all(list.map((c) => keeper.tick(c).catch((e) => console.error(c.toBase58().slice(0, 8), String(e?.message ?? e)))));
-  await new Promise((r) => setTimeout(r, tick));
-}
+// CF-061: one batched reader + one independent worker per table.
+await runKeeper(keeper, { per, tables, tickMs: tick });

@@ -4,7 +4,7 @@
 // token grants reads, never signatures).
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  abortLostHand, cancelHand, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
+  abortLostHand, confirmByPolling, cancelHand, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
   revealHand, sideShowView, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
@@ -24,6 +24,9 @@ export type KeeperOpts = {
   verifier?: Verifier;
   log?: (msg: string) => void;
 };
+
+/** A runtime read taken by the scheduler (run.ts) with the PER slot at that time. */
+export type Snapshot = { rt: TableRuntime | null; slot: bigint };
 
 type TableState = {
   lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number;
@@ -48,8 +51,8 @@ export class Keeper {
     tx.feePayer = this.o.key.publicKey;
     tx.sign(this.o.key);
     const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
-    const res = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
-    if (res.value.err) throw new Error(`${label}: ${JSON.stringify(res.value.err)}`);
+    const err = await confirmByPolling(conn, sig);
+    if (err) throw new Error(`${label}: ${JSON.stringify(err)}`);
     return sig;
   }
 
@@ -75,15 +78,18 @@ export class Keeper {
     st.departedSynced = rt.departed;
   }
 
-  /** One step for one table. Returns what it did (for logs and tests). */
-  async tick(config: PublicKey): Promise<Step> {
+  /**
+   * One step for one table. Returns what it did (for logs and tests).
+   * `snap`: a batched read from the scheduler (CF-061); read here if absent.
+   */
+  async tick(config: PublicKey, snap?: Snapshot): Promise<Step> {
     const id = config.toBase58();
     const st = this.tables.get(id) ?? { lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 0, progress: "", progressAt: Date.now() };
     this.tables.set(id, st);
     if (Date.now() < st.backoffUntil) return { kind: "wait", why: "backing off after an error" };
-    const rt = await this.readRuntime(config);
+    const rt = snap ? snap.rt : await this.readRuntime(config);
     if (!rt) return { kind: "wait", why: "runtime not readable in PER (not live, or token lacks access)" };
-    const slot = BigInt(await this.o.per.getSlot());
+    const slot = snap ? snap.slot : BigInt(await this.o.per.getSlot());
     const progress = `${rt.hand_no}:${rt.phase}:${rt.action_seq}:${rt.salts_in}:${rt.grants}`;
     if (progress !== st.progress) {
       st.progress = progress;
