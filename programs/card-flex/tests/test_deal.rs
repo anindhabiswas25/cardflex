@@ -59,31 +59,6 @@ fn cu_ix(units: u32) -> Instruction {
     )
 }
 
-#[test]
-fn bench_deal_compute_units() {
-    let mut svm = svm();
-    let payer = Keypair::new();
-    svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
-    let mut report = Vec::new();
-    for seats in 2..=6u8 {
-        let ix = Instruction::new_with_bytes(
-            card_flex::id(),
-            &card_flex::instruction::BenchDeal {
-                hand_ctx: [7; 32],
-                seed: [9; 32],
-                seats,
-            }
-            .data(),
-            card_flex::accounts::BenchDeal {}.to_account_metas(None),
-        );
-        let cu = send(&mut svm, &[cu_ix(1_400_000), ix], &payer).expect("bench runs");
-        report.push((seats, cu));
-    }
-    eprintln!("bench_deal compute units (seats, CU): {report:?}");
-    // Must leave ample room under the 200k default per-instruction budget.
-    assert!(report.iter().all(|&(_, cu)| cu < 200_000), "{report:?}");
-}
-
 struct Table {
     svm: LiteSVM,
     payer: Keypair,
@@ -216,6 +191,9 @@ fn deal_hand_matches_spec_and_every_proof_verifies() {
         let ix = deal_ix(&t, &t.hands.clone());
         let cu = send(&mut t.svm, &[cu_ix(1_400_000), ix], &t.payer).expect("deal_hand runs");
         eprintln!("deal_hand with {seats} seats: {cu} CU");
+        // CF-052: ~106k CU at 6 seats with opt-level "z"; the ceiling flags a
+        // regression long before the 200k default per-instruction budget.
+        assert!(cu < 150_000, "deal_hand with {seats} seats used {cu} CU");
 
         let rt = TableRuntime::try_deserialize(
             &mut t.svm.get_account(&t.runtime).unwrap().data.as_slice(),

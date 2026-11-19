@@ -12,7 +12,9 @@
 //! with CF-Fairness v2.
 
 use anchor_lang::prelude::*;
-use card_types::{ordered_deck, Card, DECK_SIZE};
+#[cfg(feature = "poc-test-deck")]
+use card_types::ordered_deck;
+use card_types::{Card, DECK_SIZE};
 use ephemeral_rollups_sdk::{
     access_control::structs::{EphemeralPermission, PERMISSION_SEED},
     anchor::{commit, delegate},
@@ -563,6 +565,7 @@ impl teen_patti_core::game::HandOracle for SeatHandOracle {
 
 /// P1 test deck: the canonical deck rotated by a value derived from the hand
 /// number. Deterministic and NOT random; replaced by CF-Fairness v2 in P2.
+#[cfg(feature = "poc-test-deck")]
 pub fn poc_test_deck(hand_no: u64) -> [Card; DECK_SIZE] {
     let ordered = ordered_deck();
     let shift = ((hand_no.wrapping_mul(7) + 3) % DECK_SIZE as u64) as usize;
@@ -1028,12 +1031,6 @@ pub struct CancelHand<'info> {
     pub runtime: Box<Account<'info, TableRuntime>>,
 }
 
-/// `bench_deal`: no accounts, no state. Lets LiteSVM measure the compute
-/// cost of the real deal path (PER hides compute units from clients).
-/// TODO(P8): remove before public Devnet.
-#[derive(Accounts)]
-pub struct BenchDeal {}
-
 /// `rotate_session`: signed by the seat's wallet inside PER.
 #[derive(Accounts)]
 pub struct RotateSession<'info> {
@@ -1071,7 +1068,8 @@ pub struct RotateSession<'info> {
 }
 
 /// `poc_deal`: dealer state + one seat hand per occupied seat in
-/// `remaining_accounts`, in seat order.
+/// `remaining_accounts`, in seat order. Feature `poc-test-deck` only.
+#[cfg(feature = "poc-test-deck")]
 #[derive(Accounts)]
 pub struct PocDeal<'info> {
     pub authority: Signer<'info>,
@@ -1131,8 +1129,10 @@ pub struct RevealHand<'info> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "poc-test-deck")]
     use card_types::is_complete_deck;
 
+    #[cfg(feature = "poc-test-deck")]
     #[test]
     fn test_deck_is_a_full_deck_for_many_hands() {
         for hand in 0..200 {

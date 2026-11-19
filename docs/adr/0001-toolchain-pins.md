@@ -84,6 +84,29 @@ Squads multisig before public Devnet (phase P8).
 - Devnet deploys go through `pnpm deploy:devnet` (resumable buffer upload
   plus on-chain byte check), never a bare `solana program deploy`.
 
+## Amendment (2026-11-19, CF-052): program slimming
+
+- Workspace crates now also build with `opt-level = "z"` (was `"s"`).
+  Measured on the same code in LiteSVM:
+
+  | | `"s"` | `"z"` |
+  | --- | --- | --- |
+  | Program size (default build) | 864,208 B | 801,632 B (−7.2%) |
+  | `deal_hand`, 6 seats | 89,428 CU | 105,959 CU |
+  | `act`, worst of 24 random hands | 52,541 CU | 65,809 CU |
+
+  Every instruction keeps ≥ 94k CU of headroom under the 200k default;
+  the extra compute is microseconds against a ~90 ms network round trip,
+  while 62 KB less is cheaper rent and fewer upload transactions per
+  deploy. Tests now fail above 150k CU for a deal and 100k CU per action,
+  so a regression shows long before the budget.
+- Test-only code is compiled out of production builds: `bench_deal` is
+  removed (its CU check moved onto the real `deal_hand` test) and
+  `poc_deal` exists only with feature `poc-test-deck`. Default build:
+  795,808 B, `poc_deal` absent from the IDL; devnet test-deck build:
+  809,592 B. Unused error variants (`BadSecret`, `TestDeckDisabled`) stay
+  so later error codes keep their numbers.
+
 ## Amendment (2026-11-19, CF-040)
 
 `rust-toolchain.toml` also installs the `wasm32-unknown-unknown` target for

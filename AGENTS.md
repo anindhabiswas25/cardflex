@@ -144,8 +144,8 @@ Planned crates and apps are listed in PRD §7.
 - Six-player privacy matrix passes on Devnet (CF-006): session key reads only
   its own SeatHand, wallets read nothing, DealerState unreadable. Clients must
   POLL their own SeatHand after a deal; WebSocket delivered 0/6 in one run.
-- `poc_deal` (predictable P1 test deck) only works in builds with the
-  `poc-test-deck` cargo feature; never deploy that build anywhere shared or
+- `poc_deal` (predictable P1 test deck) exists only in builds with the
+  `poc-test-deck` cargo feature (compiled out otherwise since CF-052); never deploy that build anywhere shared or
   real-value. `anchor build` (default, CI) has it off.
 - In PER an account WITHOUT a permission is readable by anyone. Create and
   permission secret accounts in the same instruction; never write table data
@@ -263,7 +263,7 @@ Planned crates and apps are listed in PRD §7.
 - If `solana program deploy` fails mid-way, close the leftover buffer
   (`solana program show --buffers`, `solana program close <buffer>`) to get
   the SOL back, then redeploy.
-- Deploying the 856 KB program needs a temporary buffer ≈ 4.35 SOL (refunded
+- Deploying the program (default build ~0.8 MB since CF-052's `opt-level = "z"`) needs a temporary buffer ≈ 4.35 SOL (refunded
   by the upgrade) on the deployer; keep ≥ 6 SOL there. Delegating a table
   costs ≈ 0.05 SOL of rent (probes fund the table authority 0.06 SOL).
 - Program size matters for deploys (~1 KB per upload transaction): keep

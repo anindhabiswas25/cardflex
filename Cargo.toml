@@ -17,7 +17,7 @@ ephemeral-rollups-sdk = "=0.17.3"
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
-opt-level = "s"
+opt-level = "z"
 
 [profile.release.build-override]
 opt-level = 3

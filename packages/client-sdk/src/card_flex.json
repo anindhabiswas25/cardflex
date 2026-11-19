@@ -107,47 +107,6 @@
       ]
     },
     {
-      "name": "bench_deal",
-      "docs": [
-        "Compute-cost benchmark of the real deal path; touches no accounts."
-      ],
-      "discriminator": [
-        66,
-        44,
-        190,
-        63,
-        41,
-        24,
-        165,
-        3
-      ],
-      "accounts": [],
-      "args": [
-        {
-          "name": "hand_ctx",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "seats",
-          "type": "u8"
-        }
-      ]
-    },
-    {
       "name": "buy_in",
       "docs": [
         "A wallet takes a seat and moves its buy-in into the table vault.",
@@ -2928,87 +2887,6 @@
         153
       ],
       "accounts": [],
-      "args": []
-    },
-    {
-      "name": "poc_deal",
-      "docs": [
-        "Deals the P1 **test deck** (not random). `remaining_accounts` = the",
-        "seat hands of every occupied seat, in seat order."
-      ],
-      "discriminator": [
-        44,
-        207,
-        153,
-        8,
-        96,
-        53,
-        195,
-        41
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "signer": true,
-          "relations": [
-            "runtime"
-          ]
-        },
-        {
-          "name": "runtime",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  45,
-                  114,
-                  117,
-                  110,
-                  116,
-                  105,
-                  109,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "runtime.config",
-                "account": "TableRuntime"
-              }
-            ]
-          }
-        },
-        {
-          "name": "dealer",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  97,
-                  108,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "runtime"
-              }
-            ]
-          }
-        }
-      ],
       "args": []
     },
     {

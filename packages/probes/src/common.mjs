@@ -21,7 +21,13 @@ export function loadDiscriminators() {
   const p = `${repoRoot}/target/idl/card_flex.json`;
   if (!existsSync(p)) throw new Error("Run `pnpm build:program:devnet-poc` first (needs target/idl/card_flex.json).");
   const idl = JSON.parse(readFileSync(p, "utf8"));
-  return Object.fromEntries(idl.instructions.map((i) => [i.name, Buffer.from(i.discriminator)]));
+  const known = Object.fromEntries(idl.instructions.map((i) => [i.name, Buffer.from(i.discriminator)]));
+  // CF-052: feature-gated instructions (poc_deal) are absent from the default
+  // build's IDL, so the probes must not depend on which build sits in target/.
+  // Anchor's rule: sha256("global:" + name)[0..8].
+  return new Proxy(known, {
+    get: (o, name) => (typeof name !== "string" || name in o ? o[name] : createHash("sha256").update(`global:${name}`).digest().subarray(0, 8)),
+  });
 }
 export const loadPayer = () => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(KEYPAIR, "utf8"))));
 

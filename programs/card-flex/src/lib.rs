@@ -1688,30 +1688,11 @@ pub mod card_flex {
         Ok(())
     }
 
-    /// Compute-cost benchmark of the real deal path; touches no accounts.
-    pub fn bench_deal(
-        _ctx: Context<BenchDeal>,
-        hand_ctx: [u8; 32],
-        seed: [u8; 32],
-        seats: u8,
-    ) -> Result<()> {
-        require!(
-            (2..=MAX_SEATS as u8).contains(&seats),
-            CardFlexError::BadSeat
-        );
-        let out = compute_deal(&hand_ctx, &seed, seats as usize);
-        // Keep the optimiser from discarding the work.
-        require!(out.root != [0u8; 32], CardFlexError::BadDealer);
-        Ok(())
-    }
-
     /// Deals the P1 **test deck** (not random). `remaining_accounts` = the
-    /// seat hands of every occupied seat, in seat order.
+    /// seat hands of every occupied seat, in seat order. Compiled only with
+    /// feature `poc-test-deck` (CF-052): production builds don't contain it.
+    #[cfg(feature = "poc-test-deck")]
     pub fn poc_deal(ctx: Context<PocDeal>) -> Result<()> {
-        require!(
-            cfg!(feature = "poc-test-deck"),
-            CardFlexError::TestDeckDisabled
-        );
         let runtime = &mut ctx.accounts.runtime;
         require!(runtime.locked, CardFlexError::TableNotLocked);
         require!(!runtime.dealt, CardFlexError::AlreadyDealt);
@@ -2136,6 +2117,8 @@ pub enum CardFlexError {
     TableLocked,
     #[msg("table permissions are not set up yet")]
     TableNotLocked,
+    /// Unused since CF-052 (`poc_deal` is compiled out); kept so later
+    /// error codes keep their numbers.
     #[msg("test deck is disabled in this build")]
     TestDeckDisabled,
     #[msg("readers must be the seat's session key plus at most one seated opponent")]
