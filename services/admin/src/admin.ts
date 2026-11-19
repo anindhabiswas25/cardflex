@@ -4,10 +4,19 @@ import { PublicKey, SystemProgram, type TransactionInstruction } from "@solana/w
 import {
   delegateBufferPdaFromDelegatedAccountAndOwnerProgram, delegationMetadataPdaFromDelegatedAccount, delegationRecordPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { MAX_SEATS, PROGRAM_ID, TEE_VALIDATOR, buildIx, commitHand, globalPda, permissionPda, tableAddresses, tablePda, vaultPda } from "@card-flex/client-sdk";
+import { MAX_SEATS, PROGRAM_ID, TEE_VALIDATOR, buildIx, commitHand, globalPda, permissionPda, programDataPda, tableAddresses, tablePda, vaultPda } from "@card-flex/client-sdk";
 
 export function updateGlobal(authority: PublicKey, p: { treasury: PublicKey; maxRakeBps: number; paused: boolean }) {
   return buildIx("update_global", { authority, global: globalPda() }, { treasury: p.treasury, max_rake_bps: p.maxRakeBps, paused: p.paused });
+}
+
+/**
+ * CF-055: makes the program's current upgrade authority the settings
+ * authority. Signed by that key (e.g. proposed to the Squads multisig after
+ * `solana program set-upgrade-authority`, CF-056).
+ */
+export function syncGlobalAuthority(upgradeAuthority: PublicKey) {
+  return buildIx("sync_global_authority", { authority: upgradeAuthority, global: globalPda(), program: PROGRAM_ID, program_data: programDataPda() });
 }
 
 /** create_table + configure_table (base). Buy-in becomes 40–200 boots (rules v1 §6). */

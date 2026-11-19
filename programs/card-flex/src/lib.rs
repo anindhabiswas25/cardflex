@@ -85,6 +85,16 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// CF-055: makes the program's CURRENT upgrade authority the settings
+    /// authority. Without it `GlobalConfig.authority` could never change, so
+    /// moving control to a Squads multisig (CF-056) was impossible. The
+    /// handover is: `solana program set-upgrade-authority` to the multisig,
+    /// then the multisig sends this once. Only that key can sign it.
+    pub fn sync_global_authority(ctx: Context<SyncGlobalAuthority>) -> Result<()> {
+        ctx.accounts.global.authority = ctx.accounts.authority.key();
+        Ok(())
+    }
+
     pub fn create_table(ctx: Context<CreateTable>, table_id: u64, max_seats: u8) -> Result<()> {
         require!(!ctx.accounts.global.paused, CardFlexError::Paused);
         require!(
@@ -180,6 +190,9 @@ pub mod card_flex {
             config.status == status::ACTIVE,
             CardFlexError::TableNotActive
         );
+        // CF-055: no buy-in before `configure_table` set the terms (it is
+        // refused once anyone has bought in, so the table would be stuck).
+        require!(config.max_buy_in != u64::MAX, CardFlexError::NotConfigured);
         require!(seat < config.max_seats, CardFlexError::BadSeat);
         require!(
             amount >= config.min_buy_in && amount <= config.max_buy_in,
@@ -2324,4 +2337,6 @@ pub enum CardFlexError {
     BadLostAccounts,
     #[msg("the account still exists; the hand can continue")]
     NotLost,
+    #[msg("the table has no terms yet (configure_table first)")]
+    NotConfigured,
 }

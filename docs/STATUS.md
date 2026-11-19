@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P8 (hardening).** CF-052/053/054/061 done; next CF-055 (security review). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
+Current phase: **P8 (hardening).** CF-052/053/054/061 done, CF-055 done; next CF-056 (ops). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 ## Tickets
 
@@ -42,7 +42,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-052 | P8: program slimming (drop test-only code from production builds, size) | Done: `bench_deal` removed, `poc_deal` compiled out of production builds, `opt-level = "z"` (864 → 802 KB; deal 106k CU, act ≤ 66k CU, ceilings in tests) | ADR 0001 amendment |
 | CF-053 | P8: recovery abort path for a hand whose ephemeral state was lost (ADR 0004 #8) | Done: `abort_lost_hand` + keeper (`STUCK_SECS`); Devnet drill 11/11 ×2; privacy 230/230 (final build), handflow 67/67 and keeper drill 7/7 (first CF-053 build) | `pnpm lost-drill`, `docs/findings/cf-053-lost-state.md`, ADR 0004 amendment |
 | CF-054 | P8: load test, 5 → 10 → 25 → 50 concurrent tables (latency, VRF time, errors, keeper lag, commit cost) | Done: 50 tables stable and exact (150/150 hands, 50/50 vaults) but too slow (salts → dealt 18 s p50 / 35 s p95); bottleneck is our keeper → CF-061 | `pnpm load-test`, `docs/findings/cf-054-load.md` |
-| CF-055 | P8: security review pass (incl. a keeper key that is not authority-derived) | Planned | |
+| CF-055 | P8: security review pass (incl. a keeper key that is not authority-derived) | Done (Devnet: money drill 53/53, privacy 230/230): no high findings open; fixed `GlobalConfig` authority could never change (blocked the multisig) and buy-in before configure; 1 medium accepted for Devnet (refund timer vs a committing-but-stalled PER) | `docs/findings/cf-055-security-review.md` |
 | CF-056 | P8: ops: Squads multisig, production refund timeout, reconcile alarms, runbooks | Planned | |
 | CF-057 | P8: commit-fee model (cost per table-hour, keeper wallet budget, behaviour past 10 commits) from CF-054 data | Planned (CF-054 measured 5,000 lamports per hand on base) | |
 | CF-058 | P8: TEE measurement-change alert (we pin what we observe; alert when Devnet's changes) | Planned | |
@@ -80,6 +80,16 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-055: security review of every instruction against the
+  money and privacy invariants, plus keeper, cf-admin, API, SDK and repo
+  secrets. Fixed: `GlobalConfig.authority` could never change, so the
+  Squads handover (CF-056) was impossible → `sync_global_authority` (settings
+  follow the program's upgrade authority; `cf-admin global sync-authority`);
+  `buy_in` before `configure_table` left a table that could never get terms
+  → `NotConfigured`. Accepted for Devnet: the refund timer trusts any commit,
+  so a PER that commits but stalls a hand keeps refunds away (fix needs a
+  TableConfig field; before Mainnet). No high findings open. Deployed to
+  Devnet; money drill 53/53 and privacy suite 230/230 on that build.
 - 2026-11-19 — PM decision on the 50-table criterion (option 3): accepted
   for P8 on correctness (every vault exact in every run up to 50 tables,
   fast up to 25 tables); the capacity number is re-measured with bots on

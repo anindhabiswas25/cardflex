@@ -4137,6 +4137,59 @@
       "args": []
     },
     {
+      "name": "sync_global_authority",
+      "docs": [
+        "CF-055: makes the program's CURRENT upgrade authority the settings",
+        "authority. Without it `GlobalConfig.authority` could never change, so",
+        "moving control to a Squads multisig (CF-056) was impossible. The",
+        "handover is: `solana program set-upgrade-authority` to the multisig,",
+        "then the multisig sends this once. Only that key can sign it."
+      ],
+      "discriminator": [
+        132,
+        171,
+        229,
+        150,
+        81,
+        123,
+        21,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "global",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "address": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL"
+        },
+        {
+          "name": "program_data"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sync_hand",
       "docs": [
         "Accepts newer committed runtime state (ADR 0004 rule 4): refreshes",
@@ -4875,6 +4928,11 @@
       "code": 6052,
       "name": "NotLost",
       "msg": "the account still exists; the hand can continue"
+    },
+    {
+      "code": 6053,
+      "name": "NotConfigured",
+      "msg": "the table has no terms yet (configure_table first)"
     }
   ],
   "types": [

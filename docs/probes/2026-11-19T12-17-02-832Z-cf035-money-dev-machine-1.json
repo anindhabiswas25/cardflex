@@ -1,0 +1,474 @@
+{
+  "probe": "CF-035-money",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-19T12:17:02.832Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "checks": [
+    {
+      "group": "reconcile",
+      "name": "setup: vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "setup: check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "setup: buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "4000000",
+      "actual": "4000000",
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "966.8 ms"
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 0 synced: vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 0 synced: check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 0 synced: buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "4000000",
+      "actual": "4000000",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "seat 4 bought in (not yet joined): vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "seat 4 bought in (not yet joined): check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "seat 4 bought in (not yet joined): buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "5000000",
+      "actual": "5000000",
+      "pass": true
+    },
+    {
+      "group": "join",
+      "name": "join_seat in PER reads the base ledger and seats seat 4",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "1 attempt(s), 2773.8 ms"
+    },
+    {
+      "group": "join",
+      "name": "seat 4 stack = its buy-in, epoch 1",
+      "expected": [
+        "1000000",
+        1
+      ],
+      "actual": [
+        "1000000",
+        1
+      ],
+      "pass": true
+    },
+    {
+      "group": "join",
+      "name": "a second join of the same ledger is refused",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "seat 1 leave mid-hand: flagged, still in the hand",
+      "expected": [
+        1,
+        1
+      ],
+      "actual": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "join",
+      "name": "the joined player read its dealt hand",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "join",
+      "name": "seat 4's session can't read seat 0's hand",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "leave",
+      "name": "after next_hand seat 1 is departed, not occupied",
+      "expected": [
+        1,
+        0
+      ],
+      "actual": [
+        1,
+        0
+      ],
+      "pass": true
+    },
+    {
+      "group": "leave",
+      "name": "cash-out before the sync is refused",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "1027.1 ms"
+    },
+    {
+      "group": "leave",
+      "name": "sync marks the ledger left with the final stack",
+      "expected": [
+        1,
+        "900000"
+      ],
+      "actual": [
+        1,
+        "900000"
+      ],
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 1 synced (seat 1 left): vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 1 synced (seat 1 left): check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 1 synced (seat 1 left): buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "5000000",
+      "actual": "5000000",
+      "pass": true
+    },
+    {
+      "group": "leave",
+      "name": "cash-out to another wallet is refused",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "leave",
+      "name": "vault paid exactly the final stack",
+      "expected": "900000",
+      "actual": "900000",
+      "pass": true
+    },
+    {
+      "group": "leave",
+      "name": "wallet got at least the final stack (plus ledger rent)",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "leave",
+      "name": "second cash-out refused",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "seat 1 cashed out: vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "seat 1 cashed out: check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "seat 1 cashed out: buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "5000000",
+      "actual": "5000000",
+      "pass": true
+    },
+    {
+      "group": "reuse",
+      "name": "new ledger for seat 1 has epoch 2",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "reuse",
+      "name": "new player joins seat 1 in PER",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "reuse",
+      "name": "new seat-1 session reads seat 1's hand",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "reuse",
+      "name": "old seat-1 session lost access to seat 1's hand",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "960 ms"
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 2 synced: vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 2 synced: check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "hand 2 synced: buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "rake",
+      "name": "some rake was collected",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "17500"
+    },
+    {
+      "group": "rake",
+      "name": "treasury received exactly the unswept rake",
+      "expected": "17500",
+      "actual": "17500",
+      "pass": true
+    },
+    {
+      "group": "rake",
+      "name": "second sweep refused",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "rake swept: vault = rent + synced stacks + unswept rake (exact)",
+      "expected": "0",
+      "actual": "0",
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "rake swept: check_vault(strict) passes",
+      "expected": null,
+      "actual": null,
+      "pass": true
+    },
+    {
+      "group": "reconcile",
+      "name": "rake swept: buy-ins = vault − rent + cash-outs + swept rake",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    }
+  ],
+  "timings": {
+    "join_in_per_ms": 2773.8,
+    "join_attempts": 1
+  },
+  "steps": [
+    {
+      "step": "setup",
+      "vault": "4690880",
+      "rent": "690880",
+      "synced_stacks": "4000000",
+      "unswept_rake": "0",
+      "diff": "0"
+    },
+    {
+      "step": "hand 0 synced",
+      "vault": "4690880",
+      "rent": "690880",
+      "synced_stacks": "3995000",
+      "unswept_rake": "5000",
+      "diff": "0"
+    },
+    {
+      "step": "seat 4 bought in (not yet joined)",
+      "vault": "5690880",
+      "rent": "690880",
+      "synced_stacks": "4995000",
+      "unswept_rake": "5000",
+      "diff": "0"
+    },
+    {
+      "step": "hand 1 synced (seat 1 left)",
+      "vault": "5690880",
+      "rent": "690880",
+      "synced_stacks": "4988750",
+      "unswept_rake": "11250",
+      "diff": "0"
+    },
+    {
+      "step": "seat 1 cashed out",
+      "vault": "4790880",
+      "rent": "690880",
+      "synced_stacks": "4088750",
+      "unswept_rake": "11250",
+      "diff": "0"
+    },
+    {
+      "step": "hand 2 synced",
+      "vault": "5790880",
+      "rent": "690880",
+      "synced_stacks": "5082500",
+      "unswept_rake": "17500",
+      "diff": "0"
+    },
+    {
+      "step": "rake swept",
+      "vault": "5773380",
+      "rent": "690880",
+      "synced_stacks": "5082500",
+      "unswept_rake": "0",
+      "diff": "0"
+    }
+  ],
+  "teardown_ok": true,
+  "auth_transient_failures": [],
+  "finished_at": "2026-11-19T12:20:31.585Z"
+}

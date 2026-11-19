@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { globalPda, idl, permissionPda, tableAddresses, tablePda } from "@card-flex/client-sdk";
-import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, updateGlobal } from "../src/admin.ts";
+import { PROGRAM_ID, globalPda, idl, permissionPda, programDataPda, tableAddresses, tablePda } from "@card-flex/client-sdk";
+import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, updateGlobal, syncGlobalAuthority } from "../src/admin.ts";
 
 const disc = (n: string) => Buffer.from(idl.instructions.find((i) => i.name === n)!.discriminator);
 const admin = Keypair.generate().publicKey;
@@ -48,5 +48,10 @@ test("delegate, sweep, check and global update are well-formed", () => {
   assert.deepEqual(Buffer.from(cv.data), Buffer.concat([disc("check_vault"), Buffer.from([1])]));
   const ug = updateGlobal(admin, { treasury, maxRakeBps: 300, paused: true });
   assert.deepEqual(Buffer.from(ug.data), Buffer.concat([disc("update_global"), treasury.toBuffer(), Buffer.from([0x2c, 0x01, 1])]));
+  // CF-055: settings handover to the upgrade authority (multisig, CF-056)
+  const sa = syncGlobalAuthority(admin);
+  assert.deepEqual(Buffer.from(sa.data), disc("sync_global_authority"));
+  assert.deepEqual(sa.keys.map((k) => k.pubkey.toBase58()), [admin, globalPda(), PROGRAM_ID, programDataPda()].map((k) => k.toBase58()));
+  assert.ok(sa.keys[0].isSigner && sa.keys[1].isWritable);
   void PublicKey;
 });

@@ -667,7 +667,20 @@ pub struct InitGlobal<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// `update_global`: the global authority only.
+/// `sync_global_authority` (CF-055): signed by the program's current upgrade
+/// authority, checked through the program data account like `init_global`.
+#[derive(Accounts)]
+pub struct SyncGlobalAuthority<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut, seeds = [GLOBAL_SEED], bump = global.bump)]
+    pub global: Box<Account<'info, GlobalConfig>>,
+    #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ crate::CardFlexError::NotUpgradeAuthority)]
+    pub program: Program<'info, crate::program::CardFlex>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(authority.key()) @ crate::CardFlexError::NotUpgradeAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+}
+
+/// `update_global`: the settings authority only.
 #[derive(Accounts)]
 pub struct UpdateGlobal<'info> {
     pub authority: Signer<'info>,

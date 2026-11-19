@@ -205,3 +205,112 @@ fn only_the_global_authority_updates_and_pause_blocks_new_tables() {
     )
     .unwrap();
 }
+
+fn sync_authority_ix(authority: &Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::SyncGlobalAuthority {}.data(),
+        card_flex::accounts::SyncGlobalAuthority {
+            authority: *authority,
+            global: global_address(),
+            program: card_flex::id(),
+            program_data: program_data_address(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-055: the settings follow the upgrade authority (Squads handover, CF-056).
+#[test]
+fn settings_authority_follows_the_upgrade_authority() {
+    let mut svm = svm();
+    let admin = setup_global(&mut svm);
+    let multisig = funded(&mut svm);
+    let stranger = funded(&mut svm);
+    // Nobody but the current upgrade authority can take over the settings.
+    for k in [&stranger, &multisig] {
+        let e = send_one(&mut svm, sync_authority_ix(&k.pubkey()), &[k]).unwrap_err();
+        assert!(e.contains("NotUpgradeAuthority"), "{e}");
+    }
+    assert_eq!(global(&svm).authority, admin.pubkey());
+    // Upgrade authority moves to the multisig, which then syncs the settings.
+    set_upgrade_authority(&mut svm, &multisig.pubkey());
+    send_one(
+        &mut svm,
+        sync_authority_ix(&multisig.pubkey()),
+        &[&multisig],
+    )
+    .unwrap();
+    assert_eq!(global(&svm).authority, multisig.pubkey());
+    // The old key has lost control; the new one has it.
+    let e = send_one(
+        &mut svm,
+        update_ix(&admin.pubkey(), admin.pubkey(), 100, true),
+        &[&admin],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("ConstraintHasOne") || e.contains("has one"),
+        "{e}"
+    );
+    let treasury = Pubkey::new_unique();
+    send_one(
+        &mut svm,
+        update_ix(&multisig.pubkey(), treasury, 100, false),
+        &[&multisig],
+    )
+    .unwrap();
+    assert_eq!(global(&svm).treasury, treasury);
+}
+
+fn buy_in_ix(config: Pubkey, seat: u8, amount: u64, wallet: &Pubkey) -> Instruction {
+    let pda = |seeds: &[&[u8]]| Pubkey::find_program_address(seeds, &card_flex::id()).0;
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::BuyIn {
+            seat,
+            amount,
+            session_key: Pubkey::new_unique(),
+        }
+        .data(),
+        card_flex::accounts::BuyIn {
+            wallet: *wallet,
+            config,
+            vault: pda(&[VAULT_SEED, config.as_ref()]),
+            ledger: pda(&[LEDGER_SEED, config.as_ref(), &[seat]]),
+            global: global_address(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-055: no buy-in before the table has terms; afterwards it works.
+#[test]
+fn buy_in_needs_a_configured_table() {
+    let mut svm = svm();
+    let _admin = setup_global(&mut svm);
+    let owner = funded(&mut svm);
+    let player = funded(&mut svm);
+    let (ix, config, runtime) = create_table_ix(&owner.pubkey(), 7);
+    send_one(&mut svm, ix, &[&owner]).unwrap();
+    let e = send_one(
+        &mut svm,
+        buy_in_ix(config, 0, 1_000_000, &player.pubkey()),
+        &[&player],
+    )
+    .unwrap_err();
+    assert!(e.contains("NotConfigured"), "{e}");
+    send_one(
+        &mut svm,
+        configure_ix(&owner.pubkey(), config, runtime, 100),
+        &[&owner],
+    )
+    .unwrap();
+    send_one(
+        &mut svm,
+        buy_in_ix(config, 0, 1_000_000, &player.pubkey()),
+        &[&player],
+    )
+    .unwrap();
+}

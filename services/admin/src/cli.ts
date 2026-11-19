@@ -5,6 +5,7 @@
 //
 //   cf-admin global show
 //   cf-admin global set [--treasury <pk>] [--max-rake-bps N] [--pause | --unpause]
+//   cf-admin global sync-authority    settings authority := program upgrade authority (multisig handover, CF-056)
 //   cf-admin tables
 //   cf-admin token                    PER read token for the keeper (reads only; valid ~30 days).
 //                                     It reads what the authority can read in PER: the runtime (public
@@ -28,7 +29,7 @@ import {
   globalPda, perConnection, perLogin, sizeOf, tableAddresses,
 } from "@card-flex/client-sdk";
 import { confirmByPolling } from "@card-flex/client-sdk";
-import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, updateGlobal } from "./admin.ts";
+import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, syncGlobalAuthority, updateGlobal } from "./admin.ts";
 
 const argv = process.argv.slice(2);
 const flag = (n: string) => argv.includes(`--${n}`);
@@ -92,6 +93,12 @@ async function main() {
     };
     console.log("global ->", { treasury: next.treasury.toBase58(), maxRakeBps: next.maxRakeBps, paused: next.paused });
     await send(base, [updateGlobal(signer().publicKey, next)], signer(), "update_global");
+    return;
+  }
+  if (area === "global" && cmd === "sync-authority") {
+    // The signer must be the program's upgrade authority; with a multisig, use
+    // --dry-run and propose the printed instruction instead.
+    await send(base, [syncGlobalAuthority(signer().publicKey)], signer(), "sync_global_authority");
     return;
   }
   if (area === "token") {

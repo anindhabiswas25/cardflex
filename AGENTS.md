@@ -233,6 +233,11 @@ Planned crates and apps are listed in PRD §7.
   you do. Clients must use `verifyTee` (pinned measurements), never only the
   MagicBlock SDK's check. Update `DEVNET_TEE_MEASUREMENTS` only after
   confirming a MagicBlock release.
+- Settings authority (CF-055): `GlobalConfig.authority` follows the program
+  upgrade authority via `sync_global_authority` (signed by that key). Multisig
+  handover = `solana program set-upgrade-authority`, then
+  `cf-admin global sync-authority` from the multisig. `buy_in` needs a
+  configured table (`NotConfigured`).
 - Seats and money while live (ADR 0005, P6): seat epochs (`seat_epoch` /
   `SeatLedger.epoch`) — never copy a stack between different epochs;
   `GlobalConfig` (`["global"]`) holds treasury, max rake and pause; only the
