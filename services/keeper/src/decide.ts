@@ -58,6 +58,18 @@ export function viewerPairs(rt: TableRuntime): [number, number][] {
 
 export function decide(rt: TableRuntime, c: Ctx): Step {
   if (c.stuck && inProgress(rt)) return { kind: "abort_lost_hand", order: dealt(rt) };
+  const step = phaseStep(rt, c);
+  // CF-056: heartbeat during hands too. A hand can outlast the refund
+  // timeout (pot limit 1,024 boots at up to 25 s per turn); without a sync
+  // the table would become refundable mid-hand and anyone could void the
+  // hand. A mid-hand sync refreshes the clock but copies no stacks.
+  if (step.kind === "wait" && inProgress(rt) && c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) {
+    return { kind: "commit_and_sync", reason: "heartbeat" };
+  }
+  return step;
+}
+
+function phaseStep(rt: TableRuntime, c: Ctx): Step {
   switch (rt.phase) {
     case PHASE.IDLE: {
       // Seats with a live grant must be revoked before a new hand (start_hand refuses).

@@ -70,3 +70,15 @@ test("CF-053: a stuck hand in any phase gets abort_lost_hand; idle or revealed t
     assert.notEqual(decide(runtime((x) => { order(x); x.phase = phase; }), ctx({ stuck: true })).kind, "abort_lost_hand");
   }
 });
+
+test("CF-056: heartbeat during a long hand too, never instead of a real step", () => {
+  const order = (x: any) => { x.dealing_order = [2, 0, 1, 0, 0, 0]; x.dealing_count = 3; x.game.order = [2, 0, 1, 0, 0, 0]; x.game.n = 3; };
+  const dealt = runtime((x) => { order(x); x.phase = PHASE.DEALT; x.turn_deadline = 2_000n; });
+  assert.equal(decide(dealt, ctx()).kind, "wait", "player thinking, heartbeat not due");
+  assert.deepEqual(decide(dealt, ctx({ lastCommitSecs: 600n })), { kind: "commit_and_sync", reason: "heartbeat" }, "long hand: keep the refund clock fresh");
+  const salts = runtime((x) => { order(x); x.phase = PHASE.SALTS_PENDING; x.salts_deadline = 2_000n; });
+  assert.equal(decide(salts, ctx({ lastCommitSecs: 600n })).kind, "commit_and_sync");
+  // A due step wins over the heartbeat.
+  const timedOut = runtime((x) => { order(x); x.phase = PHASE.DEALT; x.turn_deadline = 900n; });
+  assert.equal(decide(timedOut, ctx({ lastCommitSecs: 600n })).kind, "timeout_turn");
+});

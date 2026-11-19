@@ -139,3 +139,19 @@ money would stay frozen for as long as anyone kept committing.
 - **Not verified on Devnet yet:** LiteSVM tests cover every phase and the
   reversal; that PER accepts a transaction naming a missing ephemeral
   account needs a Devnet drill after the next deploy.
+
+## Amendment (2026-11-19, CF-056): production refund timeout and heartbeat
+
+- **Refund timeout 1,800 s** for production tables (`cf-admin table create`
+  default; the program still allows 60–86,400 s). A refund that fires is
+  safe for players (each gets their last synced stack, the interrupted
+  hand's bets come back), so a shorter timeout favours them: after a PER
+  outage they wait at most 30 minutes.
+- **Keeper heartbeat 300 s in every phase.** Before CF-056 the keeper
+  heartbeated only between hands. A hand can last longer than the timeout
+  (pot limit 1,024 boots at up to 25 s per turn), so a table could become
+  refundable mid-hand and anyone could void that hand, e.g. players stalling
+  a hand they were losing. A mid-hand `sync_hand` refreshes the clock and
+  copies no stacks (rule 4), so heartbeating during hands is safe.
+- Alarms (`cf-admin watch`): `REFUND_NEAR` at half the timeout, `REFUND_DUE`
+  at the timeout, live tables only. Runbooks: `docs/runbooks/`.

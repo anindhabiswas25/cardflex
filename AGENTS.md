@@ -233,6 +233,10 @@ Planned crates and apps are listed in PRD §7.
   you do. Clients must use `verifyTee` (pinned measurements), never only the
   MagicBlock SDK's check. Update `DEVNET_TEE_MEASUREMENTS` only after
   confirming a MagicBlock release.
+- Ops (CF-056): production tables use refund timeout 1,800 s; the keeper
+  heartbeats (commit + sync) every 300 s in EVERY phase, or a long hand
+  could make a table refundable mid-hand. Alarms: `cf-admin watch`; lost
+  accounts: `cf-admin table repair`; runbooks in `docs/runbooks/`.
 - Settings authority (CF-055): `GlobalConfig.authority` follows the program
   upgrade authority via `sync_global_authority` (signed by that key). Multisig
   handover = `solana program set-upgrade-authority`, then

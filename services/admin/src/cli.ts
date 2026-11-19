@@ -11,15 +11,24 @@
 //                                     It reads what the authority can read in PER: the runtime (public
 //                                     game state). Never cards, salts or the dealer seed (G1 suite).
 //                                     Rotate it; CF-055 tracks giving the keeper its own read identity.
-//   cf-admin table create --boot <lamports> [--rake-bps N] [--rake-cap <lamports>] [--seats 6] [--refund-timeout 3600] [--id N]
+//   cf-admin table create --boot <lamports> [--rake-bps N] [--rake-cap <lamports>] [--seats 6] [--refund-timeout 1800] [--id N]
 //   cf-admin table open <config>      delegate to the TEE + create permissions, dealer, seat hands, salts
 //   cf-admin table status <config>
 //   cf-admin table check <config> [--strict]   reconcile the vault (simulated check_vault + the terms)
 //   cf-admin table sweep <config>     rake -> treasury
 //   cf-admin table close <config>     close ephemeral accounts and undelegate
+//   cf-admin table repair <config>    re-create missing dealer / seat hand / salt accounts after
+//                                     abort_lost_hand (CF-053); existing ones are left alone
+//   cf-admin watch [--once] [--every 60] [--authority <pk>] [--webhook <url>]
+//                                     alarms (CF-056): vault short/surplus, refund near/due, claims
+//                                     pending, cancel rate. Read-only. --once exits 2 on a critical
+//                                     alarm (cron). Webhook also from ALERT_WEBHOOK_URL. See
+//                                     docs/runbooks/alarms.md.
 //
 // Options: --keypair <path> (default ~/.config/cardflex/devnet-deployer.json),
-//          --dry-run (print the instructions, send nothing).
+//          --dry-run (print the full instructions, send nothing),
+//          --as <pubkey> (with --dry-run: build global set / sync-authority for another
+//          signer, e.g. the Squads vault, to propose there; docs/runbooks/multisig.md).
 // Env: CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -30,22 +39,36 @@ import {
 } from "@card-flex/client-sdk";
 import { confirmByPolling } from "@card-flex/client-sdk";
 import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, syncGlobalAuthority, updateGlobal } from "./admin.ts";
+import { scan } from "./watch.ts";
 
 const argv = process.argv.slice(2);
 const flag = (n: string) => argv.includes(`--${n}`);
 const opt = (n: string, d?: string) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
-const pos = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["--pause", "--unpause", "--strict", "--dry-run"].includes(argv[i - 1])));
+const pos = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["--pause", "--unpause", "--strict", "--dry-run", "--once"].includes(argv[i - 1])));
 const dry = flag("dry-run");
 const baseUrl = process.env.CARDFLEX_BASE_RPC ?? ENDPOINTS.devnet.base;
 const perUrl = process.env.CARDFLEX_PER_RPC ?? ENDPOINTS.devnet.per;
 const base = new Connection(baseUrl, "confirmed");
 const keyPath = opt("keypair", `${homedir()}/.config/cardflex/devnet-deployer.json`)!;
 const signer = () => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(keyPath, "utf8"))));
+/** Who signs: --as <pubkey> builds for another signer (e.g. a Squads vault) in --dry-run. */
+const actor = () => {
+  if (!opt("as")) return signer().publicKey;
+  if (!dry) throw new Error("--as only builds instructions (--dry-run): we hold no key for it");
+  return new PublicKey(opt("as")!);
+};
 const lamports = (x: bigint | number) => `${x} lamports (◎${(Number(x) / 1e9).toFixed(6)})`;
 
 async function send(conn: Connection, ixs: TransactionInstruction[], kp: Keypair, label: string, { skipPreflight = false } = {}) {
   if (dry) {
-    for (const ix of ixs) console.log(`[dry-run] ${label}: ${ix.keys.length} accounts, ${ix.data.length} bytes`);
+    // Full instruction, so it can be proposed to a multisig (Squads) as is.
+    for (const ix of ixs) {
+      console.log(`[dry-run] ${label}: ${JSON.stringify({
+        programId: ix.programId.toBase58(),
+        accounts: ix.keys.map((k) => ({ pubkey: k.pubkey.toBase58(), isSigner: k.isSigner, isWritable: k.isWritable })),
+        dataBase64: Buffer.from(ix.data).toString("base64"),
+      })}`);
+    }
     return;
   }
   for (let attempt = 0; ; attempt++) {
@@ -92,14 +115,31 @@ async function main() {
       paused: flag("pause") ? true : flag("unpause") ? false : g.paused,
     };
     console.log("global ->", { treasury: next.treasury.toBase58(), maxRakeBps: next.maxRakeBps, paused: next.paused });
-    await send(base, [updateGlobal(signer().publicKey, next)], signer(), "update_global");
+    await send(base, [updateGlobal(actor(), next)], dry ? Keypair.generate() : signer(), "update_global");
     return;
   }
   if (area === "global" && cmd === "sync-authority") {
     // The signer must be the program's upgrade authority; with a multisig, use
     // --dry-run and propose the printed instruction instead.
-    await send(base, [syncGlobalAuthority(signer().publicKey)], signer(), "sync_global_authority");
+    await send(base, [syncGlobalAuthority(actor())], dry ? Keypair.generate() : signer(), "sync_global_authority");
     return;
+  }
+  if (area === "watch") {
+    const authority = opt("authority") ? new PublicKey(opt("authority")!) : signer().publicKey;
+    const webhook = opt("webhook") ?? process.env.ALERT_WEBHOOK_URL;
+    const every = Number(opt("every", "60")) * 1000;
+    for (;;) {
+      const alerts = await scan(base, { authority }).catch((e) => [{ level: "critical" as const, code: "WATCH_FAILED", table: "-", detail: String((e as Error).message ?? e).slice(0, 200) }]);
+      const at = new Date().toISOString();
+      if (!alerts.length) console.log(`${at} ok: no alarms for ${authority.toBase58()}`);
+      for (const a of alerts) console.log(`${at} ${a.level.toUpperCase()} ${a.code} ${a.table} ${a.detail}`);
+      if (webhook && alerts.length) {
+        await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ at, authority: authority.toBase58(), alerts }) })
+          .catch((e) => console.error(`webhook failed: ${String((e as Error).message ?? e)}`));
+      }
+      if (flag("once")) process.exit(alerts.some((a) => a.level === "critical") ? 2 : 0);
+      await new Promise((r) => setTimeout(r, every));
+    }
   }
   if (area === "token") {
     const { token, expiresAt } = await perLogin(signer(), perUrl);
@@ -120,7 +160,7 @@ async function main() {
     const kp = signer();
     const p = {
       tableId: BigInt(opt("id", String(Date.now()))!), seats: Number(opt("seats", "6")), boot: BigInt(opt("boot") ?? fail("--boot is required")),
-      rakeBps: Number(opt("rake-bps", "0")), rakeCap: BigInt(opt("rake-cap", "0")!), refundTimeoutSecs: Number(opt("refund-timeout", "3600")),
+      rakeBps: Number(opt("rake-bps", "0")), rakeCap: BigInt(opt("rake-cap", "0")!), refundTimeoutSecs: Number(opt("refund-timeout", "1800")),
     };
     const { config, ixs } = createTable(kp.publicKey, p);
     console.log(`table ${config.toBase58()} (id ${p.tableId}): ${p.seats} seats, boot ${lamports(p.boot)}, buy-in 40–200 boots, rake ${p.rakeBps} bps cap ${p.rakeCap}`);
@@ -191,8 +231,32 @@ async function main() {
       console.log("undelegation requested; the base layer shows it after the commit lands");
       return;
     }
+    if (cmd === "repair") {
+      // CF-053/056: after abort_lost_hand the lost ephemeral accounts must be
+      // re-created before the next hand. They are private, so we can't see
+      // which are missing: try each open; an existing one fails harmlessly.
+      const kp = signer();
+      const { cfg, rt } = await readTable(config);
+      if (rt && rt.phase !== 0) console.log(`note: committed phase is ${rt.phase}; open_* only works between hands (IDLE)`);
+      const tee = perConnection(dry ? null : (await perLogin(kp, perUrl)).token, perUrl);
+      const opens = openTablePer(kp.publicKey, config, cfg.max_seats).slice(2); // permissions of runtime + hand log are delegated, not ephemeral
+      let made = 0;
+      for (const [i, ix] of opens.entries()) {
+        const label = i === 0 ? "dealer" : `${i % 2 ? "seat hand" : "salt"} ${Math.floor((i - 1) / 2)}`;
+        await send(tee, [ix], kp, `re-create ${label}`, { skipPreflight: true }).then(() => made++).catch((e) => {
+          // Re-creating an ephemeral account that still exists fails with
+          // InvalidAccountData inside PER (seen on Devnet, CF-056).
+          const m = String((e as Error).message ?? e);
+          console.log(/InvalidAccountData|already in use/.test(m) ? `  ${label}: exists (left alone)` : `  ${label}: FAILED, retry: ${m.slice(0, 120)}`);
+        });
+      }
+      console.log(`${made} account(s) re-created`);
+      return;
+    }
   }
-  console.log(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 18).map((l) => l.slice(3)).join("\n"));
+  const src = readFileSync(new URL(import.meta.url), "utf8").split("\n");
+  const first = src.findIndex((l) => l.startsWith("//")); // after the #! line
+  console.log(src.slice(first, src.findIndex((l, i) => i > first && !l.startsWith("//"))).map((l) => l.slice(3)).join("\n"));
   process.exitCode = 2;
 }
 

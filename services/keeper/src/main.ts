@@ -6,7 +6,7 @@
 //   CARDFLEX_AUTHORITY   drive every live table of this authority (anyone can create tables;
 //                        the keeper never pays fees for strangers' tables). One of the two is required.
 //   CARDFLEX_DB          SQLite file shared with the API (index every hand); optional
-//   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (600), HAND_GAP_SECS (5),
+//   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (300), HAND_GAP_SECS (5),
 //   STUCK_SECS (120: a hand with no progress this long is checked for lost secret state, CF-053),
 //   PER_SOCKETS (16: keep-alive sockets to the PER, CF-061)
 import { readFileSync } from "node:fs";
@@ -30,7 +30,7 @@ const store = env.CARDFLEX_DB ? new Store(env.CARDFLEX_DB) : undefined;
 const verifier = store ? await loadVerifier(readFileSync(verifierWasmUrl)) : undefined;
 const keeper = new Keeper({
   base, per, key, store, verifier,
-  heartbeatSecs: BigInt(env.HEARTBEAT_SECS ?? 600), handGapSecs: BigInt(env.HAND_GAP_SECS ?? 5),
+  heartbeatSecs: BigInt(env.HEARTBEAT_SECS ?? 300), handGapSecs: BigInt(env.HAND_GAP_SECS ?? 5),
   stuckSecs: Number(env.STUCK_SECS ?? 120),
 });
 const tick = Number(env.TICK_MS ?? 500);
