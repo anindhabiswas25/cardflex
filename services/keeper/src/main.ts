@@ -2,7 +2,9 @@
 // Env:
 //   CARDFLEX_PER_TOKEN   PER read token issued by the table authority (`cf-admin token`)
 //   CARDFLEX_KEEPER_KEY  keypair file paying fees (needs SOL on the base layer for syncs)
-//   CARDFLEX_TABLES      comma-separated TableConfig addresses (default: every delegated table)
+//   CARDFLEX_TABLES      comma-separated TableConfig addresses to drive, or
+//   CARDFLEX_AUTHORITY   drive every live table of this authority (anyone can create tables;
+//                        the keeper never pays fees for strangers' tables). One of the two is required.
 //   CARDFLEX_DB          SQLite file shared with the API (index every hand); optional
 //   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (600), HAND_GAP_SECS (5)
 import { readFileSync } from "node:fs";
@@ -12,8 +14,8 @@ import { Store } from "@card-flex/api/store";
 import { Keeper } from "./keeper.ts";
 
 const env = process.env;
-if (!env.CARDFLEX_PER_TOKEN || !env.CARDFLEX_KEEPER_KEY) {
-  console.error("set CARDFLEX_PER_TOKEN (cf-admin token) and CARDFLEX_KEEPER_KEY (fee payer keypair file)");
+if (!env.CARDFLEX_PER_TOKEN || !env.CARDFLEX_KEEPER_KEY || !(env.CARDFLEX_TABLES || env.CARDFLEX_AUTHORITY)) {
+  console.error("set CARDFLEX_PER_TOKEN (cf-admin token), CARDFLEX_KEEPER_KEY (fee payer keypair file) and CARDFLEX_TABLES or CARDFLEX_AUTHORITY");
   process.exit(2);
 }
 const base = new Connection(env.CARDFLEX_BASE_RPC ?? ENDPOINTS.devnet.base, "confirmed");
@@ -29,7 +31,12 @@ const tick = Number(env.TICK_MS ?? 500);
 
 async function tables(): Promise<PublicKey[]> {
   if (env.CARDFLEX_TABLES) return env.CARDFLEX_TABLES.split(",").map((s) => new PublicKey(s.trim()));
-  const configs = await base.getProgramAccounts(PROGRAM_ID, { filters: [{ dataSize: 8 + sizeOf({ defined: { name: "TableConfig" } }) }], dataSlice: { offset: 0, length: 0 } });
+  // Only this operator's tables: TableConfig.authority is the first field (offset 8).
+  const authority = new PublicKey(env.CARDFLEX_AUTHORITY!);
+  const configs = await base.getProgramAccounts(PROGRAM_ID, {
+    filters: [{ dataSize: 8 + sizeOf({ defined: { name: "TableConfig" } }) }, { memcmp: { offset: 8, bytes: authority.toBase58() } }],
+    dataSlice: { offset: 0, length: 0 },
+  });
   const rts = await base.getMultipleAccountsInfo(configs.map((c) => runtimePda(c.pubkey)), { dataSlice: { offset: 0, length: 0 } });
   return configs.filter((_, i) => rts[i]?.owner.equals(DELEGATION_PROGRAM_ID)).map((c) => c.pubkey);
 }
