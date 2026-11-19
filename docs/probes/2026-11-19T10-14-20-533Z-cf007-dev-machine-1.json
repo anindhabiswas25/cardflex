@@ -1,0 +1,221 @@
+{
+  "probe": "CF-007",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-19T10:14:20.533Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "checks": [
+    {
+      "group": "salts",
+      "name": "submit before start_hand rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "on-chain roster_hash matches spec (JS)",
+      "expected": "78bee9481ee591d6874b99dba45fe49608b4569d99d5caf1c1441f9f363ab96d",
+      "actual": "78bee9481ee591d6874b99dba45fe49608b4569d99d5caf1c1441f9f363ab96d",
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "on-chain hand_ctx matches spec (JS)",
+      "expected": "0382804de652f00342f37960f8dc418c1facb749c57543157456ba29cab5e0d3",
+      "actual": "0382804de652f00342f37960f8dc418c1facb749c57543157456ba29cab5e0d3",
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "phase SALTS_PENDING",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "session1 cannot submit for seat 0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "wallet0 cannot submit for seat 0",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "seat 0 cannot write into seat 1's salt account",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "second submit for seat 0 rejected",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "on-chain commitments match spec (JS)",
+      "expected": [
+        "aaba73fbacac5d39d76b0b472fa1554217fd221706a5e93ba04451fb25b60443",
+        "7c9a791e0c913510d071f56991522f752144f5e76424a6a1e710c57d39ec9654",
+        "2f329310603c2022097a72ad7d7f2703a803d771ccb89e2c2e493aa19913057c",
+        "568390b5009a3e5c323fa68fad545b85212f81cf29f23bd99ab3db8ec560165f",
+        "78a9350b6226249e3a9dd8b3ba4c8c636ad0d3e9b7e825232e760da21f8a057a",
+        "db56bb7a86be407b7f01e3d9c2c77a9c94df85b1ee126c6bc27a42fbf39f039b"
+      ],
+      "actual": [
+        "aaba73fbacac5d39d76b0b472fa1554217fd221706a5e93ba04451fb25b60443",
+        "7c9a791e0c913510d071f56991522f752144f5e76424a6a1e710c57d39ec9654",
+        "2f329310603c2022097a72ad7d7f2703a803d771ccb89e2c2e493aa19913057c",
+        "568390b5009a3e5c323fa68fad545b85212f81cf29f23bd99ab3db8ec560165f",
+        "78a9350b6226249e3a9dd8b3ba4c8c636ad0d3e9b7e825232e760da21f8a057a",
+        "db56bb7a86be407b7f01e3d9c2c77a9c94df85b1ee126c6bc27a42fbf39f039b"
+      ],
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "phase SALTS_DONE after six salts",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "runtime holds no raw salt bytes",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "group": "salts",
+      "name": "session1 cannot see seat 0's salt in its transaction",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": "base64:json/0B json:json/0B"
+    },
+    {
+      "group": "salts",
+      "name": "authority cannot see seat 0's salt in its transaction",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": "base64:json/0B json:json/0B"
+    },
+    {
+      "group": "salts",
+      "name": "stranger cannot see seat 0's salt in its transaction",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": "base64:json/0B json:json/0B"
+    },
+    {
+      "group": "salts",
+      "name": "no_token cannot see seat 0's salt in its transaction",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": "base64:json/0B json:json/0B"
+    }
+  ],
+  "hand_ctx": "0382804de652f00342f37960f8dc418c1facb749c57543157456ba29cab5e0d3",
+  "salt_tx_visibility": {
+    "session1": [
+      {
+        "encoding": "base64",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      },
+      {
+        "encoding": "json",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      }
+    ],
+    "authority": [
+      {
+        "encoding": "base64",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      },
+      {
+        "encoding": "json",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      }
+    ],
+    "stranger": [
+      {
+        "encoding": "base64",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      },
+      {
+        "encoding": "json",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      }
+    ],
+    "no_token": [
+      {
+        "encoding": "base64",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      },
+      {
+        "encoding": "json",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      }
+    ],
+    "session0_owner": [
+      {
+        "encoding": "base64",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      },
+      {
+        "encoding": "json",
+        "returned": true,
+        "shape": "json",
+        "bytes": 0,
+        "has_salt": false
+      }
+    ]
+  },
+  "error": "Error: unknown instruction poc_deal; rebuild the IDL\n    at file:///home/asus/Project/cardflex/packages/probes/src/common.mjs:41:28\n    at file:///home/asus/Project/cardflex/packages/probes/src/privacy-suite.mjs:182:33",
+  "auth_transient_failures": [],
+  "passed": 15,
+  "failed": 0,
+  "ok": false,
+  "finished_at": "2026-11-19T10:14:56.679Z"
+}

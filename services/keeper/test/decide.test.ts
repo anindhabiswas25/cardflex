@@ -58,3 +58,15 @@ test("deal, play, reveal, finish", () => {
   assert.deepEqual(decide(runtime((x) => { order(x); x.phase = PHASE.HAND_COMPLETE; }), ctx()), { kind: "reveal_hand", order: [2, 0, 1] });
   assert.deepEqual(decide(runtime((x) => { order(x); x.phase = PHASE.REVEALED; }), ctx()), { kind: "finish_hand", order: [2, 0, 1] });
 });
+
+test("CF-053: a stuck hand in any phase gets abort_lost_hand; idle or revealed tables never do", () => {
+  const order = (x: any) => { x.dealing_order = [2, 0, 1, 0, 0, 0]; x.dealing_count = 3; };
+  for (const phase of [PHASE.SALTS_PENDING, PHASE.SALTS_DONE, PHASE.VRF_PENDING, PHASE.SEEDED, PHASE.DEALT, PHASE.HAND_COMPLETE]) {
+    const r = runtime((x) => { order(x); x.phase = phase; x.turn_deadline = 2_000n; x.salts_deadline = 2_000n; });
+    assert.deepEqual(decide(r, ctx({ stuck: true })), { kind: "abort_lost_hand", order: [2, 0, 1] }, `phase ${phase}`);
+    assert.notEqual(decide(r, ctx()).kind, "abort_lost_hand", `phase ${phase} not stuck`);
+  }
+  for (const phase of [PHASE.IDLE, PHASE.REVEALED]) {
+    assert.notEqual(decide(runtime((x) => { order(x); x.phase = phase; }), ctx({ stuck: true })).kind, "abort_lost_hand");
+  }
+});

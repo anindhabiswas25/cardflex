@@ -206,6 +206,14 @@ Planned crates and apps are listed in PRD §7.
   permissionless step punish present players for one slow moment: a missed
   salt round is a strike (seat leaves after 3 in a row) and `start_hand`
   waits `HAND_GAP_SECS` after `last_hand_end`.
+- Lost secret state (CF-053, ADR 0004 amendment): `abort_lost_hand`
+  (permissionless; remaining accounts = dealer, seat hands, salts of the
+  dealt seats in dealing order) ends a hand only if one of them is missing.
+  Before settlement nothing moved; a settled but unrevealable hand is
+  voided (start stacks restored, rake taken back). Private accounts read as
+  null to RPC readers whether they exist or not, so the keeper just tries
+  the instruction after `STUCK_SECS` without progress (`NotLost` = fine).
+  `open_seat_hand` clears that seat's grant bit (fresh permission).
 - Hand loop (CF-024): start_hand → salts → request_shuffle → VRF → deal →
   act/timeout_turn → HAND_COMPLETE → reveal_hand → (side_show_view revoke)
   → commit_hand → sync_hand (base) → next_hand → start_hand. `next_hand` is

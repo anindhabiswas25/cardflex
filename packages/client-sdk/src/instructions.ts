@@ -128,6 +128,13 @@ export function sideShowView(p: { payer: PublicKey; config: PublicKey; seatA: nu
   }, { seat_a: p.seatA, seat_b: p.seatB, grant: p.grant });
 }
 
+/** CF-053: ends a hand whose ephemeral state was lost (permissionless; fails with NotLost otherwise). */
+export function abortLostHand(p: { payer: PublicKey; config: PublicKey; dealingOrder: number[] }) {
+  const t = tableAddresses(p.config);
+  const rest = [ro(t.dealer), ...p.dealingOrder.map((s) => ro(t.seatHand(s))), ...p.dealingOrder.map((s) => ro(t.salt(s)))];
+  return buildIx("abort_lost_hand", { payer: p.payer, runtime: t.runtime }, {}, rest);
+}
+
 export const nextHand = (p: { payer: PublicKey; config: PublicKey }) => buildIx("next_hand", { payer: p.payer, runtime: tableAddresses(p.config).runtime });
 
 export function commitHand(p: { payer: PublicKey; config: PublicKey }) {

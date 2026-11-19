@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { createHash } from "node:crypto";
 import {
-  act, buyIn, buildIx, cashOut, decodeAccount, discriminatorOf, handLogActions, idl, instructionNames, joinSeat, sizeOf,
+  abortLostHand, act, buyIn, buildIx, cashOut, decodeAccount, discriminatorOf, handLogActions, idl, instructionNames, joinSeat, sizeOf,
   ledgerPda, runtimePda, seatHandPda, tableAddresses, globalPda, PROGRAM_ID,
 } from "../src/index.ts";
 
@@ -121,6 +121,11 @@ test("instruction bytes match what the Devnet-proven probes send", () => {
   assert.equal(joinSeat({ payer: wallet, config, seat: 1, live: true }).keys[3].pubkey.toBase58(), t.seatHand(1).toBase58());
   // cash_out
   assert.deepEqual(Buffer.from(cashOut({ payer: wallet, config, seat: 4, wallet }).data), Buffer.concat([disc("cash_out"), Buffer.from([4])]));
+  // abort_lost_hand (CF-053): no args; dealer, then seat hands, then salts, dealing order, read-only
+  const ab = abortLostHand({ payer: wallet, config, dealingOrder: [2, 0] });
+  assert.deepEqual(Buffer.from(ab.data), disc("abort_lost_hand"));
+  assert.deepEqual(ab.keys.map((k) => k.pubkey.toBase58()), [wallet, t.runtime, t.dealer, t.seatHand(2), t.seatHand(0), t.salt(2), t.salt(0)].map((k) => k.toBase58()));
+  assert.ok(ab.keys.slice(2).every((k) => !k.isWritable && !k.isSigner));
   // a missing account is an error, not a silent wrong transaction
   assert.throws(() => buildIx("act", { session }, { action: 0, amount: 0n, expected_seq: 0n }), /missing account runtime/);
 });

@@ -434,7 +434,8 @@ fn program_matches_rules_engine_over_random_hands() {
         reasons[1] > 0 && side_shows > 0,
         "random play must reach Show and Side Show"
     );
-    assert!(max_cu < 200_000);
+    // CF-052: ~66k CU worst case with opt-level "z"; flag regressions early.
+    assert!(max_cu < 100_000, "act used up to {max_cu} CU");
 }
 
 #[test]
@@ -865,4 +866,223 @@ fn timeout_rejects_a_pending_side_show_for_its_target() {
         0,
         "turn passes after the requester"
     );
+}
+
+// ---------- CF-053: abort a hand whose ephemeral state was lost ----------
+
+fn pda(seed: &[u8], t: &Table, seat: Option<u8>) -> Pubkey {
+    let s = seat.map(|s| vec![s]).unwrap_or_default();
+    Pubkey::find_program_address(&[seed, t.runtime.as_ref(), &s], &card_flex::id()).0
+}
+
+/// The accounts `abort_lost_hand` wants: dealer, seat hands, salts (dealing order).
+fn needed(t: &Table) -> Vec<Pubkey> {
+    let rt = t.runtime();
+    let order = rt.dealing_order[..rt.dealing_count as usize].to_vec();
+    let mut v = vec![pda(DEALER_SEED, t, None)];
+    v.extend(order.iter().map(|&s| pda(SEAT_HAND_SEED, t, Some(s))));
+    v.extend(order.iter().map(|&s| pda(SALT_SEED, t, Some(s))));
+    v
+}
+
+fn abort_with(t: &mut Table, accounts: &[Pubkey]) -> Result<u64, String> {
+    let mut metas = card_flex::accounts::AbortLostHand {
+        payer: t.payer.pubkey(),
+        runtime: t.runtime,
+    }
+    .to_account_metas(None);
+    metas.extend(
+        accounts
+            .iter()
+            .map(|a| AccountMeta::new_readonly(*a, false)),
+    );
+    let ix = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::AbortLostHand {}.data(),
+        metas,
+    );
+    let payer = t.payer.insecure_clone();
+    send(&mut t.svm, &[ix], &[&payer])
+}
+
+fn abort(t: &mut Table) -> Result<u64, String> {
+    let accounts = needed(t);
+    abort_with(t, &accounts)
+}
+
+/// What a PER restart that drops ephemeral state leaves at the address.
+fn lose(t: &mut Table, pk: Pubkey) {
+    t.svm.set_account(pk, Account::default()).unwrap();
+}
+
+/// The harness creates no salt accounts; give every dealt seat one.
+fn create_salts(t: &mut Table) {
+    let rt = t.runtime();
+    for &s in &rt.dealing_order[..rt.dealing_count as usize] {
+        let pk = pda(SALT_SEED, t, Some(s));
+        let mut d = vec![0u8; SALT_LEN as usize];
+        d[..8].copy_from_slice(SALT_TAG);
+        d[8..40].copy_from_slice(t.runtime.as_ref());
+        d[40] = s;
+        t.svm.set_account(pk, program_account(d)).unwrap();
+    }
+}
+
+fn rewrite_runtime(t: &mut Table, f: impl FnOnce(&mut TableRuntime)) {
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    let mut rt = t.runtime();
+    f(&mut rt);
+    let mut data = Vec::new();
+    rt.try_serialize(&mut data).unwrap();
+    data.resize(acc.data.len(), 0);
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
+}
+
+#[test]
+fn lost_state_aborts_a_dealt_hand_without_moving_money() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..3].copy_from_slice(&[100 * BOOT; 3]);
+    let mut t = dealt_table(3, stacks, [11; 32], (250, 20_000));
+    create_salts(&mut t);
+    // Some betting: boots and chaals are in the pot, not in `stacks`.
+    let order = t.runtime().game.order;
+    t.act(order[0], Action::Chaal { amount: BOOT }).unwrap();
+    t.act(order[1], Action::Chaal { amount: BOOT }).unwrap();
+    let before = t.runtime();
+    let before_bytes = t.svm.get_account(&t.runtime).unwrap().data;
+    assert_eq!(before.phase, phase::DEALT);
+
+    // Nothing is lost: refused.
+    let err = abort(&mut t).unwrap_err();
+    assert!(err.contains("NotLost"), "{err}");
+    // Wrong lists: missing one, wrong order, an undealt seat's account.
+    let all = needed(&t);
+    let err = abort_with(&mut t, &all[..all.len() - 1]).unwrap_err();
+    assert!(err.contains("BadLostAccounts"), "{err}");
+    let mut swapped = all.clone();
+    swapped.swap(1, 2);
+    let err = abort_with(&mut t, &swapped).unwrap_err();
+    assert!(err.contains("BadLostAccounts"), "{err}");
+    let mut stranger = all.clone();
+    let undealt = pda(SEAT_HAND_SEED, &t, Some(4));
+    lose(&mut t, undealt);
+    stranger[1] = undealt;
+    let err = abort_with(&mut t, &stranger).unwrap_err();
+    assert!(err.contains("BadLostAccounts"), "{err}");
+    assert_eq!(
+        t.svm.get_account(&t.runtime).unwrap().data,
+        before_bytes,
+        "refused aborts change nothing"
+    );
+
+    // An account that is still there but zeroed (no tag) counts as lost too:
+    // checked on a copy of the state, then put back.
+    let salt0 = pda(SALT_SEED, &t, Some(0));
+    let healthy = t.svm.get_account(&salt0).unwrap();
+    let mut zeroed = healthy.clone();
+    zeroed.data.iter_mut().for_each(|b| *b = 0);
+    t.svm.set_account(salt0, zeroed).unwrap();
+    let probe = needed(&t);
+    let ix_ok = abort_with(&mut t, &probe);
+    assert!(ix_ok.is_ok(), "zeroed salt account is lost: {ix_ok:?}");
+    // Restore the table to its pre-abort state for the rest of the test.
+    t.svm.set_account(salt0, healthy).unwrap();
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.data = before_bytes.clone();
+    t.svm.set_account(t.runtime, acc).unwrap();
+
+    // Seat 1's hand is lost: the hand can't be played on...
+    let hand1 = t.hands[1];
+    lose(&mut t, hand1);
+    assert!(t.act(order[2], Action::Pack).is_err());
+    // ...but anyone can end it.
+    abort(&mut t).expect("abort");
+    let rt = t.runtime();
+    assert_eq!(rt.phase, phase::IDLE);
+    assert_eq!(rt.hand_no, before.hand_no + 1, "a late action can't match");
+    assert_eq!(rt.cancelled_hands, before.cancelled_hands + 1);
+    assert_eq!(rt.stacks, stacks, "boots and chaals never left the stacks");
+    assert_eq!(rt.rake_owed, 0);
+    assert_eq!(rt.game, GameState::default());
+    assert!(!rt.dealt && rt.merkle_root == [0; 32] && rt.action_seq == 0);
+    // Once is enough: no hand is in progress any more.
+    let err = abort(&mut t).unwrap_err();
+    assert!(err.contains("WrongPhase"), "{err}");
+}
+
+#[test]
+fn settled_but_unrevealable_hand_is_voided() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..3].copy_from_slice(&[1_000 * BOOT; 3]);
+    let mut t = dealt_table(3, stacks, [42; 32], (250, 20_000));
+    create_salts(&mut t);
+    // Play to a pot-limit showdown so the hand settles with rake.
+    let oracle = t.oracle();
+    let mut host =
+        game::Hand::start(game::Rules::v1(BOOT, 250, 20_000), stacks, &[0, 1, 2]).unwrap();
+    for s in 0..3u8 {
+        host.apply(s, Action::See, &oracle).unwrap();
+        t.act(s, Action::See).unwrap();
+    }
+    while host.phase != game::Phase::Over {
+        let seat = host.to_act();
+        let big = host.min_bet(seat) * 2;
+        let amount = if big <= 128 * BOOT {
+            big
+        } else {
+            host.min_bet(seat)
+        };
+        host.apply(seat, Action::Chaal { amount }, &oracle).unwrap();
+        t.act(seat, Action::Chaal { amount }).unwrap();
+    }
+    let settled = t.runtime();
+    assert_eq!(settled.phase, phase::HAND_COMPLETE);
+    assert!(settled.rake_owed > 0 && settled.stacks != stacks);
+    // A hand that can still be revealed is never voided.
+    let err = abort(&mut t).unwrap_err();
+    assert!(err.contains("NotLost"), "{err}");
+
+    // Seat 2 asked to leave during the hand; the abort applies it.
+    rewrite_runtime(&mut t, |rt| rt.leaving = 1 << 2);
+    // The dealer state (seed) is lost, so the hand can never be revealed.
+    let dealer = pda(DEALER_SEED, &t, None);
+    lose(&mut t, dealer);
+    abort(&mut t).expect("abort");
+    let rt = t.runtime();
+    assert_eq!(rt.phase, phase::IDLE);
+    assert_eq!(
+        rt.stacks, stacks,
+        "result reversed: everyone gets back their start stack"
+    );
+    assert_eq!(rt.rake_owed, 0, "rake of the voided hand taken back");
+    assert_eq!(rt.cancelled_hands, settled.cancelled_hands + 1);
+    assert_eq!((rt.occupied, rt.departed, rt.leaving), (0b011, 0b100, 0));
+}
+
+#[test]
+fn lost_salt_aborts_before_the_deal_without_strikes() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..2].copy_from_slice(&[50 * BOOT; 2]);
+    let mut t = dealt_table(2, stacks, [5; 32], (0, 0));
+    create_salts(&mut t);
+    // Rewind to the salt round: nothing dealt, no game yet; seat 0 submitted.
+    rewrite_runtime(&mut t, |rt| {
+        rt.phase = phase::SALTS_PENDING;
+        rt.dealt = false;
+        rt.game = GameState::default();
+        rt.salts_in = 0b01;
+        rt.salt_commitments[0] = [7; 32];
+    });
+    let salt1 = pda(SALT_SEED, &t, Some(1));
+    lose(&mut t, salt1);
+    abort(&mut t).expect("abort");
+    let after = t.runtime();
+    assert_eq!(after.phase, phase::IDLE);
+    assert_eq!(after.stacks, stacks);
+    assert_eq!(
+        after.missed_salts, [0; MAX_SEATS],
+        "no strike: nobody was slow"
+    );
+    assert_eq!((after.salts_in, after.salt_commitments[0]), (0, [0; 32]));
 }

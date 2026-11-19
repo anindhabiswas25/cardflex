@@ -4,13 +4,13 @@
 // token grants reads, never signatures).
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  cancelHand, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
+  abortLostHand, cancelHand, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
   revealHand, sideShowView, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
 import type { Store } from "@card-flex/api/store";
 import type { Verifier } from "@card-flex/client-sdk";
-import { decide, viewerPairs, type Step } from "./decide.ts";
+import { decide, inProgress, viewerPairs, type Step } from "./decide.ts";
 
 export type KeeperOpts = {
   base: Connection;
@@ -18,12 +18,18 @@ export type KeeperOpts = {
   key: Keypair;
   heartbeatSecs: bigint;
   handGapSecs: bigint;
+  /** CF-053: a hand with no progress for this long is checked for lost state (default 120 s). */
+  stuckSecs?: number;
   store?: Store; // index every hand before next_hand (closes the indexer's gap)
   verifier?: Verifier;
   log?: (msg: string) => void;
 };
 
-type TableState = { lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number };
+type TableState = {
+  lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number;
+  /** CF-053: last seen hand progress and when it changed (ms). */
+  progress: string; progressAt: number;
+};
 
 export class Keeper {
   readonly o: KeeperOpts;
@@ -72,15 +78,21 @@ export class Keeper {
   /** One step for one table. Returns what it did (for logs and tests). */
   async tick(config: PublicKey): Promise<Step> {
     const id = config.toBase58();
-    const st = this.tables.get(id) ?? { lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 0 };
+    const st = this.tables.get(id) ?? { lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 0, progress: "", progressAt: Date.now() };
     this.tables.set(id, st);
     if (Date.now() < st.backoffUntil) return { kind: "wait", why: "backing off after an error" };
     const rt = await this.readRuntime(config);
     if (!rt) return { kind: "wait", why: "runtime not readable in PER (not live, or token lacks access)" };
     const slot = BigInt(await this.o.per.getSlot());
+    const progress = `${rt.hand_no}:${rt.phase}:${rt.action_seq}:${rt.salts_in}:${rt.grants}`;
+    if (progress !== st.progress) {
+      st.progress = progress;
+      st.progressAt = Date.now();
+    }
+    const stuck = inProgress(rt) && Date.now() - st.progressAt >= (this.o.stuckSecs ?? 120) * 1000;
     const step = decide(rt, {
       nowSecs: BigInt(Math.floor(Date.now() / 1000)), slot, lastCommitSecs: st.lastCommitSecs,
-      heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: st.departedSynced,
+      heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: st.departedSynced, stuck,
     });
     if (step.kind === "wait") return step;
     const payer = this.o.key.publicKey;
@@ -91,6 +103,12 @@ export class Keeper {
         case "cancel_salts": await this.send(this.o.per, [cancelSalts({ payer, config })], step.kind); break;
         case "request_shuffle": await this.send(this.o.per, [requestShuffle({ payer, config })], step.kind); break;
         case "cancel_hand": await this.send(this.o.per, [cancelHand({ payer, config })], step.kind); break;
+        case "abort_lost_hand":
+          // Check again only after another full stuck period, whatever the outcome.
+          st.progressAt = Date.now();
+          await this.send(this.o.per, [abortLostHand({ payer, config, dealingOrder: step.order })], step.kind);
+          this.log(`${short} hand #${rt.hand_no} aborted: its secret state was lost (counted in cancelled_hands)`);
+          break;
         case "deal_hand": await this.send(this.o.per, [dealHand({ payer, config, dealingOrder: step.order })], step.kind); break;
         case "grant_view": await this.send(this.o.per, [sideShowView({ payer, config, seatA: step.a, seatB: step.b, grant: true })], step.kind); break;
         case "timeout_turn": await this.send(this.o.per, [timeoutTurn({ payer, config, expectedSeq: step.seq, dealingOrder: step.order })], step.kind); break;

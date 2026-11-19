@@ -6,7 +6,8 @@
 //   CARDFLEX_AUTHORITY   drive every live table of this authority (anyone can create tables;
 //                        the keeper never pays fees for strangers' tables). One of the two is required.
 //   CARDFLEX_DB          SQLite file shared with the API (index every hand); optional
-//   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (600), HAND_GAP_SECS (5)
+//   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (600), HAND_GAP_SECS (5),
+//   STUCK_SECS (120: a hand with no progress this long is checked for lost secret state, CF-053)
 import { readFileSync } from "node:fs";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, loadVerifier, perConnection, runtimePda, sizeOf, verifierWasmUrl } from "@card-flex/client-sdk";
@@ -26,6 +27,7 @@ const verifier = store ? await loadVerifier(readFileSync(verifierWasmUrl)) : und
 const keeper = new Keeper({
   base, per, key, store, verifier,
   heartbeatSecs: BigInt(env.HEARTBEAT_SECS ?? 600), handGapSecs: BigInt(env.HAND_GAP_SECS ?? 5),
+  stuckSecs: Number(env.STUCK_SECS ?? 120),
 });
 const tick = Number(env.TICK_MS ?? 500);
 

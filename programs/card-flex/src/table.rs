@@ -1031,6 +1031,15 @@ pub struct CancelHand<'info> {
     pub runtime: Box<Account<'info, TableRuntime>>,
 }
 
+/// `abort_lost_hand` (CF-053): anyone. The hand's ephemeral accounts follow
+/// in `remaining_accounts` (dealer, seat hands, salts; dealing order).
+#[derive(Accounts)]
+pub struct AbortLostHand<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+}
+
 /// `rotate_session`: signed by the seat's wallet inside PER.
 #[derive(Accounts)]
 pub struct RotateSession<'info> {

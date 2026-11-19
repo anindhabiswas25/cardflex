@@ -8,6 +8,74 @@
   },
   "instructions": [
     {
+      "name": "abort_lost_hand",
+      "docs": [
+        "CF-053 (ADR 0004 #8): ends a hand whose secret state was lost, e.g. a",
+        "PER restart that kept the delegated runtime but not the ephemeral",
+        "accounts. Permissionless. `remaining_accounts` = every ephemeral",
+        "account the hand needs: the dealer, then the seat hands, then the",
+        "salts of the dealt seats in dealing order. It succeeds only if at",
+        "least one of them is gone. Those accounts can't be closed while a hand",
+        "is in progress, so a missing one can only mean lost state; and since",
+        "they are private, only the program (not an RPC reader) can tell, which",
+        "is why a keeper simply tries this when a hand is stuck. Nothing is",
+        "redealt and the hand is counted in `cancelled_hands`. Before",
+        "settlement no stack has moved (boots live in `game` until the hand",
+        "ends). A hand settled but not yet revealed can never be verified, so",
+        "its result is reversed: stacks go back to the start of the hand and",
+        "its rake is taken back. No sync copies stacks or rake mid-hand, so",
+        "nothing was paid from that result."
+      ],
+      "discriminator": [
+        253,
+        172,
+        58,
+        143,
+        53,
+        235,
+        154,
+        5
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "act",
       "docs": [
         "One player action during betting (CF-020). Signed by the acting seat's",
@@ -4797,6 +4865,16 @@
       "code": 6050,
       "name": "NoSideShowPending",
       "msg": "no side show pending"
+    },
+    {
+      "code": 6051,
+      "name": "BadLostAccounts",
+      "msg": "expected the dealer, then the dealt seats' hands and salts in dealing order"
+    },
+    {
+      "code": 6052,
+      "name": "NotLost",
+      "msg": "the account still exists; the hand can continue"
     }
   ],
   "types": [

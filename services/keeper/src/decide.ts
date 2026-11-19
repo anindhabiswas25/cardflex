@@ -12,6 +12,7 @@ export type Step =
   | { kind: "cancel_salts" }
   | { kind: "request_shuffle" }
   | { kind: "cancel_hand" }
+  | { kind: "abort_lost_hand"; order: number[] } // CF-053: secret state lost, hand can't finish
   | { kind: "deal_hand"; order: number[] }
   | { kind: "grant_view"; a: number; b: number }
   | { kind: "timeout_turn"; order: number[]; seq: bigint }
@@ -32,7 +33,17 @@ export type Ctx = {
   handGapSecs: bigint;
   /** Departed seats already synced (so cash-out is possible). */
   departedSynced: number;
+  /**
+   * CF-053: the hand in progress hasn't changed for longer than any normal
+   * wait (salt round, turn, VRF timeout). Its secret accounts may be lost;
+   * they are private, so only the program can tell: try `abort_lost_hand`
+   * (it fails harmlessly with NotLost if everything still exists).
+   */
+  stuck?: boolean;
 };
+
+const IN_PROGRESS: number[] = [PHASE.SALTS_PENDING, PHASE.SALTS_DONE, PHASE.VRF_PENDING, PHASE.SEEDED, PHASE.DEALT, PHASE.HAND_COMPLETE];
+export const inProgress = (rt: TableRuntime) => IN_PROGRESS.includes(rt.phase);
 
 const bits = (m: number) => [0, 1, 2, 3, 4, 5].filter((s) => (m >> s) & 1);
 const dealt = (rt: TableRuntime) => rt.dealing_order.slice(0, rt.dealing_count);
@@ -46,6 +57,7 @@ export function viewerPairs(rt: TableRuntime): [number, number][] {
 }
 
 export function decide(rt: TableRuntime, c: Ctx): Step {
+  if (c.stuck && inProgress(rt)) return { kind: "abort_lost_hand", order: dealt(rt) };
   switch (rt.phase) {
     case PHASE.IDLE: {
       // Seats with a live grant must be revoked before a new hand (start_hand refuses).

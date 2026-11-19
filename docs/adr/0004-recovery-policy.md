@@ -94,3 +94,48 @@ same hand or refund exactly; never redeal.**
   payout is a separate `claim_refund` (anyone may submit it, paid only to
   the recorded wallet, once), so one failing payout can't block the others.
   `min_buy_in` is at least the rent-exempt minimum.
+
+## Amendment (2026-11-19, CF-053): abort a hand whose secret state was lost
+
+Rule 8 left a gap: if PER keeps the delegated runtime but loses the
+ephemeral accounts (dealer, seat hands, salts) mid-hand, no instruction
+could move the table on (`deal_hand`, `act`/`timeout_turn` and
+`reveal_hand` all need them). Worse, heartbeat commits and syncs keep
+refreshing the liveness clock, so the refund timeout never fires, and a
+leave requested mid-hand waits for a `next_hand` that never comes. Players'
+money would stay frozen for as long as anyone kept committing.
+
+- **`abort_lost_hand`** (permissionless, PER): `remaining_accounts` = the
+  dealer, then the seat hands, then the salts of the dealt seats in dealing
+  order. It succeeds only if at least one of them doesn't exist or has lost
+  its tag (zeroed). These
+  accounts can't be closed while a hand is in progress (CF-011 freeze), so a
+  missing one can only mean lost state. The accounts are private, so an RPC
+  reader can't tell "missing" from "hidden"; only the program can, which is
+  why the keeper simply tries the instruction once a hand has made no
+  progress for `STUCK_SECS` (default 120 s) and treats `NotLost` as "all
+  fine".
+- **Money:** before settlement nothing moved (boots and bets live in
+  `TableRuntime.game` until the hand ends), so the hand is dropped. A hand
+  that settled (`HAND_COMPLETE`) but can no longer be revealed would be an
+  unverifiable result, so it is **voided**: each dealt seat gets back
+  `stack + contributed − payout` (its stack at the start of the hand) and
+  the hand's rake is subtracted from `rake_owed`, checked for conservation.
+  Safe because `sync_hand` copies stacks and rake only between hands, so
+  nothing was ever paid from that result.
+- **Afterwards:** counted in `cancelled_hands` (selective-abort monitoring),
+  `hand_no` moves on (late actions or callbacks can't match), pending leaves
+  are applied, the table is IDLE with the same button. No redeal. The
+  operator re-creates the lost accounts with `open_dealer` /
+  `open_seat_hand` / `open_salt`; a re-created seat hand has its owner as
+  the only reader, so `open_seat_hand` also clears that seat's Side Show
+  grant bit (otherwise `start_hand` would refuse forever). Until then
+  players can leave and cash out as usual.
+- **Trust:** only the TEE operator can make ephemeral state disappear, so
+  this adds no new power to players or to the table authority. An operator
+  that deletes state to void hands it dislikes is the selective-abort risk
+  already on the risk list; it shows as a rising `cancelled_hands`
+  (alerting: CF-060).
+- **Not verified on Devnet yet:** LiteSVM tests cover every phase and the
+  reversal; that PER accepts a transaction naming a missing ephemeral
+  account needs a Devnet drill after the next deploy.

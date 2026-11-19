@@ -826,7 +826,11 @@ pub mod card_flex {
             &ctx.accounts.target.to_account_info(),
             members,
             &[runtime_seeds, hand_seeds],
-        )
+        )?;
+        // CF-053: a re-created hand (lost state) has its owner as the only
+        // reader, so any Side Show grant recorded for it is gone.
+        ctx.accounts.runtime.grants &= !(1 << seat);
+        Ok(())
     }
 
     /// Resets a seat hand's reader list to its own session key (CF-007).
@@ -1582,6 +1586,55 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// CF-053 (ADR 0004 #8): ends a hand whose secret state was lost, e.g. a
+    /// PER restart that kept the delegated runtime but not the ephemeral
+    /// accounts. Permissionless. `remaining_accounts` = every ephemeral
+    /// account the hand needs: the dealer, then the seat hands, then the
+    /// salts of the dealt seats in dealing order. It succeeds only if at
+    /// least one of them is gone. Those accounts can't be closed while a hand
+    /// is in progress, so a missing one can only mean lost state; and since
+    /// they are private, only the program (not an RPC reader) can tell, which
+    /// is why a keeper simply tries this when a hand is stuck. Nothing is
+    /// redealt and the hand is counted in `cancelled_hands`. Before
+    /// settlement no stack has moved (boots live in `game` until the hand
+    /// ends). A hand settled but not yet revealed can never be verified, so
+    /// its result is reversed: stacks go back to the start of the hand and
+    /// its rake is taken back. No sync copies stacks or rake mid-hand, so
+    /// nothing was paid from that result.
+    pub fn abort_lost_hand(ctx: Context<AbortLostHand>) -> Result<()> {
+        let runtime_key = ctx.accounts.runtime.key();
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.hand_in_progress(), CardFlexError::WrongPhase);
+        require!(
+            any_lost(runtime, runtime_key, ctx.remaining_accounts)?,
+            CardFlexError::NotLost
+        );
+        if runtime.phase == phase::HAND_COMPLETE {
+            void_settlement(runtime)?;
+        }
+        runtime.cancelled_hands = runtime.cancelled_hands.saturating_add(1);
+        runtime.hand_no = runtime
+            .hand_no
+            .checked_add(1)
+            .ok_or(CardFlexError::Overflow)?;
+        runtime.phase = phase::IDLE;
+        runtime.dealt = false;
+        runtime.salts_in = 0;
+        runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+        runtime.vrf_caller_seed = [0; 32];
+        runtime.merkle_root = [0; 32];
+        runtime.game = GameState::default();
+        runtime.action_seq = 0;
+        runtime.turn_deadline = 0;
+        runtime.side_show_viewers = [0; MAX_SEATS];
+        runtime.last_hand_end = Clock::get()?.unix_timestamp;
+        // `grants` stays: a surviving seat hand may still have a second
+        // reader and must be revoked (`side_show_view`, `set_hand_readers`)
+        // before `start_hand`; a re-created one starts with its owner only.
+        apply_leaves(runtime);
+        Ok(())
+    }
+
     // ---------- CF-012 reveal (PER) ----------
 
     /// Gives `HandLog` an explicit permission marking it **public** (ADR 0002:
@@ -1879,6 +1932,72 @@ fn create_permission_with<'info>(
 /// no longer occupied and is marked departed; its final stack stays in
 /// `stacks` for `sync_hand`. Its session key keeps reading only its own old
 /// seat hand (never dealt again) until `join_seat` replaces it.
+/// CF-053: checks that `accounts` are exactly the dealer, the seat hands and
+/// the salts of the dealt seats (dealing order) and reports whether any of
+/// them is missing or unusable: not owned by the program, or without its
+/// tag (every real one is tagged when opened, so a zeroed account left by a
+/// restart counts as lost too).
+#[inline(never)]
+fn any_lost(runtime: &TableRuntime, rt: Pubkey, accounts: &[AccountInfo]) -> Result<bool> {
+    let order = &runtime.dealing_order[..runtime.dealing_count as usize];
+    require!(
+        accounts.len() == 1 + 2 * order.len(),
+        CardFlexError::BadLostAccounts
+    );
+    let mut expected: Vec<(Pubkey, &[u8; 8])> = Vec::with_capacity(accounts.len());
+    expected.push((
+        Pubkey::find_program_address(&[DEALER_SEED, rt.as_ref()], &crate::ID).0,
+        DEALER_TAG,
+    ));
+    for (seed, tag) in [(SEAT_HAND_SEED, SEAT_HAND_TAG), (SALT_SEED, SALT_TAG)] {
+        for &s in order {
+            expected.push((
+                Pubkey::find_program_address(&[seed, rt.as_ref(), &[s]], &crate::ID).0,
+                tag,
+            ));
+        }
+    }
+    let mut lost = false;
+    for (acc, (want, tag)) in accounts.iter().zip(expected) {
+        require_keys_eq!(acc.key(), want, CardFlexError::BadLostAccounts);
+        let data = acc.try_borrow_data()?;
+        lost |= *acc.owner != crate::ID || data.len() < 8 || &data[..8] != tag;
+    }
+    Ok(lost)
+}
+
+/// CF-053: undoes the settlement of a hand that will never be revealed.
+/// Each dealt seat gets back its stack from the start of the hand
+/// (`stack + contributed - payout`, as in `write_game_summary`) and the
+/// hand's rake leaves `rake_owed`. Checked for conservation.
+#[inline(never)]
+fn void_settlement(runtime: &mut TableRuntime) -> Result<()> {
+    let g = &runtime.game;
+    require!(g.phase == 2, CardFlexError::BadStacks);
+    let mut restored = runtime.stacks;
+    let (mut before, mut after) = (0u128, 0u128);
+    for (i, (s, out)) in g.seats.iter().zip(restored.iter_mut()).enumerate() {
+        if !s.dealt {
+            continue;
+        }
+        require!(runtime.stacks[i] == s.stack, CardFlexError::BadStacks);
+        *out = s
+            .stack
+            .checked_add(s.contributed)
+            .and_then(|v| v.checked_sub(g.payouts[i]))
+            .ok_or(CardFlexError::BadStacks)?;
+        before += s.stack as u128;
+        after += *out as u128;
+    }
+    require!(after == before + g.rake as u128, CardFlexError::BadStacks);
+    runtime.rake_owed = runtime
+        .rake_owed
+        .checked_sub(g.rake)
+        .ok_or(CardFlexError::BadStacks)?;
+    runtime.stacks = restored;
+    Ok(())
+}
+
 fn apply_leaves(runtime: &mut TableRuntime) {
     let l = runtime.leaving & runtime.occupied;
     runtime.occupied &= !l;
@@ -2201,4 +2320,8 @@ pub enum CardFlexError {
     SideShowPending,
     #[msg("no side show pending")]
     NoSideShowPending,
+    #[msg("expected the dealer, then the dealt seats' hands and salts in dealing order")]
+    BadLostAccounts,
+    #[msg("the account still exists; the hand can continue")]
+    NotLost,
 }
