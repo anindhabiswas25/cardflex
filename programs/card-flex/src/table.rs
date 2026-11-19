@@ -1111,6 +1111,11 @@ pub struct CommitTable<'info> {
     pub runtime: Box<Account<'info, TableRuntime>>,
     #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
     pub hand_log: Box<Account<'info, HandLog>>,
+    /// CHECK: CF-057: MagicBlock's fee vault for our validator. With it the
+    /// table's delegated runtime PDA pays the commit (program-signed); without
+    /// it MagicBlock allows only 10 commits per account. Checked in the handler.
+    #[account(mut)]
+    pub magic_fee_vault: Option<UncheckedAccount<'info>>,
 }
 
 /// `commit_hand`: anyone may commit the table state (heartbeat / end of
@@ -1124,6 +1129,11 @@ pub struct CommitHand<'info> {
     pub runtime: Box<Account<'info, TableRuntime>>,
     #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
     pub hand_log: Box<Account<'info, HandLog>>,
+    /// CHECK: CF-057: MagicBlock's fee vault for our validator. With it the
+    /// table's delegated runtime PDA pays the commit (program-signed); without
+    /// it MagicBlock allows only 10 commits per account. Checked in the handler.
+    #[account(mut)]
+    pub magic_fee_vault: Option<UncheckedAccount<'info>>,
 }
 
 /// `next_hand`: anyone, after a hand is revealed.

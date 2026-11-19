@@ -23,12 +23,16 @@ waste fees on failed duplicates).
 ## SOL budget
 
 - Base layer: **5,000 lamports per hand** (one `sync_hand`), plus one sync
-  per heartbeat (every 300 s per table) and per departed seat (CF-054).
-- Per table-hour at a busy table (≈ 1 hand/min): 60 × 5,000 + 12 × 5,000 ≈
-  **0.00036 SOL**. 50 busy tables ≈ 0.018 SOL/hour ≈ 0.43 SOL/day.
-- Commits in PER cost nothing on the base layer.
+  per heartbeat (every 300 s per table, only if no hand committed
+  meanwhile) and per departed seat (CF-054, CF-057).
+- Commits always pass MagicBlock's fee vault; the table's runtime pays them
+  (Devnet charges nothing today). Without the vault a table stops
+  committing after 10 hands (CF-057).
+- Per table-hour at a busy table (≈ 1 hand/min): 60 × 5,000 ≈ **0.0003 SOL**
+  (heartbeats don't fire while hands commit). 50 busy tables ≈ 0.015
+  SOL/hour ≈ 0.36 SOL/day. An idle table: 12 heartbeats/hour = 0.00006 SOL.
 - Keep ≥ 1 day of budget in the keeper wallet; `REFUND_NEAR` alarms fire if
-  it runs dry and syncs stop. (CF-057 turns this into a full fee model.)
+  it runs dry and syncs stop. Full model: docs/findings/cf-057-fees.md.
 
 ## Token rotation
 

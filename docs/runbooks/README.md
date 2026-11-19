@@ -21,6 +21,7 @@ that player's own recorded wallet.
 | Keeper heartbeat (`HEARTBEAT_SECS`) | **300 s** | 6× margin under the refund timeout, in every phase, including long hands. |
 | Stuck-hand check (`STUCK_SECS`) | 120 s | Longer than any normal wait (turn 25 s, salts 30 s, VRF timeout). |
 | PER sockets (`PER_SOCKETS`) | 16 | The PER throttles new connections per IP (CF-054). |
+| Commit fee vault | always passed | Without it a table stops committing after 10 hands (CF-057). |
 | Alarm check (`cf-admin watch --every`) | 60 s | Refund warning at half the timeout gives 15 min to react. |
 
 ## Commands at a glance

@@ -70,7 +70,7 @@ export function openTablePer(authority: PublicKey, config: PublicKey, maxSeats: 
  * commit_seq, so without it sync_hand would refuse the final state and a
  * player who just left couldn't cash out (only refund) — found live, CF-041.
  */
-export function closeTablePer(authority: PublicKey, config: PublicKey, maxSeats: number = MAX_SEATS): TransactionInstruction[] {
+export function closeTablePer(authority: PublicKey, config: PublicKey, maxSeats: number = MAX_SEATS, feeVault?: PublicKey): TransactionInstruction[] {
   const t = tableAddresses(config);
   const ixs: TransactionInstruction[] = [];
   for (let s = 0; s < maxSeats; s++) {
@@ -78,8 +78,10 @@ export function closeTablePer(authority: PublicKey, config: PublicKey, maxSeats:
     ixs.push(per("close_salt", authority, t.runtime, t.salt(s), { seat: s }));
   }
   ixs.push(per("close_ephemeral", authority, t.runtime, t.dealer, { seat: null }));
-  ixs.push(commitHand({ payer: authority, config }));
-  ixs.push(buildIx("undelegate_table", { authority, runtime: t.runtime, hand_log: t.handLog }));
+  // CF-057: pass magicFeeVault() so the runtime pays; without it a table that
+  // already had 10 commits can't be committed or closed.
+  ixs.push(commitHand({ payer: authority, config, feeVault }));
+  ixs.push(buildIx("undelegate_table", { authority, runtime: t.runtime, hand_log: t.handLog, magic_fee_vault: feeVault ?? null }));
   return ixs;
 }
 

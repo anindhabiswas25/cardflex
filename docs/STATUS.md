@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P8 (hardening).** CF-052/053/054/061 done, CF-055 done; CF-056 done except the multisig handover (team decision). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
+Current phase: **P8 (hardening).** CF-052/053/054/061 done, CF-055 done; CF-056 done except the multisig handover (team decision); CF-057 done (fixed a 10-hands-per-table blocker). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 ## Tickets
 
@@ -44,7 +44,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-054 | P8: load test, 5 → 10 → 25 → 50 concurrent tables (latency, VRF time, errors, keeper lag, commit cost) | Done: 50 tables stable and exact (150/150 hands, 50/50 vaults) but too slow (salts → dealt 18 s p50 / 35 s p95); bottleneck is our keeper → CF-061 | `pnpm load-test`, `docs/findings/cf-054-load.md` |
 | CF-055 | P8: security review pass (incl. a keeper key that is not authority-derived) | Done (Devnet: money drill 53/53, privacy 230/230): no high findings open; fixed `GlobalConfig` authority could never change (blocked the multisig) and buy-in before configure; 1 medium accepted for Devnet (refund timer vs a committing-but-stalled PER) | `docs/findings/cf-055-security-review.md` |
 | CF-056 | P8: ops: Squads multisig, production refund timeout, reconcile alarms, runbooks | Done except the multisig handover itself (needs the team's members + threshold): refund timeout 1,800 s, keeper heartbeat 300 s in every phase (fixes mid-hand refund), `cf-admin watch` alarms, `cf-admin table repair`, `--dry-run --as` for Squads proposals, runbooks | `docs/runbooks/`, ADR 0004 amendment |
-| CF-057 | P8: commit-fee model (cost per table-hour, keeper wallet budget, behaviour past 10 commits) from CF-054 data | Planned (CF-054 measured 5,000 lamports per hand on base) | |
+| CF-057 | P8: commit-fee model (cost per table-hour, keeper wallet budget, behaviour past 10 commits) | Done: **found tables stopped committing after 10 hands (launch blocker)**; fixed (runtime PDA pays commits via MagicBlock's fee vault; 13/13 commits on Devnet). Player pays 15,000 lamports per session, moves free; keeper 5,000 per hand | `docs/findings/cf-057-fees.md`, `pnpm --filter @card-flex/keeper fees` |
 | CF-058 | P8: TEE measurement-change alert (we pin what we observe; alert when Devnet's changes) | Planned | |
 | CF-059 | P8: privacy-suite check for an empty permission member list (answer MagicBlock open question 3 ourselves) | Planned | |
 | CF-060 | P8: monitoring and alerts (keeper health, cancel rate, tables near refund, reconcile failures) | Planned | |
@@ -80,6 +80,17 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-057: fee measurement through the whole player journey
+  found a launch blocker: MagicBlock allows 10 commits per account by a
+  payer that isn't delegated; from the 11th, `commit_hand` failed
+  (`0xA0000000`), so syncs, cash-outs and even closing stopped: every table
+  died after ~10 hands. A delegated keeper escrow didn't help (never
+  charged). Fix: optional `magic_fee_vault` on `commit_hand` /
+  `undelegate_table`; with it the table's delegated runtime PDA pays,
+  program-signed. Devnet: 13/13 commits, full journey incl. cash-out and
+  close; no commit fee charged on Devnet. Fees: player 15,000 lamports per
+  session (rent returned, moves free); operator ≈ 0.031 SOL per table
+  (rent); keeper 5,000 per hand.
 - 2026-11-19 — CF-056: production refund timeout 1,800 s and keeper
   heartbeat 300 s in every phase. Found: the keeper heartbeated only between
   hands, so a hand longer than the refund timeout (possible: pot limit 1,024

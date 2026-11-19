@@ -140,3 +140,12 @@ test("CF-061: confirmByPolling uses HTTP status polls only: confirmed, error, ti
   assert.deepEqual(await confirmByPolling(fake([{ confirmationStatus: "confirmed", err: { InstructionError: [0, { Custom: 6052 }] } }]), "s", 5_000, 1), { InstructionError: [0, { Custom: 6052 }] });
   await assert.rejects(confirmByPolling(fake([null]), "s", 20, 1), /not confirmed within 20 ms/);
 });
+
+test("CF-057: fee vault matches MagicBlock's derivation; commit_hand carries it", async () => {
+  const mb = await import("@magicblock-labs/ephemeral-rollups-sdk");
+  const { magicFeeVault, TEE_VALIDATOR, commitHand } = await import("../src/index.ts");
+  assert.ok(magicFeeVault().equals(mb.magicFeeVaultPdaFromValidator(TEE_VALIDATOR)));
+  const k = Keypair.generate().publicKey;
+  const c = commitHand({ payer: k, config: k, feeVault: magicFeeVault() });
+  assert.ok(c.keys.some((x) => x.pubkey.equals(magicFeeVault()) && x.isWritable));
+});

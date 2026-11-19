@@ -18,6 +18,8 @@ export type KeeperOpts = {
   key: Keypair;
   heartbeatSecs: bigint;
   handGapSecs: bigint;
+  /** CF-057: MagicBlock's fee vault (`magicFeeVault()`); without it only 10 commits per table work. */
+  feeVault?: PublicKey;
   /** CF-053: a hand with no progress for this long is checked for lost state (default 120 s). */
   stuckSecs?: number;
   store?: Store; // index every hand before next_hand (closes the indexer's gap)
@@ -64,7 +66,7 @@ export class Keeper {
   private async commitAndSync(config: PublicKey, st: TableState, rt: TableRuntime) {
     const t = tableAddresses(config);
     const seq0 = decodeRuntime((await this.o.base.getAccountInfo(t.runtime))!.data).commit_seq;
-    await this.send(this.o.per, [commitHand({ payer: this.o.key.publicKey, config })], "commit_hand");
+    await this.send(this.o.per, [commitHand({ payer: this.o.key.publicKey, config, feeVault: this.o.feeVault })], "commit_hand");
     const t0 = Date.now();
     for (;;) {
       const b = await this.o.base.getAccountInfo(t.runtime);

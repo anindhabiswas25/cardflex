@@ -1086,3 +1086,44 @@ fn lost_salt_aborts_before_the_deal_without_strikes() {
     );
     assert_eq!((after.salts_in, after.salt_commitments[0]), (0, [0; 32]));
 }
+
+/// CF-057: commit_hand accepts only MagicBlock's fee vault for our validator.
+#[test]
+fn commit_refuses_a_fake_fee_vault() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..2].copy_from_slice(&[50 * BOOT; 2]);
+    let mut t = dealt_table(2, stacks, [3; 32], (0, 0));
+    // Anchor wants an executable account at the magic program's address; the
+    // vault check runs before any call into it.
+    t.svm
+        .set_account(
+            ephemeral_rollups_sdk::consts::MAGIC_PROGRAM_ID,
+            Account {
+                lamports: 1_000_000,
+                data: vec![],
+                owner: "NativeLoader1111111111111111111111111111111"
+                    .parse()
+                    .unwrap(),
+                executable: true,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+    let fake = Pubkey::new_unique();
+    let ix = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::CommitHand {}.data(),
+        card_flex::accounts::CommitHand {
+            payer: t.payer.pubkey(),
+            runtime: t.runtime,
+            hand_log: t.hand_log,
+            magic_fee_vault: Some(fake),
+            magic_program: ephemeral_rollups_sdk::consts::MAGIC_PROGRAM_ID,
+            magic_context: ephemeral_rollups_sdk::consts::MAGIC_CONTEXT_ID,
+        }
+        .to_account_metas(None),
+    );
+    let payer = t.payer.insecure_clone();
+    let e = send(&mut t.svm, &[ix], &[&payer]).unwrap_err();
+    assert!(e.contains("BadFeeVault"), "{e}");
+}

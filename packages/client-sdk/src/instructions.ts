@@ -137,9 +137,16 @@ export function abortLostHand(p: { payer: PublicKey; config: PublicKey; dealingO
 
 export const nextHand = (p: { payer: PublicKey; config: PublicKey }) => buildIx("next_hand", { payer: p.payer, runtime: tableAddresses(p.config).runtime });
 
-export function commitHand(p: { payer: PublicKey; config: PublicKey }) {
+/**
+ * `feeVault`: always pass `magicFeeVault()` (CF-057). With it the table's
+ * runtime pays the commit; without it only 10 commits per table work.
+ */
+export function commitHand(p: { payer: PublicKey; config: PublicKey; feeVault?: PublicKey }) {
   const t = tableAddresses(p.config);
-  return buildIx("commit_hand", { payer: p.payer, runtime: t.runtime, hand_log: t.handLog, magic_program: MAGIC_PROGRAMS.magicProgram, magic_context: MAGIC_PROGRAMS.magicContext });
+  return buildIx("commit_hand", {
+    payer: p.payer, runtime: t.runtime, hand_log: t.handLog, magic_fee_vault: p.feeVault ?? null,
+    magic_program: MAGIC_PROGRAMS.magicProgram, magic_context: MAGIC_PROGRAMS.magicContext,
+  });
 }
 
 /** Base: ledgers of every bought-in seat (TableConfig.seated), in seat order. */

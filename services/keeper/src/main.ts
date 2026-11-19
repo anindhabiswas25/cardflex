@@ -8,11 +8,12 @@
 //   CARDFLEX_DB          SQLite file shared with the API (index every hand); optional
 //   CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC, TICK_MS (500), HEARTBEAT_SECS (300), HAND_GAP_SECS (5),
 //   STUCK_SECS (120: a hand with no progress this long is checked for lost secret state, CF-053),
-//   PER_SOCKETS (16: keep-alive sockets to the PER, CF-061)
+//   PER_SOCKETS (16: keep-alive sockets to the PER, CF-061),
+//   (commits always pass MagicBlock's fee vault so the table's runtime pays; CF-057)
 import { readFileSync } from "node:fs";
 import { Agent } from "node:https";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, loadVerifier, perConnection, runtimePda, sizeOf, verifierWasmUrl } from "@card-flex/client-sdk";
+import { DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, loadVerifier, magicFeeVault, perConnection, runtimePda, sizeOf, verifierWasmUrl } from "@card-flex/client-sdk";
 import { Store } from "@card-flex/api/store";
 import { Keeper } from "./keeper.ts";
 import { runKeeper } from "./run.ts";
@@ -32,6 +33,8 @@ const keeper = new Keeper({
   base, per, key, store, verifier,
   heartbeatSecs: BigInt(env.HEARTBEAT_SECS ?? 300), handGapSecs: BigInt(env.HAND_GAP_SECS ?? 5),
   stuckSecs: Number(env.STUCK_SECS ?? 120),
+  // CF-057: with the fee vault the table's runtime pays; without it only 10 commits per table work.
+  feeVault: magicFeeVault(),
 });
 const tick = Number(env.TICK_MS ?? 500);
 

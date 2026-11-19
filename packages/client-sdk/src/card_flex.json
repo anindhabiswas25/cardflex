@@ -1190,6 +1190,15 @@
           }
         },
         {
+          "name": "magic_fee_vault",
+          "docs": [
+            "table's delegated runtime PDA pays the commit (program-signed); without",
+            "it MagicBlock allows only 10 commits per account. Checked in the handler."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "magic_program",
           "address": "Magic11111111111111111111111111111111111111"
         },
@@ -4414,6 +4423,15 @@
           }
         },
         {
+          "name": "magic_fee_vault",
+          "docs": [
+            "table's delegated runtime PDA pays the commit (program-signed); without",
+            "it MagicBlock allows only 10 commits per account. Checked in the handler."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "magic_program",
           "address": "Magic11111111111111111111111111111111111111"
         },
@@ -4933,6 +4951,11 @@
       "code": 6053,
       "name": "NotConfigured",
       "msg": "the table has no terms yet (configure_table first)"
+    },
+    {
+      "code": 6054,
+      "name": "BadFeeVault",
+      "msg": "not MagicBlock's fee vault for this table's validator"
     }
   ],
   "types": [

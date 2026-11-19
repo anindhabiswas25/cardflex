@@ -549,16 +549,39 @@ pub mod card_flex {
             .checked_add(1)
             .ok_or(CardFlexError::Overflow)?;
         ctx.accounts.runtime.exit(&crate::ID)?;
-        MagicIntentBundleBuilder::new(
-            ctx.accounts.payer.to_account_info(),
-            ctx.accounts.magic_context.to_account_info(),
-            ctx.accounts.magic_program.to_account_info(),
-        )
-        .commit(&[
+        let accounts = [
             ctx.accounts.runtime.to_account_info(),
             ctx.accounts.hand_log.to_account_info(),
-        ])
-        .build_and_invoke()?;
+        ];
+        // CF-057: MagicBlock lets an account be committed 10 times with a
+        // payer that isn't delegated; after that the payer must be a delegated
+        // account, with the validator's fee vault. With a fee vault the table's
+        // own runtime PDA (delegated, funded by the operator) pays, signed by
+        // the program.
+        match checked_fee_vault(&ctx.accounts.magic_fee_vault)? {
+            Some(v) => {
+                let config = ctx.accounts.runtime.config;
+                let seeds: &[&[u8]] =
+                    &[RUNTIME_SEED, config.as_ref(), &[ctx.accounts.runtime.bump]];
+                MagicIntentBundleBuilder::new(
+                    ctx.accounts.runtime.to_account_info(),
+                    ctx.accounts.magic_context.to_account_info(),
+                    ctx.accounts.magic_program.to_account_info(),
+                )
+                .magic_fee_vault(v)
+                .commit(&accounts)
+                .build_and_invoke_signed(&[seeds])?;
+            }
+            None => {
+                MagicIntentBundleBuilder::new(
+                    ctx.accounts.payer.to_account_info(),
+                    ctx.accounts.magic_context.to_account_info(),
+                    ctx.accounts.magic_program.to_account_info(),
+                )
+                .commit(&accounts)
+                .build_and_invoke()?;
+            }
+        }
         Ok(())
     }
 
@@ -1861,16 +1884,39 @@ pub mod card_flex {
             .checked_add(1)
             .ok_or(CardFlexError::Overflow)?;
         ctx.accounts.runtime.exit(&crate::ID)?;
-        MagicIntentBundleBuilder::new(
-            ctx.accounts.authority.to_account_info(),
-            ctx.accounts.magic_context.to_account_info(),
-            ctx.accounts.magic_program.to_account_info(),
-        )
-        .commit_and_undelegate(&[
+        let accounts = [
             ctx.accounts.runtime.to_account_info(),
             ctx.accounts.hand_log.to_account_info(),
-        ])
-        .build_and_invoke()?;
+        ];
+        // CF-057: MagicBlock lets an account be committed 10 times with a
+        // payer that isn't delegated; after that the payer must be a delegated
+        // account, with the validator's fee vault. With a fee vault the table's
+        // own runtime PDA (delegated, funded by the operator) pays, signed by
+        // the program.
+        match checked_fee_vault(&ctx.accounts.magic_fee_vault)? {
+            Some(v) => {
+                let config = ctx.accounts.runtime.config;
+                let seeds: &[&[u8]] =
+                    &[RUNTIME_SEED, config.as_ref(), &[ctx.accounts.runtime.bump]];
+                MagicIntentBundleBuilder::new(
+                    ctx.accounts.runtime.to_account_info(),
+                    ctx.accounts.magic_context.to_account_info(),
+                    ctx.accounts.magic_program.to_account_info(),
+                )
+                .magic_fee_vault(v)
+                .commit_and_undelegate(&accounts)
+                .build_and_invoke_signed(&[seeds])?;
+            }
+            None => {
+                MagicIntentBundleBuilder::new(
+                    ctx.accounts.authority.to_account_info(),
+                    ctx.accounts.magic_context.to_account_info(),
+                    ctx.accounts.magic_program.to_account_info(),
+                )
+                .commit_and_undelegate(&accounts)
+                .build_and_invoke()?;
+            }
+        }
         Ok(())
     }
 }
@@ -2009,6 +2055,24 @@ fn void_settlement(runtime: &mut TableRuntime) -> Result<()> {
         .ok_or(CardFlexError::BadStacks)?;
     runtime.stacks = restored;
     Ok(())
+}
+
+/// CF-057: the optional fee vault must be MagicBlock's `magic-fee-vault` PDA
+/// for our validator (the local stack's only in `local-stack` builds).
+fn checked_fee_vault<'info>(
+    v: &Option<UncheckedAccount<'info>>,
+) -> Result<Option<AccountInfo<'info>>> {
+    let Some(v) = v else { return Ok(None) };
+    let dlp = ephemeral_rollups_sdk::id();
+    let vault_of = |validator: &Pubkey| {
+        Pubkey::find_program_address(&[b"magic-fee-vault", validator.as_ref()], &dlp).0
+    };
+    require!(
+        v.key() == vault_of(&TEE_VALIDATOR)
+            || (cfg!(feature = "local-stack") && v.key() == vault_of(&LOCAL_STACK_VALIDATOR)),
+        CardFlexError::BadFeeVault
+    );
+    Ok(Some(v.to_account_info()))
 }
 
 fn apply_leaves(runtime: &mut TableRuntime) {
@@ -2339,4 +2403,6 @@ pub enum CardFlexError {
     NotLost,
     #[msg("the table has no terms yet (configure_table first)")]
     NotConfigured,
+    #[msg("not MagicBlock's fee vault for this table's validator")]
+    BadFeeVault,
 }

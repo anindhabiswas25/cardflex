@@ -35,7 +35,7 @@ import { homedir } from "node:os";
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
   DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, TABLE_STATUS, decodeGlobal, decodeLedger, decodeRuntime, decodeTableConfig,
-  globalPda, perConnection, perLogin, sizeOf, tableAddresses,
+  globalPda, perConnection, perLogin, sizeOf, tableAddresses, magicFeeVault,
 } from "@card-flex/client-sdk";
 import { confirmByPolling } from "@card-flex/client-sdk";
 import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, syncGlobalAuthority, updateGlobal } from "./admin.ts";
@@ -225,7 +225,7 @@ async function main() {
       const kp = signer();
       const { cfg } = await readTable(config);
       const tee = perConnection(dry ? null : (await perLogin(kp, perUrl)).token, perUrl);
-      for (const [i, ix] of closeTablePer(kp.publicKey, config, cfg.max_seats).entries()) {
+      for (const [i, ix] of closeTablePer(kp.publicKey, config, cfg.max_seats, magicFeeVault()).entries()) {
         await send(tee, [ix], kp, `PER close ${i + 1}`, { skipPreflight: true }).catch((e) => console.log(`  (skipped: ${String(e.message ?? e).slice(0, 80)})`));
       }
       console.log("undelegation requested; the base layer shows it after the commit lands");

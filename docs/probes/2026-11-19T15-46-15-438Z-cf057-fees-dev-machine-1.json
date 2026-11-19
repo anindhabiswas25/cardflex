@@ -1,0 +1,109 @@
+{
+  "ticket": "CF-057",
+  "region": "dev-machine-1",
+  "at": "2026-11-19T15:46:15.438Z",
+  "config": "FVYz8o2mznM7JH9v3vXoutggMA3LTnedAncyCmxLMAov",
+  "escrow": false,
+  "hands": 12,
+  "commits": 13,
+  "feeVault": true,
+  "keeperEscrowInPer": {
+    "before": null,
+    "after": null
+  },
+  "runtimeInPer": {
+    "before": 6980000,
+    "after": 6980000
+  },
+  "steps": [
+    {
+      "step": "operator: create + configure table",
+      "delta": {
+        "operator": -25036320,
+        "runtime": 7083680,
+        "vault": 690880
+      }
+    },
+    {
+      "step": "player 0: buy_in (1,000,000 lamports)",
+      "delta": {
+        "wallet0": -2300400,
+        "vault": 1000000,
+        "ledger0": 1295400
+      }
+    },
+    {
+      "step": "player 0: join_seat",
+      "delta": {
+        "wallet0": -5000
+      }
+    },
+    {
+      "step": "player 1: buy_in (1,000,000 lamports)",
+      "delta": {
+        "wallet1": -2300400,
+        "vault": 1000000,
+        "ledger1": 1295400
+      }
+    },
+    {
+      "step": "player 1: join_seat",
+      "delta": {
+        "wallet1": -5000
+      }
+    },
+    {
+      "step": "operator: delegate to the TEE",
+      "delta": {
+        "operator": -6345560
+      }
+    },
+    {
+      "step": "operator: open permissions + secret accounts (PER)",
+      "delta": {}
+    },
+    {
+      "step": "players: PER login (session keys)",
+      "delta": {}
+    },
+    {
+      "step": "play 12 hands (keeper commits + syncs each)",
+      "delta": {
+        "keeper": -65000,
+        "runtime": -103680
+      }
+    },
+    {
+      "step": "players: leave_seat (PER, session key)",
+      "delta": {}
+    },
+    {
+      "step": "keeper: commit + sync the leaves",
+      "delta": {
+        "keeper": -5000
+      }
+    },
+    {
+      "step": "player 0: cash_out",
+      "delta": {
+        "wallet0": 2271650,
+        "vault": -981250,
+        "ledger0": -1295400
+      }
+    },
+    {
+      "step": "player 1: cash_out",
+      "delta": {
+        "wallet1": 2271650,
+        "vault": -981250,
+        "ledger1": -1295400
+      }
+    },
+    {
+      "step": "operator: close + undelegate",
+      "delta": {
+        "runtime": 92320
+      }
+    }
+  ]
+}

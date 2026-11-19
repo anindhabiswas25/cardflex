@@ -3,6 +3,7 @@ export * from "./constants.ts";
 export * from "./pda.ts";
 export * from "./accounts.ts";
 export * from "./instructions.ts";
+export * from "./fees.ts";
 export * from "./per.ts";
 export * from "./attestation.ts";
 export * from "./fairness.ts";

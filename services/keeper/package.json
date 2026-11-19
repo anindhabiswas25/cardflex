@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "drill": "node test/drill.ts",
     "lost-drill": "node test/lost-drill.ts",
-    "load": "node test/load.ts"
+    "load": "node test/load.ts",
+    "fees": "node test/fees.ts"
   },
   "dependencies": {
     "@card-flex/api": "workspace:*",

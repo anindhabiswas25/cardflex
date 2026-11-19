@@ -233,6 +233,11 @@ Planned crates and apps are listed in PRD §7.
   you do. Clients must use `verifyTee` (pinned measurements), never only the
   MagicBlock SDK's check. Update `DEVNET_TEE_MEASUREMENTS` only after
   confirming a MagicBlock release.
+- Commits (CF-057): MagicBlock allows only 10 commits per account with a
+  non-delegated payer; then `commit_hand` fails (`0xA0000000`). ALWAYS pass
+  `magic_fee_vault` (`magicFeeVault()` in the SDK) to `commit_hand` and
+  `undelegate_table`: the program then makes the runtime PDA the payer.
+  Any drill that plays > 10 hands on one table needs it.
 - Ops (CF-056): production tables use refund timeout 1,800 s; the keeper
   heartbeats (commit + sync) every 300 s in EVERY phase, or a long hand
   could make a table refundable mid-hand. Alarms: `cf-admin watch`; lost
