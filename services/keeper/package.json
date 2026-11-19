@@ -11,7 +11,8 @@
     "drill": "node test/drill.ts",
     "lost-drill": "node test/lost-drill.ts",
     "load": "node test/load.ts",
-    "fees": "node test/fees.ts"
+    "fees": "node test/fees.ts",
+    "join-drill": "node test/join-drill.ts"
   },
   "dependencies": {
     "@card-flex/api": "workspace:*",

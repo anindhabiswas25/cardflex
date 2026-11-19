@@ -82,3 +82,16 @@ test("CF-056: heartbeat during a long hand too, never instead of a real step", (
   const timedOut = runtime((x) => { order(x); x.phase = PHASE.DEALT; x.turn_deadline = 900n; });
   assert.equal(decide(timedOut, ctx({ lastCommitSecs: 600n })).kind, "timeout_turn");
 });
+
+test("waiting players are seated between hands, before the next start", () => {
+  const two = (r: any) => { r.occupied = 0b11; r.stacks[0] = 1_000_000n; r.stacks[1] = 1_000_000n; };
+  // A third player bought in during the last hand.
+  assert.deepEqual(decide(runtime(two), ctx({ waitingSeats: [2] })), { kind: "join_waiting", seats: [2] });
+  assert.equal(decide(runtime(two), ctx({ waitingSeats: [] })).kind, "start_hand");
+  // A lone player plus a newcomer: seat them, then a 2-player hand can start.
+  assert.deepEqual(decide(runtime((r) => { r.occupied = 0b1; r.stacks[0] = 1_000_000n; }), ctx({ waitingSeats: [3] })), { kind: "join_waiting", seats: [3] });
+  // Live Side Show grants are revoked first (start_hand refuses them anyway).
+  assert.equal(decide(runtime((r) => { two(r); r.grants = 0b11; }), ctx({ waitingSeats: [2] })).kind, "revoke_views");
+  // Never during a hand: the newcomer waits for the next one.
+  assert.notEqual(decide(runtime((r) => { two(r); r.phase = PHASE.DEALT; r.turn_deadline = 2_000n; }), ctx({ waitingSeats: [2] })).kind, "join_waiting");
+});

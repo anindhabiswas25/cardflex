@@ -4,7 +4,7 @@
 // token grants reads, never signatures).
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  abortLostHand, confirmByPolling, cancelHand, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
+  abortLostHand, confirmByPolling, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
   revealHand, sideShowView, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
@@ -34,6 +34,10 @@ type TableState = {
   lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number;
   /** CF-053: last seen hand progress and when it changed (ms). */
   progress: string; progressAt: number;
+  /** Base-layer TableConfig, re-read at most every few seconds while idle. */
+  cfg?: { at: number; seated: number; epochs: number[] };
+  /** join_seat failures per "seat:epoch"; skipped after 2 so a bad ledger can't block the table. */
+  joinFails: Map<string, number>;
 };
 
 export class Keeper {
@@ -63,6 +67,20 @@ export class Keeper {
     return a ? decodeRuntime(a.data) : null;
   }
 
+  /** Seats bought in on the base layer but not seated in the runtime (CF-057 follow-up). */
+  private async waitingSeats(config: PublicKey, rt: TableRuntime, st: TableState): Promise<number[]> {
+    if (!st.cfg || Date.now() - st.cfg.at > 3_000) {
+      const c = await this.o.base.getAccountInfo(config);
+      if (!c) return [];
+      const cfg = decodeTableConfig(c.data);
+      st.cfg = { at: Date.now(), seated: cfg.seated, epochs: cfg.seat_epochs };
+    }
+    const { seated, epochs } = st.cfg;
+    return [0, 1, 2, 3, 4, 5].filter((s) =>
+      ((seated >> s) & 1) === 1 && ((rt.occupied >> s) & 1) === 0 && epochs[s] > rt.seat_epoch[s] &&
+      (st.joinFails.get(`${s}:${epochs[s]}`) ?? 0) < 2);
+  }
+
   private async commitAndSync(config: PublicKey, st: TableState, rt: TableRuntime) {
     const t = tableAddresses(config);
     const seq0 = decodeRuntime((await this.o.base.getAccountInfo(t.runtime))!.data).commit_seq;
@@ -86,7 +104,7 @@ export class Keeper {
    */
   async tick(config: PublicKey, snap?: Snapshot): Promise<Step> {
     const id = config.toBase58();
-    const st = this.tables.get(id) ?? { lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 0, progress: "", progressAt: Date.now() };
+    const st: TableState = this.tables.get(id) ?? { lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 0, progress: "", progressAt: Date.now(), joinFails: new Map() };
     this.tables.set(id, st);
     if (Date.now() < st.backoffUntil) return { kind: "wait", why: "backing off after an error" };
     const rt = snap ? snap.rt : await this.readRuntime(config);
@@ -98,9 +116,10 @@ export class Keeper {
       st.progressAt = Date.now();
     }
     const stuck = inProgress(rt) && Date.now() - st.progressAt >= (this.o.stuckSecs ?? 120) * 1000;
+    const waitingSeats = rt.phase === PHASE.IDLE ? await this.waitingSeats(config, rt, st).catch(() => []) : [];
     const step = decide(rt, {
       nowSecs: BigInt(Math.floor(Date.now() / 1000)), slot, lastCommitSecs: st.lastCommitSecs,
-      heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: st.departedSynced, stuck,
+      heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: st.departedSynced, stuck, waitingSeats,
     });
     if (step.kind === "wait") return step;
     const payer = this.o.key.publicKey;
@@ -108,6 +127,19 @@ export class Keeper {
     try {
       switch (step.kind) {
         case "start_hand": await this.send(this.o.per, [startHand({ payer, config })], step.kind); break;
+        case "join_waiting":
+          for (const seat of step.seats) {
+            const key = `${seat}:${st.cfg?.epochs[seat] ?? 0}`;
+            try {
+              await this.send(this.o.per, [joinSeat({ payer, config, seat, live: true })], `join_seat ${seat}`);
+              this.log(`${short} seated a waiting player at seat ${seat}`);
+            } catch (e) {
+              st.joinFails.set(key, (st.joinFails.get(key) ?? 0) + 1);
+              throw e;
+            }
+          }
+          st.cfg = undefined; // re-read before the next decision
+          break;
         case "cancel_salts": await this.send(this.o.per, [cancelSalts({ payer, config })], step.kind); break;
         case "request_shuffle": await this.send(this.o.per, [requestShuffle({ payer, config })], step.kind); break;
         case "cancel_hand": await this.send(this.o.per, [cancelHand({ payer, config })], step.kind); break;

@@ -49,6 +49,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-059 | P8: privacy-suite check for an empty permission member list (answer MagicBlock open question 3 ourselves) | Planned | |
 | CF-060 | P8: monitoring and alerts (keeper health, cancel rate, tables near refund, reconcile failures) | Planned | |
 | CF-061 | P8: keeper scaling: one loop per table, batched reads; re-run the CF-054 staircase | Done: per-table loops, batched reads, HTTP-polling confirms (fixes an OOM), bounded keep-alive pools. 50-table capacity not measurable from one IP (PER per-IP limit); PM accepted for P8 (option 3), re-test in CF-062 | `services/keeper/src/run.ts`, `docs/findings/cf-054-load.md` |
+| CF-063 | P8: keeper seats players who bought in mid-hand, before the next hand | Done: Devnet `pnpm --filter @card-flex/keeper join-drill` 3/3 (bought in during hand #0, dealt into hand #1) | `services/keeper/src/keeper.ts` |
 | CF-062 | P9 prerequisite: multi-machine load test (bots spread over several machines/IPs, one keeper), 50 tables, latency targets | Planned (before public Devnet) | `pnpm load-test` per machine |
 
 ## Open program items (P8)
@@ -80,6 +81,17 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-19 — CF-063: a table plays with 2+ players; someone arriving
+  mid-hand waits for the next hand. `join_seat` only works between hands,
+  and nothing seated a waiting player unless their app hit the ~5 s gap.
+  The keeper now reads TableConfig (cached 3 s) between hands and seats
+  bought-in, unseated players before `start_hand` (a ledger that fails to
+  join twice is skipped, so it can't block the table). Devnet join drill
+  3/3. Open from the commit security review: with the fee vault the
+  runtime pays for a permissionless `commit_hand`; free on Devnet, but on
+  Mainnet anyone could drain the table's budget by spamming commits. Fix
+  next: runtime pays only when the table changed since the last commit or
+  a heartbeat interval passed.
 - 2026-11-19 — CF-057: fee measurement through the whole player journey
   found a launch blocker: MagicBlock allows 10 commits per account by a
   payer that isn't delegated; from the 11th, `commit_hand` failed

@@ -9,6 +9,7 @@ export const VRF_TIMEOUT_SLOTS = 3_000n;
 
 export type Step =
   | { kind: "start_hand" }
+  | { kind: "join_waiting"; seats: number[] } // seat players who bought in mid-hand
   | { kind: "cancel_salts" }
   | { kind: "request_shuffle" }
   | { kind: "cancel_hand" }
@@ -40,6 +41,12 @@ export type Ctx = {
    * (it fails harmlessly with NotLost if everything still exists).
    */
   stuck?: boolean;
+  /**
+   * Seats that bought in (base-layer TableConfig) but aren't seated in the
+   * runtime yet; the keeper seats them between hands, before start_hand, so
+   * a player who arrived mid-hand plays the very next hand.
+   */
+  waitingSeats?: number[];
 };
 
 const IN_PROGRESS: number[] = [PHASE.SALTS_PENDING, PHASE.SALTS_DONE, PHASE.VRF_PENDING, PHASE.SEEDED, PHASE.DEALT, PHASE.HAND_COMPLETE];
@@ -78,6 +85,8 @@ function phaseStep(rt: TableRuntime, c: Ctx): Step {
         for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) if (((rt.grants >> a) & 1) && ((rt.grants >> b) & 1)) pairs.push([a, b]);
         return { kind: "revoke_views", pairs: pairs.length ? pairs : bits(rt.grants).map((s) => [s, (s + 1) % 6] as [number, number]) };
       }
+      // Someone bought in during the last hand: seat them before the next one.
+      if (c.waitingSeats?.length) return { kind: "join_waiting", seats: c.waitingSeats };
       // Players who left must be able to cash out: get their final stack synced.
       if ((rt.departed & ~c.departedSynced) !== 0) return { kind: "commit_and_sync", reason: "departed" };
       const eligible = bits(rt.occupied).filter((s) => rt.stacks[s] >= rt.boot && rt.boot > 0n);

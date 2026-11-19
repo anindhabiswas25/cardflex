@@ -238,6 +238,9 @@ Planned crates and apps are listed in PRD §7.
   `magic_fee_vault` (`magicFeeVault()` in the SDK) to `commit_hand` and
   `undelegate_table`: the program then makes the runtime PDA the payer.
   Any drill that plays > 10 hands on one table needs it.
+- Joining (CF-063): a hand needs 2+ players; a player who buys in mid-hand
+  is seated by the keeper between hands (join_waiting before start_hand)
+  and plays the next hand.
 - Ops (CF-056): production tables use refund timeout 1,800 s; the keeper
   heartbeats (commit + sync) every 300 s in EVERY phase, or a long hand
   could make a table refundable mid-hand. Alarms: `cf-admin watch`; lost
