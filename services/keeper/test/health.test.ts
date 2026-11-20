@@ -20,3 +20,9 @@ test("CF-060: stale reads and a failing table are unhealthy", () => {
   assert.equal(health(new Map(), { startedAt: 0, lastReadAt: 0, lastScanAt: 0, tables: 2 }, READ_STALE_MS + 1).ok, false);
   assert.equal(health(new Map(), { startedAt: 0, lastReadAt: 0, lastScanAt: 0, tables: 0 }, 10 * READ_STALE_MS).ok, true);
 });
+
+test("CF-064 review: a table that hasn't named the keeper is unhealthy", () => {
+  const h = health(new Map([["TableBBBBBBBB", st({ notKeeper: true })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000);
+  assert.equal(h.ok, false);
+  assert.match(h.reasons[0], /hasn't named this keeper/);
+});

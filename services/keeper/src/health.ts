@@ -21,6 +21,7 @@ export function health(tables: Map<string, TableState>, run: RunStatus, now: num
   for (const [table, st] of tables) {
     perTable.push({ table, hands: st.hands, failures: st.failures, progressAgeSecs: Math.round((now - st.progressAt) / 1000), lastCommitSecs: Number(st.lastCommitSecs) });
     if (st.failures >= TABLE_FAILING) reasons.push(`${table.slice(0, 8)}: ${st.failures} failed steps in a row`);
+    if (st.notKeeper) reasons.push(`${table.slice(0, 8)}: table hasn't named this keeper (cf-admin table keeper); hands sync only every 240 s`);
   }
   return { ok: reasons.length === 0, reasons, uptimeSecs: Math.round((now - run.startedAt) / 1000), tables: run.tables, lastReadAgeSecs: readAge === null ? null : Math.round(readAge / 1000), perTable };
 }

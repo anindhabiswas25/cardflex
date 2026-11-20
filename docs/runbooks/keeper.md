@@ -59,8 +59,10 @@ read token), but prefer the keeper's own key.
 ## Commits the table pays for (CF-064)
 
 With the fee vault the table's runtime pays each commit, so the program
-pays only for useful ones: the state changed and no hand is running, or
-240 s passed since the last paid commit (the heartbeat is 300 s). Anything
+pays only for useful ones: the table's NAMED keeper after the state changed
+between hands, anyone once 240 s passed since the last paid commit (the
+heartbeat is 300 s). A keeper the table didn't name (`cf-admin table
+keeper`) gets per-hand commits refused; it warns and `/health` reports it. Anything
 else fails with `CommitNotNeeded`; the keeper then just syncs the recent
 commit. The table authority may always commit (`cf-admin table close`).
 

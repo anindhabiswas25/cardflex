@@ -38,6 +38,8 @@ export type TableState = {
   cfg?: { at: number; seated: number; epochs: number[] };
   /** join_seat failures per "seat:epoch"; skipped after 2 so a bad ledger can't block the table. */
   joinFails: Map<string, number>;
+  /** The table hasn't named this keeper's key (set_keeper): its per-hand commits are refused. */
+  notKeeper?: boolean;
 };
 
 export class Keeper {
@@ -92,6 +94,11 @@ export class Keeper {
       // nothing changed). Fine: just make sure that commit is synced.
       if (!isProgramError(e, "CommitNotNeeded")) throw e;
       committed = false;
+      // Only the table's named keeper may commit right after a hand (CF-064
+      // review); anyone else waits for the 240 s gap, so hands sync late.
+      const mine = rt.keeper.equals(this.o.key.publicKey);
+      if (!mine && !st.notKeeper) this.log(`${config.toBase58().slice(0, 8)} WARNING: this table hasn't named keeper ${this.o.key.publicKey.toBase58()}; run \`cf-admin table keeper ${config.toBase58()} ${this.o.key.publicKey.toBase58()}\``);
+      st.notKeeper = !mine;
     }
     const t0 = Date.now();
     for (;;) {

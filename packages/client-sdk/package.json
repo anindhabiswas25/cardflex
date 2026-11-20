@@ -2,6 +2,7 @@
   "name": "@card-flex/client-sdk",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "CF-016: TypeScript client for the Card Flex program (PDAs, accounts, instructions, PER auth, attestation, fairness, rules v1)",
   "type": "module",
   "exports": {

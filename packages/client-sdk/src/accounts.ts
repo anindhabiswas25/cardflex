@@ -37,6 +37,8 @@ export type TableRuntime = {
   boot: bigint; rake_bps: number; rake_cap: bigint; rake_owed: bigint; action_seq: bigint; game: GameState;
   side_show_viewers: number[]; side_show_hand_no: bigint; turn_deadline: bigint; button: number; seat_epoch: number[];
   leaving: number; departed: number; salts_deadline: bigint; missed_salts: number[]; last_hand_end: bigint; bump: number;
+  /** CF-064 */ last_paid_commit: bigint; paid_commit_hash: Uint8Array;
+  /** CF-065: the keeper's read key (PublicKey.default = none) */ keeper: PublicKey;
 };
 export type TableConfig = {
   authority: PublicKey; table_id: bigint; max_seats: number; runtime: PublicKey; bump: number; status: number; validator: PublicKey;

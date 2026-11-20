@@ -386,11 +386,15 @@ pub fn runtime_state_hash(data: &[u8]) -> [u8; 32] {
     .to_bytes()
 }
 
-/// CF-064: may the runtime pay for a commit now? Yes if the state changed
-/// since its last paid commit and no hand is in progress, if a heartbeat is
-/// due, or if the table's authority asks.
+/// CF-064: may the runtime pay for a commit now? Yes if a heartbeat is due
+/// (anyone), if the table's registered keeper asks after the state changed
+/// between hands (end of hand, join, leave), or if the authority asks.
+/// The "changed" shortcut is the keeper's only: a seated player can change
+/// state for free (e.g. `rotate_session`) and would otherwise make the table
+/// pay one commit per change (security review of CF-064).
 pub fn paid_commit_allowed(rt: &TableRuntime, hash: &[u8; 32], now: i64, payer: &Pubkey) -> bool {
-    let changed = rt.phase == phase::IDLE && *hash != rt.paid_commit_hash;
+    let is_keeper = rt.keeper != Pubkey::default() && *payer == rt.keeper;
+    let changed = is_keeper && rt.phase == phase::IDLE && *hash != rt.paid_commit_hash;
     let due = now >= rt.last_paid_commit.saturating_add(COMMIT_MIN_GAP_SECS);
     changed || due || *payer == rt.authority
 }

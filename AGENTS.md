@@ -241,9 +241,12 @@ Planned crates and apps are listed in PRD §7.
   `undelegate_table`: the program then makes the runtime PDA the payer.
   Any drill that plays > 10 hands on one table needs it.
 - Paid commits (CF-064): with the fee vault, `commit_hand` succeeds only if
-  the runtime changed since the last paid commit and the phase is IDLE, or
-  `COMMIT_MIN_GAP_SECS` (240) passed, or the payer is the table authority;
-  else `CommitNotNeeded`. The hash skips `commit_seq` and the CF-064 tail
+  the payer is the table's NAMED KEEPER (`TableRuntime.keeper`) and the
+  runtime changed since the last paid commit with the phase IDLE, or
+  `COMMIT_MIN_GAP_SECS` (240) passed (anyone), or the payer is the table
+  authority; else `CommitNotNeeded`. Players can change state for free
+  (e.g. `rotate_session`), so the "changed" shortcut must stay keeper-only.
+  Every table driven by a separate keeper key needs `cf-admin table keeper`. The hash skips `commit_seq` and the CF-064 tail
   fields. Keeper: on `CommitNotNeeded` just sync. Mid-hand commits by
   non-authorities only via the 240 s heartbeat.
 - Keeper read key (CF-065): `TableRuntime.keeper`, set by `set_keeper`
@@ -273,6 +276,7 @@ Planned crates and apps are listed in PRD §7.
 - The SDK IDL must come from the DEFAULT build: after `pnpm deploy:devnet`
   (test-deck build) run `anchor build` before `sync-idl`, or `poc_deal`
   leaks into the SDK.
+- License: Apache-2.0 (`LICENSE`, `NOTICE`); every crate and package says so.
 - Joining (CF-063): a hand needs 2+ players; a player who buys in mid-hand
   is seated by the keeper between hands (join_waiting before start_hand)
   and plays the next hand.

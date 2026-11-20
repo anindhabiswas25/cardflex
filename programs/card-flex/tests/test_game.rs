@@ -657,11 +657,27 @@ fn paid_commit_rule() {
         &stranger
     ));
     assert!(paid_commit_allowed(&rt, &h, 1_001, &rt.authority.clone()));
-    // Between hands: changed state may commit at once, unchanged may not.
+    // Between hands with changed state: only the registered keeper may
+    // commit at once (a player could change state for free and spam).
     rt.phase = phase::IDLE;
-    assert!(paid_commit_allowed(&rt, &h, 1_001, &stranger));
-    rt.paid_commit_hash = h;
     assert!(!paid_commit_allowed(&rt, &h, 1_001, &stranger));
+    assert!(
+        !paid_commit_allowed(&rt, &h, 1_001, &Pubkey::default()),
+        "no keeper set"
+    );
+    let keeper = Pubkey::new_unique();
+    rt.keeper = keeper;
+    assert!(paid_commit_allowed(&rt, &h, 1_001, &keeper));
+    assert!(!paid_commit_allowed(&rt, &h, 1_001, &stranger));
+    // Unchanged state: not even the keeper.
+    rt.paid_commit_hash = h;
+    assert!(!paid_commit_allowed(&rt, &h, 1_001, &keeper));
+    assert!(paid_commit_allowed(
+        &rt,
+        &h,
+        1_000 + COMMIT_MIN_GAP_SECS,
+        &keeper
+    ));
 }
 
 /// CF-064: a stranger can't make the table pay for commits it doesn't need.

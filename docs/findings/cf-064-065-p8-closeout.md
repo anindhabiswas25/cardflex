@@ -218,3 +218,16 @@ Unit test: a fake cluster where copy 1 lands but every confirm poll fails
 Argument parsing moved to `services/admin/src/args.ts` with tests
 (`args.test.ts`): a bare `--` is ignored, valued options don't leak into
 positionals, boolean flags don't swallow the next word.
+
+### Security review of the CF-064 gate (2026-11-21)
+
+An automated review of the commit found that the "state changed between
+hands" shortcut was open to anyone. A seated player can change runtime
+state for free (`rotate_session`, leave and rejoin) and then make the table
+pay one commit per change: a slower drain, but still a drain. Fix: that
+shortcut is now only for the table's named keeper (`TableRuntime.keeper`);
+everyone else needs the 240 s gap; the authority may always commit. The
+keeper logs a warning and its `/health` turns unhealthy ("table hasn't
+named this keeper") if a table didn't run `cf-admin table keeper`, since
+its per-hand commits would then wait 240 s. LiteSVM `paid_commit_rule`
+covers stranger, unset keeper, named keeper and unchanged state.

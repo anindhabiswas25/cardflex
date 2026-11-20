@@ -187,3 +187,17 @@ test("CF-057: fee vault matches MagicBlock's derivation; commit_hand carries it"
   const c = commitHand({ payer: k, config: k, feeVault: magicFeeVault() });
   assert.ok(c.keys.some((x) => x.pubkey.equals(magicFeeVault()) && x.isWritable));
 });
+
+test("CF-064/065: TableRuntime decodes the commit fields and the keeper key", async () => {
+  const { decodeRuntime, discriminatorOf, sizeOf } = await import("../src/index.ts");
+  const d = new Uint8Array(8 + sizeOf({ defined: { name: "TableRuntime" } }));
+  d.set(discriminatorOf("TableRuntime"), 0);
+  const k = Keypair.generate().publicKey;
+  new DataView(d.buffer).setBigInt64(1212, 1_800_000_000n, true);
+  d.fill(9, 1220, 1252);
+  d.set(k.toBytes(), 1252);
+  const rt = decodeRuntime(d);
+  assert.equal(rt.last_paid_commit, 1_800_000_000n);
+  assert.equal(rt.paid_commit_hash[0], 9);
+  assert.ok(rt.keeper.equals(k));
+});

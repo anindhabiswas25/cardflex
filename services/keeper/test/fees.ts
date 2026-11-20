@@ -16,7 +16,7 @@ import {
   perConnection, perLogin, submitSalt, tableAddresses,
 } from "@card-flex/client-sdk";
 import { buildIx } from "@card-flex/client-sdk";
-import { closeTablePer, createTable, delegateTable, openTablePer } from "../../admin/src/admin.ts";
+import { closeTablePer, createTable, delegateTable, openTablePer, setKeeper } from "../../admin/src/admin.ts";
 import { Keeper } from "../src/keeper.ts";
 
 const HANDS = Number(process.env.HANDS ?? 12);
@@ -96,6 +96,8 @@ await record("operator: delegate to the TEE", extra);
 const opPer = perConnection((await perLogin(operator)).token);
 for (let i = 0; i < 60 && !(await opPer.getAccountInfo(t.runtime).catch(() => null)); i++) await sleep(1000);
 for (const ix of openTablePer(operator.publicKey, config, 2)) await send(opPer, [ix], [operator], true);
+// CF-064 review: only the table's named keeper gets per-hand paid commits.
+await send(opPer, [setKeeper(operator.publicKey, config, keeperKey.publicKey, true)], [operator], true);
 await record("operator: open permissions + secret accounts (PER)", extra);
 const conns = await Promise.all(players.map(async (p) => perConnection((await perLogin(p.session)).token)));
 await record("players: PER login (session keys)", extra);
