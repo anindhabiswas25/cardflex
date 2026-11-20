@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TABLE_STATUS, decodeAccount, discriminatorOf, sizeOf } from "@card-flex/client-sdk";
-import { assess, type TableFacts } from "../src/watch.ts";
+import { assess, keeperAlerts, KEEPER_MIN_LAMPORTS, teeAlerts, type TableFacts } from "../src/watch.ts";
 
 function blank<T>(name: "TableConfig" | "TableRuntime", patch: (x: any) => void): T {
   const d = new Uint8Array(8 + sizeOf({ defined: { name } }));
@@ -44,4 +44,24 @@ test("refunded table with unclaimed seats; cancel rate", () => {
   assert.deepEqual(codes(facts((f) => { (f.cfg as any).status = TABLE_STATUS.REFUNDED; f.nowSecs = 99_999n; })), ["warning:CLAIMS_PENDING"]);
   assert.deepEqual(codes(facts((f) => { (f.rt as any).cancelled_hands = 9n; })), ["warning:CANCEL_RATE"], "9 of 40 > 20%");
   assert.deepEqual(codes(facts((f) => { (f.rt as any).hand_no = 5n; (f.rt as any).cancelled_hands = 4n; })), [], "too few hands to judge");
+});
+
+test("CF-058: TEE attestation alarms", () => {
+  const m = { mrTd: "aa".repeat(48), rtMr0: "bb".repeat(48), rtMr1: "cc".repeat(48), rtMr2: "dd".repeat(48) };
+  const codes = (r: Parameters<typeof teeAlerts>[1]) => teeAlerts("https://tee", r).map((a) => `${a.level}:${a.code}`);
+  assert.deepEqual(codes({ ok: true, reasons: [], tcbStatus: "UpToDate", measurements: m }), []);
+  assert.deepEqual(codes({ ok: false, reasons: ["measurements are not on the allow-list (software changed or unknown machine)"], tcbStatus: "UpToDate", measurements: m }), ["critical:TEE_MEASUREMENTS_CHANGED"]);
+  assert.deepEqual(codes({ ok: false, reasons: ["TCB status OutOfDate, required UpToDate"], tcbStatus: "OutOfDate", advisoryIds: ["INTEL-SA-1"] }), ["critical:TEE_TCB"]);
+  assert.deepEqual(codes({ ok: false, reasons: ["quote reportData does not match our challenge"] }), ["critical:TEE_QUOTE_REPLAYED"]);
+  assert.deepEqual(codes({ ok: false, reasons: ["HTTP 502"] }), ["critical:TEE_QUOTE_INVALID"]);
+  assert.deepEqual(codes({ error: "fetch failed" }), ["warning:TEE_UNREACHABLE"]);
+});
+
+test("CF-060: keeper alarms", () => {
+  const codes = (o: Parameters<typeof keeperAlerts>[0]) => keeperAlerts(o).map((a) => `${a.level}:${a.code}`);
+  assert.deepEqual(codes({ health: { ok: true, reasons: [] }, balance: KEEPER_MIN_LAMPORTS }), []);
+  assert.deepEqual(codes({ health: { error: "ECONNREFUSED" } }), ["critical:KEEPER_DOWN"]);
+  assert.deepEqual(codes({ health: { ok: false, reasons: ["no successful PER read for 45 s"] } }), ["critical:KEEPER_UNHEALTHY"]);
+  assert.deepEqual(codes({ balance: KEEPER_MIN_LAMPORTS - 1n }), ["warning:KEEPER_LOW_FUNDS"]);
+  assert.deepEqual(codes({}), []);
 });

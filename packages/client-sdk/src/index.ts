@@ -10,5 +10,6 @@ export * from "./fairness.ts";
 export * as rules from "./rules.ts";
 export * from "./verifier.ts";
 export * from "./records.ts";
-export { idl } from "./idl.ts";
+export { idl, errorCode, isProgramError } from "./idl.ts";
 export { decode, encode, sizeOf } from "./borsh.ts";
+export { MAGIC_PROGRAMS } from "./exports-constants.ts";

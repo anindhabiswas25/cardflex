@@ -64,8 +64,10 @@ pnpm check:rules         # rules v1 vectors, independent Python
 pnpm test:sdk            # client SDK tests (rebuilds the WASM verifier first)
 pnpm test:api            # indexer + API tests (offline, real Devnet hand records)
 pnpm api                 # run the Devnet indexer + API on :4000 (CARDFLEX_DB, PORT, POLL_MS)
-pnpm keeper              # CF-051 keeper (CARDFLEX_PER_TOKEN from `pnpm admin -- token`, CARDFLEX_KEEPER_KEY, CARDFLEX_DB)
+pnpm keeper              # CF-051 keeper (CARDFLEX_KEEPER_KEY = fee payer + own read key, CARDFLEX_DB, HEALTH_PORT)
 pnpm keeper-drill        # Devnet: keeper runs a table unattended with bots, incl. an absent player
+TABLE=<old> pnpm --filter @card-flex/keeper migrate-drill   # CF-067: migrate an old table and play on it
+pnpm multiuser           # CF-066 Devnet: TABLES x 6 separate users, join/leave/cash-out, privacy, every hand verified
 pnpm admin -- table create --boot 25000 --rake-bps 250 --rake-cap 10000   # CF-041 operator CLI (see services/admin/src/cli.ts)
 pnpm reconcile -- --table <config> [--strict]   # CF-034 vault reconciliation on devnet
 pnpm money -- --region <label>   # CF-035 P6 money drill: live join/leave/cash-out/rake, reconciled each step
@@ -238,12 +240,46 @@ Planned crates and apps are listed in PRD §7.
   `magic_fee_vault` (`magicFeeVault()` in the SDK) to `commit_hand` and
   `undelegate_table`: the program then makes the runtime PDA the payer.
   Any drill that plays > 10 hands on one table needs it.
+- Paid commits (CF-064): with the fee vault, `commit_hand` succeeds only if
+  the runtime changed since the last paid commit and the phase is IDLE, or
+  `COMMIT_MIN_GAP_SECS` (240) passed, or the payer is the table authority;
+  else `CommitNotNeeded`. The hash skips `commit_seq` and the CF-064 tail
+  fields. Keeper: on `CommitNotNeeded` just sync. Mid-hand commits by
+  non-authorities only via the 240 s heartbeat.
+- Keeper read key (CF-065): `TableRuntime.keeper`, set by `set_keeper`
+  (`cf-admin table keeper`). Readers of the runtime = `runtime_members()`
+  (authority + keeper + seated sessions); use it in EVERY path that writes
+  the runtime permission. The keeper key is never a hand/salt/dealer reader
+  and can't be a session key. TableRuntime is 1,284 bytes (CF-064/065
+  fields appended after `bump`; older Devnet tables don't load).
+- Permissions (CF-059): never create a PRIVATE permission with an empty
+  member list (MagicBlock doesn't define it); "nobody" = a key nobody holds.
+  `tests/test_permission_members.rs` scans every `EphemeralMembersArgs`.
+  HandLog's permission is the only public one.
+- Sending from scripts/tools: use the SDK's `sendAndConfirm` (or the probes'
+  `send`), never a hand-rolled retry loop: a resend after a lost
+  confirmation applies the transaction twice (CF-067). On-chain errors are
+  final; only transport failures are retried.
+- Layout changes to `TableRuntime` (CF-067): only APPEND fields after the
+  last one, then add the old size to `MIGRATABLE_RUNTIME_LENS` so
+  `migrate_runtime` can grow existing tables (it restores the ephemeral
+  budget). A delegated (live) old table can't be migrated; its players leave
+  by `emergency_refund` + `claim_refund` (they never read the runtime).
+- A table opened in PER stays `locked` after closing: `join_seat` and
+  `set_keeper` must then run in PER (base layer: `PerAccountsMissing`).
+- Probe scripts build instructions by hand: when an Accounts struct gains an
+  (optional) account, update `packages/probes/src/*.mjs` too (`NO_FEE_VAULT`
+  = an omitted optional account).
+- The SDK IDL must come from the DEFAULT build: after `pnpm deploy:devnet`
+  (test-deck build) run `anchor build` before `sync-idl`, or `poc_deal`
+  leaks into the SDK.
 - Joining (CF-063): a hand needs 2+ players; a player who buys in mid-hand
   is seated by the keeper between hands (join_waiting before start_hand)
   and plays the next hand.
 - Ops (CF-056): production tables use refund timeout 1,800 s; the keeper
   heartbeats (commit + sync) every 300 s in EVERY phase, or a long hand
-  could make a table refundable mid-hand. Alarms: `cf-admin watch`; lost
+  could make a table refundable mid-hand. Alarms: `cf-admin watch` (also TEE
+  attestation, CF-058, and keeper `/health` + wallet, CF-060); lost
   accounts: `cf-admin table repair`; runbooks in `docs/runbooks/`.
 - Settings authority (CF-055): `GlobalConfig.authority` follows the program
   upgrade authority via `sync_global_authority` (signed by that key). Multisig

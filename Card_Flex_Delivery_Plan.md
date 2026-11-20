@@ -246,7 +246,7 @@ The docs don't answer these; PM raises them on MagicBlock Discord at kickoff and
 
 - [x] Does `DEFAULT_EPHEMERAL_QUEUE` VRF work inside the TEE rollup (PER)? Yes (CF-010): callback ~2 s after request; the base queue fails inside PER.
 - [x] Are transaction messages (`TX_MESSAGE`) hidden from non-members, so salt transactions stay private? Yes for non-members: `getTransaction` returns signature and status only (CF-006 spike). Existence and timing stay visible.
-- [ ] What does an empty member list mean: public or fully private?
+- [x] What does an empty member list mean: public or fully private? Moot for us (CF-059): no private permission can have an empty list; "nobody" is a key nobody holds (default key or a PDA), unreadable on Devnet.
 - [x] PER auth token lifetime, refresh method and challenge format? Answered in CF-003: JWT valid 30 days, no refresh endpoint, timestamped challenge (docs/findings/cf-003-devnet-access.md).
 - [ ] Can delegated accounts be force-undelegated if the TEE validator is down?
 - [ ] Limits on cranks: tasks per account, minimum interval, iterations?

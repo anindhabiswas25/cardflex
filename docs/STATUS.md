@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P8 (hardening).** CF-052/053/054/061 done, CF-055 done; CF-056 done except the multisig handover (team decision); CF-057 done (fixed a 10-hands-per-table blocker). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
+Current phase: **P8 (hardening), program and ops work complete.** CF-052–061 and CF-063–066 done; CF-056 done except the multisig handover (team decision). CF-062 (multi-machine load test) is replaced for now by CF-066, a one-machine multi-user test (no extra machines available, 2026-11-20 PM decision); re-run CF-062 when machines exist. Next: the UI (P7, `apps/web`). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 ## Tickets
 
@@ -45,21 +45,24 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-055 | P8: security review pass (incl. a keeper key that is not authority-derived) | Done (Devnet: money drill 53/53, privacy 230/230): no high findings open; fixed `GlobalConfig` authority could never change (blocked the multisig) and buy-in before configure; 1 medium accepted for Devnet (refund timer vs a committing-but-stalled PER) | `docs/findings/cf-055-security-review.md` |
 | CF-056 | P8: ops: Squads multisig, production refund timeout, reconcile alarms, runbooks | Done except the multisig handover itself (needs the team's members + threshold): refund timeout 1,800 s, keeper heartbeat 300 s in every phase (fixes mid-hand refund), `cf-admin watch` alarms, `cf-admin table repair`, `--dry-run --as` for Squads proposals, runbooks | `docs/runbooks/`, ADR 0004 amendment |
 | CF-057 | P8: commit-fee model (cost per table-hour, keeper wallet budget, behaviour past 10 commits) | Done: **found tables stopped committing after 10 hands (launch blocker)**; fixed (runtime PDA pays commits via MagicBlock's fee vault; 13/13 commits on Devnet). Player pays 15,000 lamports per session, moves free; keeper 5,000 per hand | `docs/findings/cf-057-fees.md`, `pnpm --filter @card-flex/keeper fees` |
-| CF-058 | P8: TEE measurement-change alert (we pin what we observe; alert when Devnet's changes) | Planned | |
-| CF-059 | P8: privacy-suite check for an empty permission member list (answer MagicBlock open question 3 ourselves) | Planned | |
-| CF-060 | P8: monitoring and alerts (keeper health, cancel rate, tables near refund, reconcile failures) | Planned | |
+| CF-058 | P8: TEE measurement-change alert (we pin what we observe; alert when Devnet's changes) | Done: `cf-admin watch` runs our attestation check every 600 s (`TEE_MEASUREMENTS_CHANGED`, `TEE_TCB`, …); `cf-admin tee` prints live values; Devnet still matches the 2026-11-18 pins | `services/admin/src/watch.ts`, `docs/findings/cf-064-065-p8-closeout.md` |
+| CF-059 | P8: empty permission member list (MagicBlock open question 3) | Done: answered by construction: no private permission can have an empty list (program guard + source-scan test); Devnet: empty seats' hands (reader = default key) unreadable to strangers and players | `tests/test_permission_members.rs`, keeper drill |
+| CF-060 | P8: monitoring and alerts (keeper health, cancel rate, tables near refund, reconcile failures) | Done: keeper `GET /health` (`HEALTH_PORT`); `cf-admin watch --keeper-url/--keeper`: `KEEPER_DOWN`, `KEEPER_UNHEALTHY`, `KEEPER_LOW_FUNDS` (plus CF-056 vault/refund/claims/cancel alarms) | `services/keeper/src/health.ts`, `docs/runbooks/alarms.md` |
 | CF-061 | P8: keeper scaling: one loop per table, batched reads; re-run the CF-054 staircase | Done: per-table loops, batched reads, HTTP-polling confirms (fixes an OOM), bounded keep-alive pools. 50-table capacity not measurable from one IP (PER per-IP limit); PM accepted for P8 (option 3), re-test in CF-062 | `services/keeper/src/run.ts`, `docs/findings/cf-054-load.md` |
 | CF-063 | P8: keeper seats players who bought in mid-hand, before the next hand | Done: Devnet `pnpm --filter @card-flex/keeper join-drill` 3/3 (bought in during hand #0, dealt into hand #1) | `services/keeper/src/keeper.ts` |
-| CF-062 | P9 prerequisite: multi-machine load test (bots spread over several machines/IPs, one keeper), 50 tables, latency targets | Planned (before public Devnet) | `pnpm load-test` per machine |
+| CF-064 | P8: table pays only for needed commits (spam-commit drain, CF-057 review) | Done: fee-vault commits need changed state between hands, 240 s since the last paid one, or the authority; else `CommitNotNeeded`. Keeper syncs instead. Devnet drill: stranger's spam commit refused | `programs/card-flex/src/lib.rs` `commit_hand`, `docs/findings/cf-064-065-p8-closeout.md` |
+| CF-065 | P8: keeper's own read key (CF-055 open item) | Done: `set_keeper` / `cf-admin table keeper`; keeper logs in with its own key, reads the runtime only (Devnet: 0 of 13 secret accounts readable); restarts every 20 days for a fresh token | `TableRuntime.keeper`, `docs/runbooks/keeper.md` |
+| CF-066 | P8: one-machine multi-user test (stands in for CF-062) | Done: see log 2026-11-20 | `pnpm multiuser`, `docs/probes/*-cf066-multiuser-*.json` |
+| CF-067 | P8: old Devnet tables after the layout change; safe retries; CLI args | Done: `migrate_runtime` + `cf-admin table migrate` (Devnet: old table migrated and played, 12/12); old live tables refund exactly (Devnet 4/4); `sendAndConfirm` never applies a transaction twice; fixed migration budget, keeper permission budget, misleading `BadSeatHand` on locked tables | `docs/findings/cf-064-065-p8-closeout.md` |
+| CF-062 | P9 prerequisite: multi-machine load test (bots spread over several machines/IPs, one keeper), 50 tables, latency targets | Deferred: no extra machines now; CF-066 covers multi-user correctness from one IP. Run before public launch traffic when machines exist | `pnpm load-test` per machine |
 
 ## Open program items (P8)
 
 - (fixed in CF-050) `undelegate_table` now bumps `commit_seq`.
 
-- Keeper read identity: the keeper reads the runtime with the authority's
-  PER token (reads only; the authority can't read cards, salts or the seed).
-  Better: a keeper key that is a member of the runtime permission only, so no
-  authority-derived credential leaves the operator machine (CF-055).
+- (fixed in CF-065) the keeper has its own read key; no authority token on
+  the keeper machine.
+- (fixed in CF-064) permissionless `commit_hand` can't drain a table's budget.
 
 ## Blockers and asks for the team
 
@@ -75,12 +78,51 @@ starts, finishes or gets blocked. Newest entries first in the log.
   validator 1.1.1 expects for commits (local commits fail with 3.1.10 and 4.0.3).
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
   Non-blocking: P8 proceeds on worst-case assumptions (TEE restart may lose
-  ephemeral state → CF-053; measurements may change unannounced → CF-058;
-  commit fees measured in CF-057; empty member list tested in CF-059).
+  ephemeral state → CF-053; measurements may change unannounced → CF-058
+  alarm; commit fees measured in CF-057; empty member list made moot by
+  CF-059).
   Answers still matter for Mainnet.
 
 ## Log
 
+- 2026-11-20 — CF-067: follow-up on three issues from the P8 close-out.
+  (1) Old tables (1,212-byte runtime, ~280 test tables on Devnet): money was
+  never trapped (refund path doesn't read the runtime; proven live on an old
+  table still in PER: both seats paid exactly). New permissionless
+  `migrate_runtime` / `cf-admin table migrate` grows old runtimes; Devnet
+  drill on an old, previously opened table 12/12 (2 hands VALID, vault
+  exact). Found and fixed on the way: migration must restore the runtime's
+  ephemeral budget (open failed with InsufficientFundsForRent), the runtime
+  permission budget lacked room for the CF-065 keeper key, and locked
+  tables gave a misleading `BadSeatHand` on base-layer joins (now
+  `PerAccountsMissing`). (2) Retries resent transactions that had landed:
+  root cause `confirmByPolling` threw on one failed poll; fixed there, plus
+  SDK `sendAndConfirm` (checks earlier copies before any resend) used by all
+  scripts and `cf-admin`. (3) `cf-admin` argument parsing extracted and
+  tested.
+- 2026-11-20 — P8 close-out (CF-064, CF-065, CF-059, CF-058, CF-060,
+  CF-066), all on Devnet with the new program (byte-verified):
+  CF-064: the table pays a commit only when its state changed between
+  hands, 240 s passed, or the authority asks (`CommitNotNeeded` otherwise;
+  the keeper then just syncs). CF-065: `set_keeper` gives the keeper its own
+  read key (runtime only; Devnet: 0 of 13 secret accounts readable).
+  CF-059: no private permission can have an empty member list (guard + test;
+  the first guard broke the public HandLog permission on Devnet, fixed).
+  CF-058: `cf-admin watch` alarms on TEE measurement/TCB changes;
+  `cf-admin tee`. CF-060: keeper `/health` + `KEEPER_DOWN/UNHEALTHY/
+  LOW_FUNDS` alarms (smoke-tested live). CF-066 (stands in for CF-062, no
+  extra machines): `pnpm multiuser`, 4 full tables × 6 separate users
+  (24 users, own wallets, session keys and PER logins), one keeper with its
+  own key: 25/25 — 20 hands all VALID, mid-hand buyer seated and dealt the
+  next hand, leaver cashed out exactly (925,000 lamports), 72/72 own-hand
+  reads and 0/72 neighbour reads, vaults exact, spam commit refused; action
+  confirm 269 ms p50 / 1.1 s p95, salts → dealt 3.2 / 5.2 s, own hand
+  visible 90 / 427 ms. Regression: privacy suite 230/230, keeper drill
+  13/13. Also fixed: probe scripts lacked CF-057's `magic_fee_vault` slot
+  (cleanup failed with 3008); `pnpm admin -- <cmd>` skipped the command.
+  Runtime grew to 1,284 bytes (new fields at the end): Devnet tables made
+  before today can't be read by the new program; create new ones.
+  Next: the UI (P7).
 - 2026-11-19 — CF-063: a table plays with 2+ players; someone arriving
   mid-hand waits for the next hand. `join_seat` only works between hands,
   and nothing seated a waiting player unless their app hit the ~5 s gap.

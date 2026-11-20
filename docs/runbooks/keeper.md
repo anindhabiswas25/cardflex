@@ -8,14 +8,25 @@ and money is still safe (players can be refunded after the timeout).
 
 ## Start
 
+The keeper reads tables with its OWN key (CF-065): no authority credential
+leaves the operator machine. Name it once per table (live or not):
+
 ```bash
-export CARDFLEX_PER_TOKEN=$(cf-admin token)          # read token, ~30 days
-export CARDFLEX_KEEPER_KEY=~/.config/cardflex/keeper.json   # fee payer, NOT the table authority
+cf-admin table keeper <config> <keeper pubkey>     # reader of the runtime only
+```
+
+```bash
+export CARDFLEX_KEEPER_KEY=~/.config/cardflex/keeper.json   # fee payer + read key, NOT the table authority
 export CARDFLEX_AUTHORITY=<your table authority pubkey>     # drive only your tables
 export CARDFLEX_DB=/var/lib/cardflex/hands.sqlite           # optional: index every hand for the API
 export HEARTBEAT_SECS=300 STUCK_SECS=120 PER_SOCKETS=16
+export HEALTH_PORT=9464                                     # GET /health (CF-060)
 pnpm keeper
 ```
+
+Run it under a supervisor that restarts it (e.g. systemd `Restart=always`):
+it logs in to the PER itself and exits after `RELOGIN_DAYS` (20) so the
+restart picks up a fresh 30-day token.
 
 Run exactly one keeper per authority. Two would race (harmless, but they
 waste fees on failed duplicates).
@@ -36,22 +47,32 @@ waste fees on failed duplicates).
 
 ## Token rotation
 
-The PER token is a 30-day JWT with no refresh. Every ~3 weeks, and at once
-if it might have leaked:
+Automatic: the keeper's own token is renewed by the restart every 20 days.
+To cut it off at once (leaked keeper key): `cf-admin table keeper <config>
+none` on every table, then name a new key. The keeper key can only read the
+runtime (public game state), never cards, salts or the seed; the
+privacy checks in `pnpm keeper-drill` and `pnpm multiuser` prove it.
 
-```bash
-export CARDFLEX_PER_TOKEN=$(cf-admin token)   # new token
-# restart the keeper with it
-```
+Legacy: `CARDFLEX_PER_TOKEN=$(cf-admin token)` still works (the authority's
+read token), but prefer the keeper's own key.
 
-A token can only read; it can't sign. It reads what the table authority
-reads: the runtime (public game state), never cards, salts or seeds.
+## Commits the table pays for (CF-064)
+
+With the fee vault the table's runtime pays each commit, so the program
+pays only for useful ones: the state changed and no hand is running, or
+240 s passed since the last paid commit (the heartbeat is 300 s). Anything
+else fails with `CommitNotNeeded`; the keeper then just syncs the recent
+commit. The table authority may always commit (`cf-admin table close`).
 
 ## Health
 
 - Log line per step: `<table> <step>`; failures say `failed (n)` with a
   back-off up to 30 s.
-- `cf-admin watch` alarms (`REFUND_NEAR`) are the outside check that the
-  keeper is syncing.
+- `GET /health` on `HEALTH_PORT`: 200 when fine, 503 with `reasons` when
+  no PER read succeeded for 30 s or a table failed 5 steps in a row;
+  `perTable` lists hands, failures and how long since each table moved.
+- `cf-admin watch --keeper-url http://host:9464/health --keeper <pubkey>`
+  alarms on it (`KEEPER_DOWN`, `KEEPER_UNHEALTHY`, `KEEPER_LOW_FUNDS`), and
+  `REFUND_NEAR` is the independent check that syncs are landing.
 - Lots of `fetch failed`: the PER may be throttling this IP (CF-054). Lower
   `PER_SOCKETS`, check nothing else on the machine hammers the PER.

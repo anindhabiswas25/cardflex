@@ -9,6 +9,9 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction, Transaction
 import { getAuthToken } from "@magicblock-labs/ephemeral-rollups-sdk";
 
 export const PROGRAM_ID = new PublicKey("4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL");
+/** `magic_fee_vault` left out of commit_hand / undelegate_table (Anchor passes the program id for a
+ * missing optional account). Then MagicBlock allows only 10 commits per table (CF-057); fine for probes. */
+export const NO_FEE_VAULT = PROGRAM_ID;
 // Override for the local stack: CARDFLEX_VALIDATOR=mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev
 export const TEE_VALIDATOR = new PublicKey(process.env.CARDFLEX_VALIDATOR ?? "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
 export const BASE_RPC = process.env.CARDFLEX_BASE_RPC ?? "https://rpc.magicblock.app/devnet";
@@ -51,6 +54,16 @@ export function makeIx(disc) {
 
 /** Sends and confirms; retries transport errors only, never program errors. */
 export async function send(conn, instructions, signers, { skipPreflight = false, retries = 2 } = {}) {
+  // CF-067: every copy's signature is known before it is sent; before a
+  // resend we check whether an earlier copy landed (its confirmation may
+  // have been lost), so a retry never applies a transaction twice.
+  const sent = [];
+  const landed = async () => {
+    if (!sent.length) return null;
+    const st = await conn.getSignatureStatuses(sent.map((x) => x.sig), { searchTransactionHistory: true }).then((r) => r.value, () => []);
+    const i = st.findIndex((x) => x && !x.err && (x.confirmationStatus === "confirmed" || x.confirmationStatus === "finalized"));
+    return i >= 0 ? { sig: sent[i].sig, ms: ms(sent[i].t0) } : null;
+  };
   for (let attempt = 0; ; attempt++) {
     try {
       const tx = new Transaction().add(...instructions);
@@ -59,16 +72,34 @@ export async function send(conn, instructions, signers, { skipPreflight = false,
       tx.feePayer = signers[0].publicKey;
       tx.sign(...signers);
       const t0 = performance.now();
-      const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
+      const sig = bs58encode(tx.signature);
+      sent.push({ sig, t0 });
+      await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
       const res = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
       if (res.value.err) { const e = new Error(`tx ${sig} failed: ${JSON.stringify(res.value.err)}`); e.programError = true; e.sig = sig; throw e; }
       return { sig, ms: ms(t0) };
     } catch (e) {
+      const ok = await landed();
+      if (ok) return ok;
       if (e.programError || attempt >= retries) throw e;
       log(`  retry after: ${String(e.message ?? e).slice(0, 80)}`);
       await sleep(1000);
     }
   }
+}
+
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function bs58encode(bytes) {
+  const digits = [0];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i++) { carry += digits[i] << 8; digits[i] = carry % 58; carry = (carry / 58) | 0; }
+    while (carry) { digits.push(carry % 58); carry = (carry / 58) | 0; }
+  }
+  let out = "";
+  for (const byte of bytes) { if (byte !== 0) break; out += "1"; }
+  for (let i = digits.length - 1; i >= 0; i--) out += B58[digits[i]];
+  return out;
 }
 
 /** Expects the transaction to fail; returns true if it did. */

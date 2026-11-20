@@ -12,7 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  ACTION, DELEGATION_PROGRAM_ID, ENDPOINTS, PHASE, act, buyIn, cashOut, magicFeeVault, confirmByPolling, decodeLedger, decodeRuntime, joinSeat, newSalt, newSessionKey,
+  ACTION, DELEGATION_PROGRAM_ID, ENDPOINTS, PHASE, act, buyIn, cashOut, magicFeeVault, confirmByPolling, sendAndConfirm, decodeLedger, decodeRuntime, joinSeat, newSalt, newSessionKey,
   perConnection, perLogin, submitSalt, tableAddresses,
 } from "@card-flex/client-sdk";
 import { buildIx } from "@card-flex/client-sdk";
@@ -27,20 +27,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const SOL = 1_000_000_000;
 
 async function send(conn: Connection, ixs: TransactionInstruction[], signers: Keypair[], skipPreflight = false) {
-  for (let a = 0; ; a++) {
-    try {
-      const tx = new Transaction().add(...ixs);
-      tx.recentBlockhash = (await conn.getLatestBlockhash("confirmed")).blockhash;
-      tx.feePayer = signers[0].publicKey; tx.sign(...signers);
-      const err = await confirmByPolling(conn, await conn.sendRawTransaction(tx.serialize(), { skipPreflight }));
-      if (err) throw new Error(JSON.stringify(err));
-      return;
-    } catch (e) {
-      if (a > 0 && String(e).includes("already in use")) return;
-      if (a >= 5) throw e;
-      await sleep(1000 * (a + 1)); // Devnet endpoints drop requests now and then
-    }
-  }
+  // CF-067: Devnet endpoints drop requests now and then; retries never resend a landed transaction.
+  await sendAndConfirm(conn, ixs, signers, { skipPreflight, retries: 5, backoffMs: 2_000 });
 }
 
 // ---- parties ----

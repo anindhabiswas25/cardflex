@@ -29,7 +29,7 @@ test("discriminators follow Anchor's sha256 rule", () => {
 
 test("account sizes equal the program's (8-byte discriminator + struct)", () => {
   // From the Rust layout pins (tests/test_game.rs, test_recovery.rs).
-  assert.equal(8 + sizeOf({ defined: { name: "TableRuntime" } }), 1212); // bump at 1211
+  assert.equal(8 + sizeOf({ defined: { name: "TableRuntime" } }), 1284); // bump at 1211, CF-064 commit fields, CF-065 keeper
   assert.equal(8 + sizeOf({ defined: { name: "HandLog" } }), 953); // ACTION_LOG_OFFSET
 });
 
@@ -39,7 +39,7 @@ function put(buf: Uint8Array, off: number, value: bigint, bytes: number) {
 }
 
 test("TableRuntime decoder agrees with the byte offsets the Rust tests pin", () => {
-  const d = new Uint8Array(1212);
+  const d = new Uint8Array(1284);
   d.set(discriminatorOf("TableRuntime"), 0);
   put(d, 458, 77n, 8); // hand_no
   d[469] = 5; // phase DEALT
@@ -139,6 +139,44 @@ test("CF-061: confirmByPolling uses HTTP status polls only: confirmed, error, ti
   assert.equal(await confirmByPolling(fake([null, { confirmationStatus: "processed", err: null }, { confirmationStatus: "confirmed", err: null }]), "s", 5_000, 1), null);
   assert.deepEqual(await confirmByPolling(fake([{ confirmationStatus: "confirmed", err: { InstructionError: [0, { Custom: 6052 }] } }]), "s", 5_000, 1), { InstructionError: [0, { Custom: 6052 }] });
   await assert.rejects(confirmByPolling(fake([null]), "s", 20, 1), /not confirmed within 20 ms/);
+  // CF-067: a failed poll is not a verdict; keep polling.
+  let n = 0;
+  const flaky = { getSignatureStatuses: async () => { if (n++ === 0) throw new Error("fetch failed"); return { value: [{ confirmationStatus: "confirmed", err: null }] }; } } as never;
+  assert.equal(await confirmByPolling(flaky, "s", 5_000, 1), null);
+});
+
+test("CF-067: sendAndConfirm never applies a transaction twice", async () => {
+  const { sendAndConfirm, base58 } = await import("../src/per.ts");
+  const { SystemProgram } = await import("@solana/web3.js");
+  assert.equal(base58(new Uint8Array([0, 0, 1])), "112");
+  assert.equal(base58(new Uint8Array([255, 255])), "LUv");
+  const payer = Keypair.generate();
+  const ix = SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: payer.publicKey, lamports: 1 });
+  // A fake cluster: copy 1 lands but every status poll for it fails until
+  // the timeout; a second copy would fail (as delegate_table did on Devnet).
+  const landed = new Set<string>();
+  let sends = 0;
+  const conn = {
+    getLatestBlockhash: async () => ({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 1 }),
+    sendRawTransaction: async (raw: Buffer) => {
+      sends++;
+      const sig = base58(new Uint8Array(raw.subarray(1, 65)));
+      if (sends === 1) landed.add(sig);
+      return sig;
+    },
+    getSignatureStatuses: async (sigs: string[], cfg?: { searchTransactionHistory?: boolean }) => {
+      if (!cfg?.searchTransactionHistory) throw new Error("fetch failed"); // confirm polls all fail
+      return { value: sigs.map((s) => (landed.has(s) ? { confirmationStatus: "confirmed", err: null } : { confirmationStatus: "confirmed", err: { InstructionError: [0, "InvalidAccountData"] } })) };
+    },
+  } as never;
+  const sig = await sendAndConfirm(conn, [ix], [payer], { timeoutMs: 20, backoffMs: 1 });
+  assert.ok(landed.has(sig), "returns the copy that landed");
+  assert.equal(sends, 1, "no second copy sent");
+  // A program error is final: reported with its code, not resent.
+  let failSends = 0;
+  const failing = { ...(conn as object), sendRawTransaction: async () => { failSends++; return "x"; }, getSignatureStatuses: async () => ({ value: [{ confirmationStatus: "confirmed", err: { InstructionError: [0, { Custom: 6055 }] } }] }) } as never;
+  await assert.rejects(sendAndConfirm(failing, [ix], [payer], { retries: 3, backoffMs: 1 }), /6055/);
+  assert.equal(failSends, 1);
 });
 
 test("CF-057: fee vault matches MagicBlock's derivation; commit_hand carries it", async () => {

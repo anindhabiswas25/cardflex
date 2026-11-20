@@ -15,7 +15,7 @@ import { dirname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Keypair, PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY } from "@solana/web3.js";
 import { MAGIC_PROGRAM_ID, MAGIC_CONTEXT_ID, delegationRecordPdaFromDelegatedAccount } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { PROGRAM_ID, repoRoot, send, rejected, waitFor, sleep, log, ms, w, r, u8, authFailures, RT, TC, SL, PHASE } from "./common.mjs";
+import { PROGRAM_ID, NO_FEE_VAULT, repoRoot, send, rejected, waitFor, sleep, log, ms, w, r, u8, authFailures, RT, TC, SL, PHASE } from "./common.mjs";
 import { setupTable } from "./table.mjs";
 
 const args = process.argv.slice(2);
@@ -43,7 +43,7 @@ try {
   const { ix, tee, base, authority, players, config, runtime, handLog, vault, ledgers, dealer, saltAccs, hands } = t;
   const cfg = async () => (await base.getAccountInfo(config)).data;
   const record = delegationRecordPdaFromDelegatedAccount(runtime);
-  const commitIx = (payer) => ix("commit_hand", [w(payer.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)]);
+  const commitIx = (payer) => ix("commit_hand", [w(payer.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)]);
   const syncIx = (withLedgers) => ix("sync_hand", [w(config), r(runtime), r(record), ...(withLedgers ? ledgers.map((l) => w(l)) : [])]);
   const refundIx = (payer) => ix("emergency_refund", [r(payer.publicKey, true), w(config)]);
   const claimIx = (payer, s) => ix("claim_refund", [r(payer.publicKey, true), r(config), w(vault), w(ledgers[s]), w(players[s].wallet.publicKey)]);

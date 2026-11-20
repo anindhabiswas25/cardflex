@@ -19,6 +19,7 @@ import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, repoRoot, loadDiscriminators, loadPayer, makeIx, send, rejected,
   tokenFor, authFailures, teeConn, teeUrl, rawRpc, waitFor, sleep, log, ms, w, r, u8, u64, vecPubkeys,
   testDeck, dealPositions, rosterHash, handCtx, saltCommitment, RT, GLOBAL, ensureGlobal, buyInIx, joinSeatIx,
+  NO_FEE_VAULT,
 } from "./common.mjs";
 import { randomBytes } from "node:crypto";
 
@@ -306,7 +307,7 @@ try {
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("close_ephemeral", perKeys(hands[s]), Buffer.from([1, s]))], [authority], { skipPreflight: true });
   await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true });
   for (let s = 0; s < SEATS; s++) await send(tee, [ix("close_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true });
-  await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
+  await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
   const home = await waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   check("base layer", "runtime back on base", true, !!home.value);
   for (const k of [dealer, ...hands, ...saltAccs]) check("base layer", `${k.toBase58().slice(0, 6)}… absent on Solana`, null, await base.getAccountInfo(k));

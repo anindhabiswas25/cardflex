@@ -28,6 +28,7 @@
     "keeper-drill": "pnpm --filter @card-flex/keeper drill",
     "lost-drill": "pnpm --filter @card-flex/keeper lost-drill",
     "load-test": "pnpm --filter @card-flex/keeper load",
+    "multiuser": "pnpm --filter @card-flex/keeper multiuser",
     "test:sdk": "pnpm build:wasm && pnpm --filter @card-flex/client-sdk test && pnpm --filter @card-flex/client-sdk typecheck",
     "handflow": "pnpm --filter @card-flex/probes handflow",
     "game": "pnpm --filter @card-flex/probes game",

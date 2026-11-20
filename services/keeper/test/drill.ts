@@ -11,12 +11,12 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  ACTION, ENDPOINTS, PHASE, act, buyIn, cashOut, decodeLedger, decodeRuntime, decodeTableConfig, joinSeat, loadVerifier, newSalt,
+  ACTION, ENDPOINTS, PHASE, act, buyIn, commitHand, isProgramError, magicFeeVault, cashOut, decodeLedger, decodeRuntime, decodeTableConfig, joinSeat, loadVerifier, newSalt,
   newSessionKey, perConnection, perLogin, rules, submitSalt, tableAddresses, verifierWasmUrl,
 } from "@card-flex/client-sdk";
-import { confirmByPolling } from "@card-flex/client-sdk";
+import { confirmByPolling, sendAndConfirm } from "@card-flex/client-sdk";
 import { Store } from "@card-flex/api/store";
-import { checkVault, createTable, delegateTable, openTablePer, closeTablePer } from "../../admin/src/admin.ts";
+import { checkVault, createTable, delegateTable, openTablePer, closeTablePer, setKeeper } from "../../admin/src/admin.ts";
 import { Keeper } from "../src/keeper.ts";
 
 const HANDS = Number(process.env.HANDS ?? 3);
@@ -25,22 +25,14 @@ const base = new Connection(ENDPOINTS.devnet.base, "confirmed");
 const checks: [string, boolean, string?][] = [];
 const check = (name: string, ok: boolean, note?: string) => { checks.push([name, ok, note]); console.log(`${ok ? "✓" : "✗"} ${name}${note ? ` (${note})` : ""}`); };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** PER logins time out now and then on Devnet (connect timeouts): retry. */
+async function login(k: Keypair): Promise<Connection> {
+  for (let a = 1; ; a++) { try { return perConnection((await perLogin(k)).token); } catch (e) { if (a >= 5) throw e; await sleep(2000 * a); } }
+}
 
 async function send(conn: Connection, ixs: TransactionInstruction[], signers: Keypair[], skipPreflight = false) {
-  for (let a = 0; ; a++) {
-    try {
-      const tx = new Transaction().add(...ixs);
-      const bh = await conn.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = bh.blockhash; tx.feePayer = signers[0].publicKey; tx.sign(...signers);
-      const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
-      const err = await confirmByPolling(conn, sig);
-      if (err) throw new Error(JSON.stringify(err));
-      return sig;
-    } catch (e) {
-      if (a >= 2) throw e;
-      await sleep(1000);
-    }
-  }
+  // CF-067: retries never resend a transaction that already landed.
+  return sendAndConfirm(conn, ixs, signers, { skipPreflight });
 }
 
 // ---- table, players, keeper ----
@@ -56,17 +48,38 @@ for (const b of bots) {
   await send(base, [joinSeat({ payer: b.wallet.publicKey, config, seat: b.seat, live: false })], [b.wallet]);
 }
 await send(base, [delegateTable(admin.publicKey, config)], [admin]);
-const adminPer = perConnection((await perLogin(admin)).token);
+const adminPer = await login(admin);
 for (let i = 0; i < 60 && !(await adminPer.getAccountInfo(t.runtime).catch(() => null)); i++) await sleep(1000);
 for (const ix of openTablePer(admin.publicKey, config, 6)) await send(adminPer, [ix], [admin], true);
-for (const b of bots) b.conn = perConnection((await perLogin(b.session)).token);
+for (const b of bots) b.conn = await login(b.session);
 console.log("table live with 3 bots (bot 2 absent)");
 
 const keeperKey = Keypair.generate();
 await send(base, [SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: keeperKey.publicKey, lamports: 30_000_000 })], [admin]);
+// CF-065: the keeper reads with its own key, named by the authority; no authority token.
+const keeperPer = await login(keeperKey);
+check("keeper key can't read the runtime before it is named", !(await keeperPer.getAccountInfo(t.runtime).catch(() => null)));
+await send(adminPer, [setKeeper(admin.publicKey, config, keeperKey.publicKey, true)], [admin], true);
+let keeperReads = false;
+for (let i = 0; i < 20 && !keeperReads; i++) { keeperReads = !!(await keeperPer.getAccountInfo(t.runtime).catch(() => null)); if (!keeperReads) await sleep(500); }
+check("keeper key reads the runtime after set_keeper", keeperReads);
+const secret = [t.dealer, ...[0, 1, 2, 3, 4, 5].flatMap((s) => [t.seatHand(s), t.salt(s)])];
+const leaks = (await keeperPer.getMultipleAccountsInfo(secret).catch(() => secret.map(() => null))).filter((a) => a !== null).length;
+check("keeper key reads no dealer, seat hand or salt", leaks === 0, `${leaks} of ${secret.length} readable`);
+// CF-059: empty seats' hands name only the default key (nobody holds it):
+// unreadable by a stranger and by a seated player.
+{
+  const stranger = await login(Keypair.generate());
+  const empty = [3, 4, 5].map((s) => t.seatHand(s));
+  let readable = 0;
+  for (const conn of [stranger, bots[0].conn!]) for (const a of empty) if (await conn.getAccountInfo(a).catch(() => null)) readable++;
+  check("empty seats' hands (reader = default key) unreadable to a stranger and a player", readable === 0, `${readable} of 6 reads returned data`);
+  const own = await bots[0].conn!.getAccountInfo(t.seatHand(0)).catch(() => null);
+  check("…while a player still reads its own hand (the check can see data)", !!own);
+}
 const store = new Store();
 const keeper = new Keeper({
-  base, per: perConnection((await perLogin(admin)).token), key: keeperKey, heartbeatSecs: 600n, handGapSecs: 4n,
+  base, per: keeperPer, key: keeperKey, heartbeatSecs: 600n, handGapSecs: 4n, feeVault: magicFeeVault(),
   store, verifier: await loadVerifier(readFileSync(verifierWasmUrl)), log: (m) => console.log("  keeper:", m),
 });
 
@@ -100,9 +113,12 @@ async function botStep(b: Bot) {
 const t0 = Date.now();
 let bot2LeftAt = 0;
 while (Date.now() - t0 < 15 * 60_000) {
-  await Promise.all([keeper.tick(config), ...bots.map(botStep)]);
+  // The production scheduler (run.ts) catches tick errors; so must the drill (PER connect timeouts happen).
+  await Promise.all([keeper.tick(config).catch((e) => console.log("  tick error:", String(e?.message ?? e).slice(0, 100))), ...bots.map(botStep)]);
   const st = keeper.tables.get(config.toBase58());
-  const rt = decodeRuntime((await adminPer.getAccountInfo(t.runtime))!.data);
+  const ra = await adminPer.getAccountInfo(t.runtime).catch(() => null); // a network blip must not end the drill
+  if (!ra) { await sleep(400); continue; }
+  const rt = decodeRuntime(ra.data);
   if (!bot2LeftAt && (rt.departed >> 2) & 1) { bot2LeftAt = Date.now(); console.log(`bot 2 left after ${Math.round((bot2LeftAt - t0) / 1000)} s (missed salts: ${rt.missed_salts[2]})`); }
   if ((st?.hands ?? 0) >= HANDS) break;
   await sleep(400);
@@ -110,6 +126,14 @@ while (Date.now() - t0 < 15 * 60_000) {
 const st = keeper.tables.get(config.toBase58())!;
 check(`keeper finished ${HANDS} hands unattended`, st.hands >= HANDS, `${st.hands} hands in ${Math.round((Date.now() - t0) / 1000)} s`);
 check("absent bot 2 made to leave after 3 missed salt rounds", bot2LeftAt > 0);
+
+// ---- CF-064: nobody can make the table pay for commits it doesn't need ----
+{
+  const stranger = Keypair.generate();
+  const sp = await login(stranger);
+  const spam = await send(sp, [commitHand({ payer: stranger.publicKey, config, feeVault: magicFeeVault() })], [stranger], true).then(() => null, (e) => e);
+  check("stranger's extra commit right after the keeper's is refused (CommitNotNeeded)", spam !== null && isProgramError(spam, "CommitNotNeeded"), spam ? String(spam.message ?? spam).slice(0, 120) : "it landed");
+}
 
 // ---- indexed hands ----
 const hands = store.db.prepare("SELECT hand_no, verified, end_reason FROM hands WHERE config = ?").all(config.toBase58()) as { hand_no: string; verified: number; end_reason: string }[];

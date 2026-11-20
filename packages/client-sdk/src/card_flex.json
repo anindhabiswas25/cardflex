@@ -2183,6 +2183,98 @@
       ]
     },
     {
+      "name": "migrate_runtime",
+      "docs": [
+        "CF-067: grows a runtime made by an earlier program version to the",
+        "current layout. The appended fields start at zero, which is their",
+        "correct default (no paid commit yet, no keeper key). Permissionless:",
+        "it changes no game or money state. Base layer only: a delegated",
+        "runtime is owned by the delegation program and fails the owner check."
+      ],
+      "discriminator": [
+        170,
+        95,
+        170,
+        141,
+        33,
+        51,
+        163,
+        71
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "runtime",
+          "docs": [
+            "delegated); its layout is checked in the handler."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "next_hand",
       "docs": [
         "Moves to the next hand once this one is revealed (CF-024).",
@@ -3654,6 +3746,88 @@
       ]
     },
     {
+      "name": "set_keeper",
+      "docs": [
+        "CF-065: the table authority names the keeper's read key (or clears it",
+        "with the default key). The keeper then reads `TableRuntime` with its",
+        "own PER login; it is never a reader of hands, salts or the dealer."
+      ],
+      "discriminator": [
+        102,
+        94,
+        23,
+        78,
+        157,
+        222,
+        243,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "runtime"
+          ]
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "runtime_permission",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "permission_program",
+          "optional": true
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "magic_program",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "keeper",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "side_show_view",
       "docs": [
         "CF-022: Side Show view. `grant`: after an accepted Side Show between",
@@ -4956,6 +5130,21 @@
       "code": 6054,
       "name": "BadFeeVault",
       "msg": "not MagicBlock's fee vault for this table's validator"
+    },
+    {
+      "code": 6055,
+      "name": "CommitNotNeeded",
+      "msg": "nothing new to commit yet; the table pays only for changed state or a heartbeat"
+    },
+    {
+      "code": 6056,
+      "name": "BadKeeper",
+      "msg": "the keeper key can't be the authority, a table address, a seated wallet or session key"
+    },
+    {
+      "code": 6057,
+      "name": "PerAccountsMissing",
+      "msg": "this table was opened in PER (locked): this step updates permissions, so send it in PER while the table is live"
     }
   ],
   "types": [
@@ -5860,6 +6049,34 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "last_paid_commit",
+            "docs": [
+              "CF-064: unix time of the last commit the runtime paid for (fee vault)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "paid_commit_hash",
+            "docs": [
+              "CF-064: `runtime_state_hash` at that commit."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "keeper",
+            "docs": [
+              "CF-065: the keeper's own read key (default = none). A member of the",
+              "runtime permission only: it reads table state, never cards, salts or",
+              "the seed. Set by the table authority with `set_keeper`."
+            ],
+            "type": "pubkey"
           }
         ]
       }

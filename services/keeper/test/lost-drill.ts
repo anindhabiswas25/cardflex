@@ -17,7 +17,7 @@ import {
   newSalt, newSessionKey, perConnection, perLogin, permissionPda, startHand, submitSalt, tableAddresses, verifierWasmUrl,
   type TableRuntime,
 } from "@card-flex/client-sdk";
-import { confirmByPolling } from "@card-flex/client-sdk";
+import { confirmByPolling, sendAndConfirm } from "@card-flex/client-sdk";
 import { Store } from "@card-flex/api/store";
 import { checkVault, closeTablePer, createTable, delegateTable, openTablePer } from "../../admin/src/admin.ts";
 import { Keeper } from "../src/keeper.ts";
@@ -39,18 +39,7 @@ async function send(conn: Connection, ixs: TransactionInstruction[], signers: Ke
   return err ? JSON.stringify(err) : null;
 }
 async function mustSend(conn: Connection, ixs: TransactionInstruction[], signers: Keypair[], skipPreflight = false) {
-  for (let a = 0; ; a++) {
-    try {
-      const err = await send(conn, ixs, signers, skipPreflight);
-      if (err) throw new Error(err);
-      return;
-    } catch (e) {
-      // A retry after a lost confirmation finds the first attempt's account.
-      if (a > 0 && String(e).includes("already in use")) return;
-      if (a >= 2) throw e;
-      await sleep(1000);
-    }
-  }
+  await sendAndConfirm(conn, ixs, signers, { skipPreflight, retries: 3 }); // CF-067: never twice
 }
 
 // ---- table with two players ----

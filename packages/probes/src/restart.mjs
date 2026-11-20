@@ -19,6 +19,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { permissionPdaFromAccount, PERMISSION_PROGRAM_ID, EPHEMERAL_VAULT_ID, MAGIC_PROGRAM_ID, MAGIC_CONTEXT_ID } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   PROGRAM_ID, BASE_RPC, repoRoot, loadDiscriminators, makeIx, send, rejected, tokenFor, teeConn, waitFor, log, w, r, u8, RT, PHASE, HAND,
+  NO_FEE_VAULT,
 } from "./common.mjs";
 import { setupTable } from "./table.mjs";
 
@@ -103,7 +104,7 @@ try {
     const seq0 = await baseSeq();
     const keeper = authority;
     const tc = performance.now();
-    await send(tee, [ix("commit_hand", [w(keeper.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [keeper], { skipPreflight: true });
+    await send(tee, [ix("commit_hand", [w(keeper.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [keeper], { skipPreflight: true });
     const committed = await waitFor(async () => ((await baseSeq()) > seq0 ? true : null), 180_000, 1000);
     check("after restart: commit_hand reaches the base layer", true, !!committed.value, `${Math.round(performance.now() - tc)} ms`);
     // Tidy up.
@@ -113,7 +114,7 @@ try {
       await send(tee, [ix("close_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true });
     }
     await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true });
-    await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
+    await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
     const tu = performance.now();
     const home = await waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 180_000, 1000);
     out.undelegate_ms = Math.round(performance.now() - tu);

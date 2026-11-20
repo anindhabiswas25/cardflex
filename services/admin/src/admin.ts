@@ -4,7 +4,7 @@ import { PublicKey, SystemProgram, type TransactionInstruction } from "@solana/w
 import {
   delegateBufferPdaFromDelegatedAccountAndOwnerProgram, delegationMetadataPdaFromDelegatedAccount, delegationRecordPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { MAX_SEATS, PROGRAM_ID, TEE_VALIDATOR, buildIx, commitHand, globalPda, permissionPda, programDataPda, tableAddresses, tablePda, vaultPda } from "@card-flex/client-sdk";
+import { MAGIC_PROGRAMS, MAX_SEATS, PERMISSION_PROGRAM_ID, PROGRAM_ID, TEE_VALIDATOR, buildIx, commitHand, globalPda, permissionPda, programDataPda, tableAddresses, tablePda, vaultPda } from "@card-flex/client-sdk";
 
 export function updateGlobal(authority: PublicKey, p: { treasury: PublicKey; maxRakeBps: number; paused: boolean }) {
   return buildIx("update_global", { authority, global: globalPda() }, { treasury: p.treasury, max_rake_bps: p.maxRakeBps, paused: p.paused });
@@ -83,6 +83,23 @@ export function closeTablePer(authority: PublicKey, config: PublicKey, maxSeats:
   ixs.push(commitHand({ payer: authority, config, feeVault }));
   ixs.push(buildIx("undelegate_table", { authority, runtime: t.runtime, hand_log: t.handLog, magic_fee_vault: feeVault ?? null }));
   return ixs;
+}
+
+/**
+ * CF-065: names the keeper's own read key (PublicKey.default clears it).
+ * `live`: the table is in PER (then the runtime permission is updated too).
+ */
+export function setKeeper(authority: PublicKey, config: PublicKey, keeper: PublicKey, live: boolean) {
+  const t = tableAddresses(config);
+  const perAccs = live
+    ? { runtime_permission: permissionPda(t.runtime), permission_program: PERMISSION_PROGRAM_ID, ephemeral_vault: MAGIC_PROGRAMS.ephemeralVault, magic_program: MAGIC_PROGRAMS.magicProgram }
+    : { runtime_permission: null, permission_program: null, ephemeral_vault: null, magic_program: null };
+  return buildIx("set_keeper", { authority, runtime: t.runtime, ...perAccs }, { keeper });
+}
+
+/** CF-067: grows an old-layout runtime (base layer, not delegated) to the current size; payer funds the rent. */
+export function migrateRuntime(payer: PublicKey, config: PublicKey) {
+  return buildIx("migrate_runtime", { payer, config, runtime: tableAddresses(config).runtime, system_program: SystemProgram.programId });
 }
 
 export function sweepRake(payer: PublicKey, config: PublicKey, treasury: PublicKey) {

@@ -141,7 +141,8 @@ pub const fn ephemeral_budget() -> u64 {
         + ephemeral_rent(EphemeralPermission::size_of(MAX_HAND_READERS) as u32);
     let dealer =
         ephemeral_rent(DEALER_LEN) + ephemeral_rent(EphemeralPermission::size_of(1) as u32);
-    let runtime_permission = ephemeral_rent(EphemeralPermission::size_of(MAX_SEATS + 1) as u32);
+    // Readers: authority + keeper (CF-065) + one session key per seat.
+    let runtime_permission = ephemeral_rent(EphemeralPermission::size_of(MAX_SEATS + 2) as u32);
     let salt = ephemeral_rent(SALT_LEN) + ephemeral_rent(EphemeralPermission::size_of(1) as u32);
     (seat + salt) * MAX_SEATS as u64 + dealer + runtime_permission
 }
@@ -348,6 +349,50 @@ pub struct TableRuntime {
     /// Unix time the last hand ended or was cancelled (HAND_GAP_SECS).
     pub last_hand_end: i64,
     pub bump: u8,
+    /// CF-064: unix time of the last commit the runtime paid for (fee vault).
+    pub last_paid_commit: i64,
+    /// CF-064: `runtime_state_hash` at that commit.
+    pub paid_commit_hash: [u8; 32],
+    /// CF-065: the keeper's own read key (default = none). A member of the
+    /// runtime permission only: it reads table state, never cards, salts or
+    /// the seed. Set by the table authority with `set_keeper`.
+    pub keeper: Pubkey,
+}
+
+/// CF-067: earlier `TableRuntime` sizes that are a prefix of the current
+/// layout (fields were only appended after `bump` since CF-050): CF-050..063
+/// (1,212 bytes) and CF-064 before CF-065 (1,252). Older layouts (1,190)
+/// moved `bump`, so they can't be migrated; their money leaves by refund.
+pub const MIGRATABLE_RUNTIME_LENS: [usize; 2] = [1_212, 1_252];
+
+/// CF-064: byte offset of `TableRuntime.commit_seq` (pinned in test_game.rs).
+pub const RUNTIME_COMMIT_SEQ_OFFSET: usize = 858;
+/// CF-064: byte offsets of `last_paid_commit` .. end of `paid_commit_hash`.
+pub const RUNTIME_PAID_COMMIT_OFFSET: usize = 1212;
+pub const RUNTIME_PAID_COMMIT_END: usize = RUNTIME_PAID_COMMIT_OFFSET + 8 + 32;
+/// CF-064: a commit the runtime pays for (fee vault) needs a state change
+/// between hands, or this long since the last paid one (keeper heartbeat is
+/// 300 s). Stops anyone draining the table's budget with spam commits.
+pub const COMMIT_MIN_GAP_SECS: i64 = 240;
+
+/// CF-064: hash of a runtime account's game state: everything except the
+/// commit bookkeeping (`commit_seq` and the CF-064 fields at the end).
+pub fn runtime_state_hash(data: &[u8]) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[
+        &data[8..RUNTIME_COMMIT_SEQ_OFFSET],
+        &data[RUNTIME_COMMIT_SEQ_OFFSET + 8..RUNTIME_PAID_COMMIT_OFFSET],
+        &data[RUNTIME_PAID_COMMIT_END..8 + TableRuntime::INIT_SPACE],
+    ])
+    .to_bytes()
+}
+
+/// CF-064: may the runtime pay for a commit now? Yes if the state changed
+/// since its last paid commit and no hand is in progress, if a heartbeat is
+/// due, or if the table's authority asks.
+pub fn paid_commit_allowed(rt: &TableRuntime, hash: &[u8; 32], now: i64, payer: &Pubkey) -> bool {
+    let changed = rt.phase == phase::IDLE && *hash != rt.paid_commit_hash;
+    let due = now >= rt.last_paid_commit.saturating_add(COMMIT_MIN_GAP_SECS);
+    changed || due || *payer == rt.authority
 }
 
 impl TableRuntime {
@@ -393,6 +438,7 @@ impl TableRuntime {
     ) -> bool {
         *key != Pubkey::default()
             && *key != self.authority
+            && *key != self.keeper
             && key != own_key
             && key != config
             && key != wallet
@@ -820,6 +866,21 @@ pub struct CheckVault<'info> {
     pub vault: Box<Account<'info, TableVault>>,
 }
 
+/// `migrate_runtime` (CF-067): anyone grows an older `TableRuntime` (base
+/// layer, not delegated) to the current size; the payer funds the rent.
+#[derive(Accounts)]
+pub struct MigrateRuntime<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    /// CHECK: the runtime PDA of `config`, owned by this program (so not
+    /// delegated); its layout is checked in the handler.
+    #[account(mut, seeds = [RUNTIME_SEED, config.key().as_ref()], bump, owner = crate::ID)]
+    pub runtime: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 /// `sweep_rake`: anyone moves synced rake from the vault to the treasury.
 #[derive(Accounts)]
 pub struct SweepRake<'info> {
@@ -1134,6 +1195,25 @@ pub struct CommitHand<'info> {
     /// it MagicBlock allows only 10 commits per account. Checked in the handler.
     #[account(mut)]
     pub magic_fee_vault: Option<UncheckedAccount<'info>>,
+}
+
+/// `set_keeper` (CF-065): the table authority names the keeper's read key.
+/// The permission accounts are needed once the table is live in PER.
+#[derive(Accounts)]
+pub struct SetKeeper<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    /// CHECK: permission PDA of `runtime`, checked in the handler.
+    #[account(mut)]
+    pub runtime_permission: Option<UncheckedAccount<'info>>,
+    /// CHECK: fixed address, checked in the handler.
+    pub permission_program: Option<UncheckedAccount<'info>>,
+    /// CHECK: fixed address, checked in the handler.
+    #[account(mut)]
+    pub ephemeral_vault: Option<UncheckedAccount<'info>>,
+    /// CHECK: fixed address, checked in the handler.
+    pub magic_program: Option<UncheckedAccount<'info>>,
 }
 
 /// `next_hand`: anyone, after a hand is revealed.

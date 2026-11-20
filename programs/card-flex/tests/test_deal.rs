@@ -124,6 +124,9 @@ fn seeded_table(seats: u8) -> Table {
         missed_salts: [0; MAX_SEATS],
         last_hand_end: 0,
         bump,
+        last_paid_commit: 0,
+        paid_commit_hash: [0; 32],
+        keeper: Pubkey::default(),
     };
     for s in 0..seats as usize {
         rt.dealing_order[s] = s as u8;

@@ -7,21 +7,28 @@
 //   cf-admin global set [--treasury <pk>] [--max-rake-bps N] [--pause | --unpause]
 //   cf-admin global sync-authority    settings authority := program upgrade authority (multisig handover, CF-056)
 //   cf-admin tables
-//   cf-admin token                    PER read token for the keeper (reads only; valid ~30 days).
-//                                     It reads what the authority can read in PER: the runtime (public
-//                                     game state). Never cards, salts or the dealer seed (G1 suite).
-//                                     Rotate it; CF-055 tracks giving the keeper its own read identity.
+//   cf-admin token                    PER read token of YOUR key (valid ~30 days). Prefer `table keeper`:
+//                                     the keeper then logs in with its own key and no authority
+//                                     credential leaves this machine (CF-065).
 //   cf-admin table create --boot <lamports> [--rake-bps N] [--rake-cap <lamports>] [--seats 6] [--refund-timeout 1800] [--id N]
 //   cf-admin table open <config>      delegate to the TEE + create permissions, dealer, seat hands, salts
 //   cf-admin table status <config>
 //   cf-admin table check <config> [--strict]   reconcile the vault (simulated check_vault + the terms)
 //   cf-admin table sweep <config>     rake -> treasury
 //   cf-admin table close <config>     close ephemeral accounts and undelegate
+//   cf-admin table keeper <config> <pubkey|none>   the keeper's own read key (CF-065): a reader of
+//                                     the runtime only, never of cards, salts or the seed
+//   cf-admin table migrate <config>   grow a runtime made by an older program (1,212 / 1,252 bytes) to
+//                                     the current layout (CF-067). Base layer only: a live table made
+//                                     before 2026-11-20 can't be migrated; its players leave by
+//                                     emergency_refund + claim_refund after the refund timeout.
 //   cf-admin table repair <config>    re-create missing dealer / seat hand / salt accounts after
 //                                     abort_lost_hand (CF-053); existing ones are left alone
-//   cf-admin watch [--once] [--every 60] [--authority <pk>] [--webhook <url>]
+//   cf-admin tee                      our TEE attestation check now: TCB status + measurements (to pin)
+//   cf-admin watch [--once] [--every 60] [--tee-every 600] [--authority <pk>] [--webhook <url>]
+//                  [--keeper-url <http://host:port/health>] [--keeper <pubkey>]   (CF-060)
 //                                     alarms (CF-056): vault short/surplus, refund near/due, claims
-//                                     pending, cancel rate. Read-only. --once exits 2 on a critical
+//                                     pending, cancel rate; TEE measurements/TCB changed (CF-058). Read-only. --once exits 2 on a critical
 //                                     alarm (cron). Webhook also from ALERT_WEBHOOK_URL. See
 //                                     docs/runbooks/alarms.md.
 //
@@ -35,16 +42,14 @@ import { homedir } from "node:os";
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
   DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, TABLE_STATUS, decodeGlobal, decodeLedger, decodeRuntime, decodeTableConfig,
-  globalPda, perConnection, perLogin, sizeOf, tableAddresses, magicFeeVault,
+  globalPda, perConnection, perLogin, sizeOf, tableAddresses, magicFeeVault, verifyTee,
 } from "@card-flex/client-sdk";
-import { confirmByPolling } from "@card-flex/client-sdk";
-import { checkVault, closeTablePer, createTable, delegateTable, openTablePer, sweepRake, syncGlobalAuthority, updateGlobal } from "./admin.ts";
-import { scan } from "./watch.ts";
+import { sendAndConfirm } from "@card-flex/client-sdk";
+import { checkVault, closeTablePer, createTable, delegateTable, migrateRuntime, openTablePer, setKeeper, sweepRake, syncGlobalAuthority, updateGlobal } from "./admin.ts";
+import { keeperAlerts, scan, teeAlerts } from "./watch.ts";
+import { parseArgs } from "./args.ts";
 
-const argv = process.argv.slice(2);
-const flag = (n: string) => argv.includes(`--${n}`);
-const opt = (n: string, d?: string) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
-const pos = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["--pause", "--unpause", "--strict", "--dry-run", "--once"].includes(argv[i - 1])));
+const { flag, opt, pos } = parseArgs(process.argv.slice(2));
 const dry = flag("dry-run");
 const baseUrl = process.env.CARDFLEX_BASE_RPC ?? ENDPOINTS.devnet.base;
 const perUrl = process.env.CARDFLEX_PER_RPC ?? ENDPOINTS.devnet.per;
@@ -71,23 +76,13 @@ async function send(conn: Connection, ixs: TransactionInstruction[], kp: Keypair
     }
     return;
   }
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const tx = new Transaction().add(...ixs);
-      const bh = await conn.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = bh.blockhash;
-      tx.feePayer = kp.publicKey;
-      tx.sign(kp);
-      const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
-      const err = await confirmByPolling(conn, sig);
-      if (err) throw new Error(`${label} failed: ${JSON.stringify(err)} (${sig})`);
-      console.log(`✓ ${label}  ${sig}`);
-      return;
-    } catch (e) {
-      const msg = String((e as Error).message ?? e);
-      if (attempt >= 2 || /failed:|custom program error|Simulation failed/.test(msg)) throw e;
-      await new Promise((r) => setTimeout(r, 1500));
-    }
+  // CF-067: retries through network blips never resend a landed transaction;
+  // a program error is final.
+  try {
+    const sig = await sendAndConfirm(conn, ixs, [kp], { skipPreflight, retries: 2, backoffMs: 1_500 });
+    console.log(`✓ ${label}  ${sig}`);
+  } catch (e) {
+    throw new Error(`${label} failed: ${String((e as Error).message ?? e)}`);
   }
 }
 
@@ -128,8 +123,26 @@ async function main() {
     const authority = opt("authority") ? new PublicKey(opt("authority")!) : signer().publicKey;
     const webhook = opt("webhook") ?? process.env.ALERT_WEBHOOK_URL;
     const every = Number(opt("every", "60")) * 1000;
+    const teeEvery = Number(opt("tee-every", "600")) * 1000;
+    let teeAt = 0;
+    let teeLast: ReturnType<typeof teeAlerts> = [];
     for (;;) {
-      const alerts = await scan(base, { authority }).catch((e) => [{ level: "critical" as const, code: "WATCH_FAILED", table: "-", detail: String((e as Error).message ?? e).slice(0, 200) }]);
+      const alerts: ReturnType<typeof teeAlerts> = await scan(base, { authority }).catch((e) => [{ level: "critical" as const, code: "WATCH_FAILED", table: "-", detail: String((e as Error).message ?? e).slice(0, 200) }]);
+      // CF-058: the TEE check needs PCCS collateral; run it less often, but keep its alarms up.
+      if (Date.now() - teeAt >= teeEvery) {
+        teeAt = Date.now();
+        teeLast = teeAlerts(perUrl, await verifyTee(perUrl).catch((e) => ({ error: String((e as Error).message ?? e) })));
+      }
+      alerts.push(...teeLast);
+      // CF-060: keeper health endpoint and wallet balance.
+      const keeperUrl = opt("keeper-url") ?? process.env.KEEPER_HEALTH_URL;
+      const keeperPk = opt("keeper") ?? process.env.CARDFLEX_KEEPER_PUBKEY;
+      alerts.push(...keeperAlerts({
+        url: keeperUrl,
+        health: keeperUrl ? await fetch(keeperUrl, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json() as Promise<{ ok: boolean; reasons: string[] }>).catch((e) => ({ error: String((e as Error).message ?? e) })) : undefined,
+        keeper: keeperPk,
+        balance: keeperPk ? BigInt(await base.getBalance(new PublicKey(keeperPk)).catch(() => Number.MAX_SAFE_INTEGER)) : undefined,
+      }));
       const at = new Date().toISOString();
       if (!alerts.length) console.log(`${at} ok: no alarms for ${authority.toBase58()}`);
       for (const a of alerts) console.log(`${at} ${a.level.toUpperCase()} ${a.code} ${a.table} ${a.detail}`);
@@ -141,6 +154,12 @@ async function main() {
       await new Promise((r) => setTimeout(r, every));
     }
   }
+  if (area === "tee") {
+    const r = await verifyTee(perUrl);
+    console.log(JSON.stringify({ endpoint: perUrl, ok: r.ok, reasons: r.reasons, tcbStatus: r.tcbStatus, advisoryIds: r.advisoryIds, measurements: r.measurements }, null, 2));
+    process.exitCode = r.ok ? 0 : 1;
+    return;
+  }
   if (area === "token") {
     const { token, expiresAt } = await perLogin(signer(), perUrl);
     console.log(token);
@@ -149,11 +168,19 @@ async function main() {
   }
   if (area === "tables") {
     const accs = await base.getProgramAccounts(PROGRAM_ID, { filters: [{ dataSize: 8 + sizeOf({ defined: { name: "TableConfig" } }) }] });
-    for (const a of accs) {
+    const want = 8 + sizeOf({ defined: { name: "TableRuntime" } });
+    const rts: (Awaited<ReturnType<typeof base.getAccountInfo>>)[] = [];
+    for (let i = 0; i < accs.length; i += 100) rts.push(...(await base.getMultipleAccountsInfo(accs.slice(i, i + 100).map((a) => tableAddresses(a.pubkey).runtime))));
+    let old = 0;
+    for (const [i, a] of accs.entries()) {
       const c = decodeTableConfig(a.account.data);
-      console.log(a.pubkey.toBase58(), `seats ${c.max_seats}`, `seated ${c.seated.toString(2).replace(/0/g, "").length}`, c.status === TABLE_STATUS.ACTIVE ? "active" : "refunded", `buy-in ${c.min_buy_in}-${c.max_buy_in}`);
+      const r = rts[i];
+      const len = r?.data.length ?? 0;
+      const layout = !r ? "no runtime" : len === want ? "current" : r.owner.equals(DELEGATION_PROGRAM_ID) ? `OLD ${len} B, live (refund only)` : `OLD ${len} B (cf-admin table migrate)`;
+      if (r && len !== want) old++;
+      console.log(a.pubkey.toBase58(), `seats ${c.max_seats}`, `seated ${c.seated.toString(2).replace(/0/g, "").length}`, c.status === TABLE_STATUS.ACTIVE ? "active" : "refunded", `buy-in ${c.min_buy_in}-${c.max_buy_in}`, layout);
     }
-    console.log(`${accs.length} table(s)`);
+    console.log(`${accs.length} table(s), ${old} with an old runtime layout`);
     return;
   }
   if (area === "table" && cmd === "create") {
@@ -229,6 +256,29 @@ async function main() {
         await send(tee, [ix], kp, `PER close ${i + 1}`, { skipPreflight: true }).catch((e) => console.log(`  (skipped: ${String(e.message ?? e).slice(0, 80)})`));
       }
       console.log("undelegation requested; the base layer shows it after the commit lands");
+      return;
+    }
+    if (cmd === "migrate") {
+      const kp = signer();
+      const r = await base.getAccountInfo(tableAddresses(config).runtime);
+      const want = 8 + sizeOf({ defined: { name: "TableRuntime" } });
+      if (!r) return fail("no runtime for this table");
+      if (r.data.length === want) return console.log(`runtime already current (${want} bytes)`);
+      if (r.owner.equals(DELEGATION_PROGRAM_ID)) return fail("table is live in PER (delegated): can't migrate; players leave by emergency_refund + claim_refund after the refund timeout");
+      await send(base, [migrateRuntime(kp.publicKey, config)], kp, `migrate_runtime ${r.data.length} -> ${want} bytes`);
+      return;
+    }
+    if (cmd === "keeper") {
+      const kp = signer();
+      const k = pos[3] ?? fail("usage: cf-admin table keeper <config> <pubkey|none>");
+      const keeper = k === "none" ? PublicKey.default : new PublicKey(k);
+      const { live, rt } = await readTable(config);
+      // A table opened before keeps its permissions in PER: name the keeper while it is live.
+      if (!live && rt?.locked) return fail("this table was opened in PER before: run `cf-admin table open` first, then `table keeper` (the permission lives in PER)");
+      const ix = setKeeper(kp.publicKey, config, keeper, live);
+      if (live) await send(perConnection(dry ? null : (await perLogin(kp, perUrl)).token, perUrl), [ix], kp, "set_keeper (PER)", { skipPreflight: true });
+      else await send(base, [ix], kp, "set_keeper");
+      console.log(keeper.equals(PublicKey.default) ? "keeper read key cleared" : `keeper ${keeper.toBase58()} can read this table's runtime (start it without CARDFLEX_PER_TOKEN)`);
       return;
     }
     if (cmd === "repair") {

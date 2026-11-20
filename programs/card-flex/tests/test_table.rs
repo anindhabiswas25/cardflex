@@ -7,7 +7,7 @@ use {
     anchor_lang::{
         prelude::Pubkey,
         solana_program::{instruction::Instruction, system_program},
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        AccountDeserialize, InstructionData, Space, ToAccountMetas,
     },
     card_flex::table::{ephemeral_budget, TableRuntime, RUNTIME_SEED, TABLE_SEED},
     litesvm::LiteSVM,
@@ -623,4 +623,170 @@ fn stalled_salt_rounds_cancel_and_three_strikes_make_a_seat_leave() {
         send_signed(&mut t, ix, &[&stranger]).unwrap_err()
     };
     assert!(e.contains("WrongPhase"), "{e}");
+}
+
+fn set_keeper_ix(t: &Table, signer: Pubkey, keeper: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::SetKeeper { keeper }.data(),
+        card_flex::accounts::SetKeeper {
+            authority: signer,
+            runtime: t.runtime,
+            runtime_permission: None,
+            permission_program: None,
+            ephemeral_vault: None,
+            magic_program: None,
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-065: only the table authority names the keeper's read key; it can't be
+/// the authority, a table address or a seated player's key, and once set no
+/// player can use it as a session key.
+#[test]
+fn keeper_read_key_rules() {
+    let (mut t, ok) = create(6);
+    assert!(ok);
+    let a = funded(&mut t.svm);
+    let session_a = Pubkey::new_unique();
+    assert!(join(&mut t, &a, 0, session_a));
+    let keeper = Pubkey::new_unique();
+    let auth = t.authority.insecure_clone();
+    // Not the authority: refused.
+    let stranger = funded(&mut t.svm);
+    let ix = set_keeper_ix(&t, stranger.pubkey(), keeper);
+    assert!(!send(&mut t.svm, ix, &stranger));
+    // Bad keeper keys.
+    for bad in [
+        t.authority.pubkey(),
+        t.runtime,
+        t.config,
+        a.pubkey(),
+        session_a,
+    ] {
+        let ix = set_keeper_ix(&t, auth.pubkey(), bad);
+        assert!(!send(&mut t.svm, ix, &auth), "{bad}");
+    }
+    let ix = set_keeper_ix(&t, auth.pubkey(), keeper);
+    assert!(send(&mut t.svm, ix, &auth));
+    assert_eq!(runtime(&t).keeper, keeper);
+    // A player can't take the keeper key as a session key.
+    let b = funded(&mut t.svm);
+    assert!(!join(&mut t, &b, 1, keeper));
+    // Cleared with the default key.
+    let ix = set_keeper_ix(&t, auth.pubkey(), Pubkey::default());
+    assert!(send(&mut t.svm, ix, &auth));
+    assert_eq!(runtime(&t).keeper, Pubkey::default());
+}
+
+fn migrate_ix(t: &Table, payer: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::MigrateRuntime {}.data(),
+        card_flex::accounts::MigrateRuntime {
+            payer,
+            config: t.config,
+            runtime: t.runtime,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// Cuts the runtime back to an older layout's size (what Devnet tables made
+/// before CF-064/065 look like).
+fn shrink_runtime(t: &mut Table, len: usize) {
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.data.truncate(len);
+    t.svm.set_account(t.runtime, acc).unwrap();
+}
+
+/// CF-067: an old-layout runtime can't be used until migrated; migration
+/// keeps every game field, zeroes the new ones, and the table plays on.
+#[test]
+fn old_runtime_migrates_and_keeps_its_state() {
+    let (mut t, ok) = create(6);
+    assert!(ok);
+    let a = funded(&mut t.svm);
+    assert!(join(&mut t, &a, 0, Pubkey::new_unique()));
+    let before = runtime(&t);
+    shrink_runtime(&mut t, 1_212);
+    // An old table whose budget was spent down to bare rent.
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.lamports = t.svm.minimum_balance_for_rent_exemption(1_212);
+    t.svm.set_account(t.runtime, acc).unwrap();
+    // The old layout doesn't load: a second player can't join.
+    let b = funded(&mut t.svm);
+    assert!(!join(&mut t, &b, 1, Pubkey::new_unique()));
+
+    let p = funded(&mut t.svm);
+    let ix = migrate_ix(&t, p.pubkey());
+    assert!(send(&mut t.svm, ix, &p));
+    let acc = t.svm.get_account(&t.runtime).unwrap();
+    assert_eq!(acc.data.len(), 8 + TableRuntime::INIT_SPACE);
+    // Rent for the new size AND the whole ephemeral budget (found on Devnet:
+    // a runtime left at bare rent couldn't pay for its PER accounts).
+    assert!(
+        acc.lamports
+            >= t.svm.minimum_balance_for_rent_exemption(acc.data.len()) + ephemeral_budget()
+    );
+    let after = runtime(&t);
+    assert_eq!(
+        (
+            after.occupied,
+            after.wallets,
+            after.session_keys,
+            after.stacks,
+            after.seat_epoch,
+            after.bump
+        ),
+        (
+            before.occupied,
+            before.wallets,
+            before.session_keys,
+            before.stacks,
+            before.seat_epoch,
+            before.bump
+        )
+    );
+    assert_eq!(
+        (after.last_paid_commit, after.paid_commit_hash, after.keeper),
+        (0, [0; 32], Pubkey::default())
+    );
+    // Plays on: seating works again (b's buy-in stays in its ledger; a new player joins).
+    let c = funded(&mut t.svm);
+    assert!(join(&mut t, &c, 2, Pubkey::new_unique()));
+    // Already current: refused (nothing to do).
+    let ix = migrate_ix(&t, p.pubkey());
+    assert!(!send(&mut t.svm, ix, &p));
+}
+
+/// CF-067: only the known prefix-compatible sizes migrate.
+#[test]
+fn migrate_refuses_unknown_layouts() {
+    let (mut t, _) = create(6);
+    let p = funded(&mut t.svm);
+    shrink_runtime(&mut t, 1_190); // pre-CF-050: bump moved, not a prefix
+    let ix = migrate_ix(&t, p.pubkey());
+    assert!(!send(&mut t.svm, ix, &p));
+    let (mut t, _) = create(6);
+    let p = funded(&mut t.svm);
+    shrink_runtime(&mut t, 1_252); // CF-064 build, before CF-065
+    let lamports = t.svm.get_account(&t.runtime).unwrap().lamports + 123_456_789; // operator-funded surplus
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.lamports = lamports;
+    t.svm.set_account(t.runtime, acc).unwrap();
+    let ix = migrate_ix(&t, p.pubkey());
+    assert!(send(&mut t.svm, ix, &p));
+    assert_eq!(runtime(&t).keeper, Pubkey::default());
+    // A surplus is kept: exactly the extra rent is added.
+    let rent_diff = t
+        .svm
+        .minimum_balance_for_rent_exemption(8 + TableRuntime::INIT_SPACE)
+        - t.svm.minimum_balance_for_rent_exemption(1_252);
+    assert_eq!(
+        t.svm.get_account(&t.runtime).unwrap().lamports,
+        lamports + rent_diff
+    );
 }

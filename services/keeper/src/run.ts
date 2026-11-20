@@ -22,7 +22,12 @@ export type RunOpts = {
   /** Stop when this returns true (tests); runs forever otherwise. */
   stop?: () => boolean;
   log?: (m: string) => void;
+  /** CF-060: updated as the loop runs, for the /health endpoint. */
+  status?: RunStatus;
 };
+
+/** CF-060: what the scheduler last did (ms timestamps). */
+export type RunStatus = { startedAt: number; lastReadAt: number; lastScanAt: number; tables: number };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const CHUNK = 100; // getMultipleAccountsInfo limit
@@ -54,6 +59,7 @@ export async function runKeeper(keeper: Keeper, o: RunOpts): Promise<void> {
       try {
         list = await o.tables();
         lastScan = Date.now();
+        if (o.status) { o.status.lastScanAt = lastScan; o.status.tables = list.length; }
         log(`driving ${list.length} table(s)`);
       } catch (e) {
         log(`table scan failed: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
@@ -74,6 +80,7 @@ export async function runKeeper(keeper: Keeper, o: RunOpts): Promise<void> {
           const a = infos[i];
           snaps.set(c.toBase58(), { rt: a ? decodeRuntime(a.data) : null, slot: BigInt(slot as number), at });
         });
+        if (o.status) o.status.lastReadAt = Date.now();
       } catch (e) {
         log(`read failed: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
       }

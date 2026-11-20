@@ -80,3 +80,16 @@ commit + sync by hand (`cf-admin table status` shows the phase); then
   player funds. Close its tables (`cf-admin table close`), players cash out.
 - A leaked **upgrade authority** can replace the program: the worst case.
   It must be a multisig before public Devnet ([multisig.md](multisig.md)).
+
+## Old tables after a runtime layout change (CF-067)
+
+`cf-admin tables` marks tables whose runtime has an older layout.
+
+- Not live (base layer): `cf-admin table migrate <config>`, then use it as
+  usual. If it was opened before, it is `locked`: `cf-admin table open`
+  first, then seat players and name the keeper (`table keeper`) in PER.
+- Live in PER: it can't be migrated and can't commit or sync. Players get
+  their money by refund: after the table's refund timeout anyone sends
+  `emergency_refund`, then one `claim_refund` per seat (pays the recorded
+  wallet exactly its synced stack). Proven on Devnet:
+  `pnpm --filter @card-flex/keeper refund-old`.

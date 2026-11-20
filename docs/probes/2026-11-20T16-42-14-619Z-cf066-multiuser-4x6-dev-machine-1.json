@@ -1,0 +1,170 @@
+{
+  "ticket": "CF-066",
+  "region": "dev-machine-1",
+  "at": "2026-11-20T16:42:14.619Z",
+  "tables": 4,
+  "usersPerTable": 6,
+  "users": 24,
+  "handsTarget": 5,
+  "setupSecs": 170.993,
+  "runSecs": 407.638,
+  "handsCompleted": 20,
+  "actionConfirmMs": {
+    "n": 507,
+    "p50": 269,
+    "p95": 1078,
+    "max": 13352
+  },
+  "saltConfirmMs": {
+    "n": 74,
+    "p50": 458,
+    "p95": 986,
+    "max": 3930
+  },
+  "saltsToDealtMs": {
+    "n": 22,
+    "p50": 3163,
+    "p95": 5166,
+    "max": 5251
+  },
+  "ownHandVisibleMs": {
+    "n": 72,
+    "p50": 90,
+    "p95": 427,
+    "max": 740
+  },
+  "privacy": {
+    "ownOk": 72,
+    "ownMissing": 0,
+    "neighbourLeaks": 0,
+    "neighbourTries": 72
+  },
+  "endReasons": {
+    "last_player": 8,
+    "show": 12
+  },
+  "failures": {
+    "keeper-step": 1
+  },
+  "keeperHealth": {
+    "ok": true,
+    "reasons": []
+  },
+  "checks": [
+    {
+      "name": "Gf4VZuVE: leaver cashed out exactly its synced stack",
+      "ok": true,
+      "note": "925000 lamports"
+    },
+    {
+      "name": "4g6iXwtt: leaver cashed out exactly its synced stack",
+      "ok": true,
+      "note": "925000 lamports"
+    },
+    {
+      "name": "8CLWTr2g: leaver cashed out exactly its synced stack",
+      "ok": true,
+      "note": "925000 lamports"
+    },
+    {
+      "name": "2NE7Rzex: leaver cashed out exactly its synced stack",
+      "ok": true,
+      "note": "925000 lamports"
+    },
+    {
+      "name": "stranger's commit right after the keeper's is refused (CF-064)",
+      "ok": true
+    },
+    {
+      "name": "2NE7Rzex: 5+ hands played",
+      "ok": true,
+      "note": "5"
+    },
+    {
+      "name": "2NE7Rzex: player who bought in mid-hand was dealt into a later hand",
+      "ok": true,
+      "note": "bought in #1, dealt #2"
+    },
+    {
+      "name": "2NE7Rzex: leaver synced and cashed out",
+      "ok": true
+    },
+    {
+      "name": "2NE7Rzex: vault reconciles exactly (check_vault strict)",
+      "ok": true
+    },
+    {
+      "name": "4g6iXwtt: 5+ hands played",
+      "ok": true,
+      "note": "5"
+    },
+    {
+      "name": "4g6iXwtt: player who bought in mid-hand was dealt into a later hand",
+      "ok": true,
+      "note": "bought in #1, dealt #2"
+    },
+    {
+      "name": "4g6iXwtt: leaver synced and cashed out",
+      "ok": true
+    },
+    {
+      "name": "4g6iXwtt: vault reconciles exactly (check_vault strict)",
+      "ok": true
+    },
+    {
+      "name": "Gf4VZuVE: 5+ hands played",
+      "ok": true,
+      "note": "5"
+    },
+    {
+      "name": "Gf4VZuVE: player who bought in mid-hand was dealt into a later hand",
+      "ok": true,
+      "note": "bought in #1, dealt #2"
+    },
+    {
+      "name": "Gf4VZuVE: leaver synced and cashed out",
+      "ok": true
+    },
+    {
+      "name": "Gf4VZuVE: vault reconciles exactly (check_vault strict)",
+      "ok": true
+    },
+    {
+      "name": "8CLWTr2g: 5+ hands played",
+      "ok": true,
+      "note": "5"
+    },
+    {
+      "name": "8CLWTr2g: player who bought in mid-hand was dealt into a later hand",
+      "ok": true,
+      "note": "bought in #1, dealt #2"
+    },
+    {
+      "name": "8CLWTr2g: leaver synced and cashed out",
+      "ok": true
+    },
+    {
+      "name": "8CLWTr2g: vault reconciles exactly (check_vault strict)",
+      "ok": true
+    },
+    {
+      "name": "every finished hand indexed and VALID",
+      "ok": true,
+      "note": "20 hands"
+    },
+    {
+      "name": "every dealt player read its own hand",
+      "ok": true,
+      "note": "72 reads, 0 missing"
+    },
+    {
+      "name": "no player read a neighbour's hand",
+      "ok": true,
+      "note": "72 tries"
+    },
+    {
+      "name": "keeper health ok at the end",
+      "ok": true
+    }
+  ]
+}

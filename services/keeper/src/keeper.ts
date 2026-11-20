@@ -4,7 +4,7 @@
 // token grants reads, never signatures).
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  abortLostHand, confirmByPolling, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
+  abortLostHand, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
   revealHand, sideShowView, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
@@ -30,7 +30,7 @@ export type KeeperOpts = {
 /** A runtime read taken by the scheduler (run.ts) with the PER slot at that time. */
 export type Snapshot = { rt: TableRuntime | null; slot: bigint };
 
-type TableState = {
+export type TableState = {
   lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number;
   /** CF-053: last seen hand progress and when it changed (ms). */
   progress: string; progressAt: number;
@@ -84,16 +84,29 @@ export class Keeper {
   private async commitAndSync(config: PublicKey, st: TableState, rt: TableRuntime) {
     const t = tableAddresses(config);
     const seq0 = decodeRuntime((await this.o.base.getAccountInfo(t.runtime))!.data).commit_seq;
-    await this.send(this.o.per, [commitHand({ payer: this.o.key.publicKey, config, feeVault: this.o.feeVault })], "commit_hand");
+    let committed = true;
+    try {
+      await this.send(this.o.per, [commitHand({ payer: this.o.key.publicKey, config, feeVault: this.o.feeVault })], "commit_hand");
+    } catch (e) {
+      // CF-064: someone else had the table pay for a commit < 240 s ago (or
+      // nothing changed). Fine: just make sure that commit is synced.
+      if (!isProgramError(e, "CommitNotNeeded")) throw e;
+      committed = false;
+    }
     const t0 = Date.now();
     for (;;) {
       const b = await this.o.base.getAccountInfo(t.runtime);
-      if (b && decodeRuntime(b.data).commit_seq > seq0) break;
+      if (!committed || (b && decodeRuntime(b.data).commit_seq > seq0)) break;
       if (Date.now() - t0 > 90_000) throw new Error("commit did not land within 90 s");
       await new Promise((r) => setTimeout(r, 500));
     }
     const cfg = decodeTableConfig((await this.o.base.getAccountInfo(config))!.data);
-    await this.send(this.o.base, [syncHand({ config, delegationRecord: delegationRecordPda(t.runtime), seated: cfg.seated })], "sync_hand", false);
+    try {
+      await this.send(this.o.base, [syncHand({ config, delegationRecord: delegationRecordPda(t.runtime), seated: cfg.seated })], "sync_hand", false);
+    } catch (e) {
+      // Preflight: already synced (StaleCommit) is fine only after a refused commit.
+      if (committed || !isProgramError(e, "StaleCommit")) throw e;
+    }
     st.lastCommitSecs = BigInt(Math.floor(Date.now() / 1000));
     st.departedSynced = rt.departed;
   }

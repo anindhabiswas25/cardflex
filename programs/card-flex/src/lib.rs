@@ -302,14 +302,7 @@ pub mod card_flex {
             runtime.occupied |= 1 << seat;
             runtime.departed &= !(1 << seat);
             runtime.missed_salts[s] = 0;
-            let mut members = vec![Member {
-                flags,
-                pubkey: runtime.authority,
-            }];
-            members.extend(runtime.seated().map(|i| Member {
-                flags,
-                pubkey: runtime.session_keys[i],
-            }));
+            let members = runtime_members(runtime, flags);
             (
                 runtime_key,
                 config,
@@ -542,6 +535,22 @@ pub mod card_flex {
     /// Commits `TableRuntime` and `HandLog` to the base layer without
     /// undelegating. Anyone may call it (keeper heartbeat / end of hand).
     pub fn commit_hand(ctx: Context<CommitHand>) -> Result<()> {
+        let fee_vault = checked_fee_vault(&ctx.accounts.magic_fee_vault)?;
+        if fee_vault.is_some() {
+            // CF-064: the table pays this commit, so only when it's needed:
+            // the state changed and the hand is over, or a heartbeat is due.
+            // The table's authority may always commit.
+            let now = Clock::get()?.unix_timestamp;
+            let hash =
+                runtime_state_hash(&ctx.accounts.runtime.to_account_info().try_borrow_data()?);
+            let rt = &mut ctx.accounts.runtime;
+            require!(
+                paid_commit_allowed(rt, &hash, now, ctx.accounts.payer.key),
+                CardFlexError::CommitNotNeeded
+            );
+            rt.last_paid_commit = now;
+            rt.paid_commit_hash = hash;
+        }
         ctx.accounts.runtime.commit_seq = ctx
             .accounts
             .runtime
@@ -558,7 +567,7 @@ pub mod card_flex {
         // account, with the validator's fee vault. With a fee vault the table's
         // own runtime PDA (delegated, funded by the operator) pays, signed by
         // the program.
-        match checked_fee_vault(&ctx.accounts.magic_fee_vault)? {
+        match fee_vault {
             Some(v) => {
                 let config = ctx.accounts.runtime.config;
                 let seeds: &[&[u8]] =
@@ -582,6 +591,121 @@ pub mod card_flex {
                 .build_and_invoke()?;
             }
         }
+        Ok(())
+    }
+
+    /// CF-065: the table authority names the keeper's read key (or clears it
+    /// with the default key). The keeper then reads `TableRuntime` with its
+    /// own PER login; it is never a reader of hands, salts or the dealer.
+    pub fn set_keeper(ctx: Context<SetKeeper>, keeper: Pubkey) -> Result<()> {
+        let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
+        let runtime = &mut ctx.accounts.runtime;
+        let (runtime_key, config) = (runtime.key(), runtime.config);
+        require!(
+            keeper == Pubkey::default()
+                || (keeper != runtime.authority
+                    && keeper != runtime_key
+                    && keeper != config
+                    && !runtime
+                        .seated()
+                        .any(|i| runtime.wallets[i] == keeper || runtime.session_keys[i] == keeper)),
+            CardFlexError::BadKeeper
+        );
+        runtime.keeper = keeper;
+        if !runtime.locked {
+            return Ok(()); // base layer, before permissions exist
+        }
+        let members = runtime_members(runtime, flags);
+        let bump = runtime.bump;
+        let a = &ctx.accounts;
+        let (rt_perm, perm_prog, vault, magic) = (
+            need(&a.runtime_permission)?,
+            need(&a.permission_program)?,
+            need(&a.ephemeral_vault)?,
+            need(&a.magic_program)?,
+        );
+        require_keys_eq!(
+            rt_perm.key(),
+            Pubkey::find_program_address(
+                &[PERMISSION_SEED, runtime_key.as_ref()],
+                &PERMISSION_PROGRAM_ID
+            )
+            .0,
+            CardFlexError::BadKeeper
+        );
+        require_keys_eq!(
+            perm_prog.key(),
+            PERMISSION_PROGRAM_ID,
+            CardFlexError::BadKeeper
+        );
+        require_keys_eq!(vault.key(), EPHEMERAL_VAULT_ID, CardFlexError::BadKeeper);
+        require_keys_eq!(magic.key(), MAGIC_PROGRAM_ID, CardFlexError::BadKeeper);
+        let runtime_seeds: &[&[u8]] = &[RUNTIME_SEED, config.as_ref(), &[bump]];
+        let runtime_info = ctx.accounts.runtime.to_account_info();
+        UpdateEphemeralPermissionCpi {
+            payer: runtime_info.clone(),
+            permissioned_account: runtime_info.clone(),
+            permission: rt_perm,
+            vault,
+            magic_program: magic,
+            permission_program: perm_prog,
+            authority: runtime_info,
+            authority_is_signer: false,
+            args: EphemeralMembersArgs {
+                is_private: true,
+                members,
+            },
+        }
+        .invoke_signed(&[runtime_seeds])?;
+        Ok(())
+    }
+
+    /// CF-067: grows a runtime made by an earlier program version to the
+    /// current layout. The appended fields start at zero, which is their
+    /// correct default (no paid commit yet, no keeper key). Permissionless:
+    /// it changes no game or money state. Base layer only: a delegated
+    /// runtime is owned by the delegation program and fails the owner check.
+    pub fn migrate_runtime(ctx: Context<MigrateRuntime>) -> Result<()> {
+        let info = ctx.accounts.runtime.to_account_info();
+        let old_len = info.data_len();
+        let new_len = 8 + TableRuntime::INIT_SPACE;
+        require!(
+            MIGRATABLE_RUNTIME_LENS.contains(&old_len),
+            CardFlexError::BadRuntime
+        );
+        require!(
+            info.try_borrow_data()?[..8] == *TableRuntime::DISCRIMINATOR,
+            CardFlexError::BadRuntime
+        );
+        // Keep what the runtime held above rent (its ephemeral budget pays
+        // for the PER accounts, CF-007), and make sure that budget is whole:
+        // off the PER every ephemeral account is closed, so all of it
+        // belongs back in the runtime.
+        let rent = Rent::get()?;
+        let (rent_old, rent_new) = (rent.minimum_balance(old_len), rent.minimum_balance(new_len));
+        let need = rent_new
+            .saturating_sub(rent_old)
+            .max((rent_new + ephemeral_budget()).saturating_sub(info.lamports()));
+        if need > 0 {
+            anchor_lang::system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    anchor_lang::system_program::Transfer {
+                        from: ctx.accounts.payer.to_account_info(),
+                        to: info.clone(),
+                    },
+                ),
+                need,
+            )?;
+        }
+        // It must be this table's runtime (`config` is its first field; a
+        // full deserialize would overflow the 4 KB SBF stack).
+        require!(
+            info.try_borrow_data()?[8..40] == ctx.accounts.config.key().to_bytes(),
+            CardFlexError::BadRuntime
+        );
+        info.resize(new_len)?;
+        info.try_borrow_mut_data()?[old_len..].fill(0);
         Ok(())
     }
 
@@ -760,14 +884,7 @@ pub mod card_flex {
             CardFlexError::BadDealer
         );
         let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
-        let mut members = vec![Member {
-            flags,
-            pubkey: runtime.authority,
-        }];
-        members.extend(runtime.seated().map(|i| Member {
-            flags,
-            pubkey: runtime.session_keys[i],
-        }));
+        let members = runtime_members(runtime, flags);
         let seeds: &[&[u8]] = &[RUNTIME_SEED, runtime.config.as_ref(), &[runtime.bump]];
         create_permission(
             ctx.accounts,
@@ -987,7 +1104,7 @@ pub mod card_flex {
     ) -> Result<()> {
         let flags = TX_LOGS_FLAG | TX_MESSAGE_FLAG | TX_BALANCES_FLAG;
         // Update state in a scope so the mutable borrow ends before the CPIs.
-        let (runtime_key, config, bump, runtime_members) = {
+        let (runtime_key, config, bump, rt_members) = {
             let runtime = &mut ctx.accounts.runtime;
             require!(seat < runtime.max_seats, CardFlexError::BadSeat);
             require!(
@@ -1010,14 +1127,7 @@ pub mod card_flex {
             // now would leave it readable (security review). Revoke first.
             require!(runtime.grants == 0, CardFlexError::GrantActive);
             runtime.session_keys[seat as usize] = new_session;
-            let mut members = vec![Member {
-                flags,
-                pubkey: runtime.authority,
-            }];
-            members.extend(runtime.seated().map(|i| Member {
-                flags,
-                pubkey: runtime.session_keys[i],
-            }));
+            let members = runtime_members(runtime, flags);
             (runtime.key(), runtime.config, runtime.bump, members)
         };
         let (hand, hand_bump) = Pubkey::find_program_address(
@@ -1058,7 +1168,7 @@ pub mod card_flex {
             authority_is_signer: false,
             args: EphemeralMembersArgs {
                 is_private: true,
-                members: runtime_members,
+                members: rt_members,
             },
         }
         .invoke_signed(&[runtime_seeds])?;
@@ -1954,6 +2064,26 @@ pub struct VrfDeal<'info> {
     pub dealer: UncheckedAccount<'info>,
 }
 
+/// Readers of `TableRuntime`: the table authority, the keeper's read key
+/// (CF-065, if set) and the seated session keys.
+fn runtime_members(runtime: &TableRuntime, flags: u8) -> Vec<Member> {
+    let mut members = vec![Member {
+        flags,
+        pubkey: runtime.authority,
+    }];
+    if runtime.keeper != Pubkey::default() {
+        members.push(Member {
+            flags,
+            pubkey: runtime.keeper,
+        });
+    }
+    members.extend(runtime.seated().map(|i| Member {
+        flags,
+        pubkey: runtime.session_keys[i],
+    }));
+    members
+}
+
 /// Creates a private ephemeral permission for `account` with `members`.
 fn create_permission<'info>(
     accs: &TablePer<'info>,
@@ -1971,6 +2101,14 @@ fn create_permission_with<'info>(
     signer_seeds: &[&[&[u8]]],
     is_private: bool,
 ) -> Result<()> {
+    // CF-059: MagicBlock doesn't document what an empty member list means
+    // for a PRIVATE permission (public or nobody?). We never rely on it: every
+    // private list names at least one key (a key nobody holds, like the
+    // default key or a PDA, means "nobody"). HandLog's is public by design.
+    require!(
+        !is_private || !members.is_empty(),
+        CardFlexError::BadReaders
+    );
     CreateEphemeralPermissionCpi {
         payer: accs.runtime.to_account_info(),
         permissioned_account: account.clone(),
@@ -2086,7 +2224,7 @@ fn apply_leaves(runtime: &mut TableRuntime) {
 fn need<'info>(o: &Option<UncheckedAccount<'info>>) -> Result<AccountInfo<'info>> {
     o.as_ref()
         .map(|x| x.to_account_info())
-        .ok_or(error!(CardFlexError::BadSeatHand))
+        .ok_or(error!(CardFlexError::PerAccountsMissing))
 }
 
 /// Replaces a seat hand's reader list (permission CPI signed by the runtime
@@ -2405,4 +2543,12 @@ pub enum CardFlexError {
     NotConfigured,
     #[msg("not MagicBlock's fee vault for this table's validator")]
     BadFeeVault,
+    #[msg("nothing new to commit yet; the table pays only for changed state or a heartbeat")]
+    CommitNotNeeded,
+    #[msg(
+        "the keeper key can't be the authority, a table address, a seated wallet or session key"
+    )]
+    BadKeeper,
+    #[msg("this table was opened in PER (locked): this step updates permissions, so send it in PER while the table is live")]
+    PerAccountsMissing,
 }

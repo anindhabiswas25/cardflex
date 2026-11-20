@@ -155,6 +155,9 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         missed_salts: [0; MAX_SEATS],
         last_hand_end: 0,
         bump,
+        last_paid_commit: 0,
+        paid_commit_hash: [0; 32],
+        keeper: Pubkey::default(),
     };
     let mut data = Vec::new();
     rt.try_serialize(&mut data).unwrap();
@@ -605,6 +608,116 @@ fn runtime_byte_offsets() {
         rt.last_hand_end
     );
     assert_eq!(d[1211], rt.bump, "bump follows last_hand_end");
+    // CF-064: commit bookkeeping at the end, after bump.
+    assert_eq!(RUNTIME_COMMIT_SEQ_OFFSET, 858);
+    assert_eq!(
+        i64::from_le_bytes(d[1212..1220].try_into().unwrap()),
+        rt.last_paid_commit
+    );
+    assert_eq!(&d[1220..1252], &rt.paid_commit_hash);
+    assert_eq!(RUNTIME_PAID_COMMIT_OFFSET, 1212);
+    assert_eq!(&d[1252..1284], rt.keeper.as_ref(), "CF-065 keeper");
+    assert_eq!(d.len(), 1284);
+}
+
+/// CF-064: the state hash ignores commit bookkeeping but sees game state.
+#[test]
+fn runtime_state_hash_ignores_commit_fields() {
+    let mut t = dealt_table(2, [50 * BOOT, 60 * BOOT, 0, 0, 0, 0], [3; 32], (0, 0));
+    let d = t.svm.get_account(&t.runtime).unwrap().data;
+    let h = runtime_state_hash(&d);
+    let mut e = d.clone();
+    e[858..866].copy_from_slice(&99u64.to_le_bytes());
+    e[1212..1252].fill(7);
+    assert_eq!(runtime_state_hash(&e), h, "commit fields don't count");
+    t.act(0, Action::Chaal { amount: BOOT }).unwrap();
+    let d2 = t.svm.get_account(&t.runtime).unwrap().data;
+    assert_ne!(runtime_state_hash(&d2), h, "a bet changes the hash");
+}
+
+/// CF-064: when the runtime may pay for a commit.
+#[test]
+fn paid_commit_rule() {
+    let t = dealt_table(2, [50 * BOOT, 60 * BOOT, 0, 0, 0, 0], [3; 32], (0, 0));
+    let mut rt = t.runtime();
+    let stranger = Pubkey::new_unique();
+    let h = [1u8; 32];
+    rt.last_paid_commit = 1_000;
+    // Mid-hand: only the heartbeat gap (or the authority).
+    assert!(!paid_commit_allowed(
+        &rt,
+        &h,
+        1_000 + COMMIT_MIN_GAP_SECS - 1,
+        &stranger
+    ));
+    assert!(paid_commit_allowed(
+        &rt,
+        &h,
+        1_000 + COMMIT_MIN_GAP_SECS,
+        &stranger
+    ));
+    assert!(paid_commit_allowed(&rt, &h, 1_001, &rt.authority.clone()));
+    // Between hands: changed state may commit at once, unchanged may not.
+    rt.phase = phase::IDLE;
+    assert!(paid_commit_allowed(&rt, &h, 1_001, &stranger));
+    rt.paid_commit_hash = h;
+    assert!(!paid_commit_allowed(&rt, &h, 1_001, &stranger));
+}
+
+/// CF-064: a stranger can't make the table pay for commits it doesn't need.
+#[test]
+fn commit_with_fee_vault_refused_when_not_needed() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..2].copy_from_slice(&[50 * BOOT; 2]);
+    let mut t = dealt_table(2, stacks, [3; 32], (0, 0));
+    t.svm
+        .set_account(
+            ephemeral_rollups_sdk::consts::MAGIC_PROGRAM_ID,
+            Account {
+                lamports: 1_000_000,
+                data: vec![],
+                owner: "NativeLoader1111111111111111111111111111111"
+                    .parse()
+                    .unwrap(),
+                executable: true,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+    let vault = Pubkey::find_program_address(
+        &[b"magic-fee-vault", TEE_VALIDATOR.as_ref()],
+        &ephemeral_rollups_sdk::id(),
+    )
+    .0;
+    let ix = Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::CommitHand {}.data(),
+        card_flex::accounts::CommitHand {
+            payer: t.payer.pubkey(),
+            runtime: t.runtime,
+            hand_log: t.hand_log,
+            magic_fee_vault: Some(vault),
+            magic_program: ephemeral_rollups_sdk::consts::MAGIC_PROGRAM_ID,
+            magic_context: ephemeral_rollups_sdk::consts::MAGIC_CONTEXT_ID,
+        }
+        .to_account_metas(None),
+    );
+    let payer = t.payer.insecure_clone();
+    let start = now(&t).max(1_000);
+    let mut rt = t.runtime();
+    rt.last_paid_commit = start;
+    let mut data = Vec::new();
+    rt.try_serialize(&mut data).unwrap();
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
+    warp_to(&mut t, start + 10);
+    let e = send(&mut t.svm, std::slice::from_ref(&ix), &[&payer]).unwrap_err();
+    assert!(e.contains("CommitNotNeeded"), "{e}");
+    // Heartbeat due: the gate passes (LiteSVM then fails inside MagicBlock's program).
+    warp_to(&mut t, start + COMMIT_MIN_GAP_SECS);
+    let e = send(&mut t.svm, &[ix], &[&payer]).unwrap_err();
+    assert!(!e.contains("CommitNotNeeded"), "{e}");
 }
 
 /// Keeps `HL` in `packages/probes/src/common.mjs` in sync with `HandLog`.

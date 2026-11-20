@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Connection, Keypair, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  ACTION, ENDPOINTS, PHASE, act, buyIn, confirmByPolling, decodeRuntime, joinSeat, magicFeeVault, newSalt, newSessionKey,
+  ACTION, ENDPOINTS, PHASE, act, buyIn, confirmByPolling, sendAndConfirm, decodeRuntime, joinSeat, magicFeeVault, newSalt, newSessionKey,
   perConnection, perLogin, submitSalt, tableAddresses, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { closeTablePer, createTable, delegateTable, openTablePer } from "../../admin/src/admin.ts";
@@ -18,20 +18,8 @@ const checks: [string, boolean, string?][] = [];
 const check = (n: string, ok: boolean, note?: string) => { checks.push([n, ok, note]); console.log(`${ok ? "✓" : "✗"} ${n}${note ? ` (${note})` : ""}`); };
 
 async function send(conn: Connection, ixs: TransactionInstruction[], signers: Keypair[], skipPreflight = false) {
-  for (let a = 0; ; a++) {
-    try {
-      const tx = new Transaction().add(...ixs);
-      tx.recentBlockhash = (await conn.getLatestBlockhash("confirmed")).blockhash;
-      tx.feePayer = signers[0].publicKey; tx.sign(...signers);
-      const err = await confirmByPolling(conn, await conn.sendRawTransaction(tx.serialize(), { skipPreflight }));
-      if (err) throw new Error(JSON.stringify(err));
-      return;
-    } catch (e) {
-      if (a > 0 && String(e).includes("already in use")) return;
-      if (a >= 5) throw e;
-      await sleep(1000 * (a + 1));
-    }
-  }
+  // CF-067: Devnet endpoints drop requests now and then; retries never resend a landed transaction.
+  await sendAndConfirm(conn, ixs, signers, { skipPreflight, retries: 5, backoffMs: 2_000 });
 }
 
 const { config, ixs } = createTable(admin.publicKey, { tableId: BigInt(Date.now()), seats: 3, boot: 25_000n, rakeBps: 250, rakeCap: 10_000n, refundTimeoutSecs: 1_800 });

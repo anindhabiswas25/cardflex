@@ -8,6 +8,8 @@ import {
   type TableConfig, type TableRuntime,
 } from "@card-flex/client-sdk";
 
+import type { AttestationResult } from "@card-flex/client-sdk";
+
 export type Level = "critical" | "warning" | "info";
 export type Alert = { level: Level; code: string; table: string; detail: string };
 
@@ -113,4 +115,49 @@ export async function scan(base: Connection, o: { authority?: PublicKey; tables?
       alerts.push({ level: "info", code: "UNREADABLE", table: config.toBase58(), detail: `skipped: ${String((e as Error).message ?? e).slice(0, 120)}` });
     }
   }
+}
+
+/**
+ * CF-058: alarms from our own TEE attestation check (`verifyTee`). Players'
+ * clients refuse a TEE whose measurements aren't pinned, so a MagicBlock
+ * release that changes them stops play until we confirm and pin the new
+ * values: page someone at once. `error` = the check itself failed to run.
+ */
+export function teeAlerts(perUrl: string, r: AttestationResult | { error: string }): Alert[] {
+  const a = (level: Level, code: string, detail: string): Alert => ({ level, code, table: perUrl, detail });
+  if ("error" in r) return [a("warning", "TEE_UNREACHABLE", `attestation check failed to run: ${r.error.slice(0, 160)}`)];
+  if (r.ok) return [];
+  const out: Alert[] = [];
+  for (const why of r.reasons) {
+    if (why.startsWith("measurements")) {
+      const m = r.measurements;
+      out.push(a("critical", "TEE_MEASUREMENTS_CHANGED", `clients will refuse this TEE until confirmed with MagicBlock and pinned (DEVNET_TEE_MEASUREMENTS): ${m ? `mrTd ${m.mrTd.slice(0, 16)}… rtMr0 ${m.rtMr0.slice(0, 16)}… rtMr1 ${m.rtMr1.slice(0, 16)}… rtMr2 ${m.rtMr2.slice(0, 16)}…` : "?"} (full values: cf-admin tee)`));
+    } else if (why.startsWith("TCB status")) {
+      out.push(a("critical", "TEE_TCB", `${why}${r.advisoryIds?.length ? `; advisories ${r.advisoryIds.join(", ")}` : ""}`));
+    } else if (why.startsWith("quote reportData")) {
+      out.push(a("critical", "TEE_QUOTE_REPLAYED", why));
+    } else {
+      out.push(a("critical", "TEE_QUOTE_INVALID", why.slice(0, 200)));
+    }
+  }
+  return out;
+}
+
+/** Keeper wallet floor: base-layer syncs and PER steps (~5,000 lamports per hand, CF-057). */
+export const KEEPER_MIN_LAMPORTS = 50_000_000n;
+
+/**
+ * CF-060: keeper alarms. `health` = the keeper's GET /health body (or an
+ * error if unreachable); `balance` = the keeper wallet's base-layer lamports.
+ */
+export function keeperAlerts(o: { url?: string; health?: { ok: boolean; reasons: string[] } | { error: string }; keeper?: string; balance?: bigint }): Alert[] {
+  const out: Alert[] = [];
+  if (o.health) {
+    if ("error" in o.health) out.push({ level: "critical", code: "KEEPER_DOWN", table: o.url ?? "-", detail: `health check failed: ${o.health.error.slice(0, 160)}; tables stop between phases and become refundable` });
+    else if (!o.health.ok) out.push({ level: "critical", code: "KEEPER_UNHEALTHY", table: o.url ?? "-", detail: o.health.reasons.join("; ").slice(0, 300) });
+  }
+  if (o.balance !== undefined && o.balance < KEEPER_MIN_LAMPORTS) {
+    out.push({ level: "warning", code: "KEEPER_LOW_FUNDS", table: o.keeper ?? "-", detail: `keeper wallet has ${o.balance} lamports (< ${KEEPER_MIN_LAMPORTS}); top it up or syncs stop` });
+  }
+  return out;
 }

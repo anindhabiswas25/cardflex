@@ -9,6 +9,7 @@ import {
 import {
   PROGRAM_ID, TEE_VALIDATOR, BASE_RPC, loadDiscriminators, loadPayer, makeIx, send, tokenFor, teeConn,
   waitFor, log, w, r, u8, u64, RT, GAME, PHASE, ACTION, GLOBAL, ensureGlobal, buyInIx, joinSeatIx,
+  NO_FEE_VAULT,
 } from "./common.mjs";
 
 // Every seat buys in for real (vault + seat ledgers, ADR 0004). The table is
@@ -82,7 +83,7 @@ export async function setupTable({ seats = 6, players: nPlayers = seats, boot = 
       await send(tee, [ix("close_salt", perKeys(saltAccs[s]), u8(s))], [authority], { skipPreflight: true }).catch(() => {});
     }
     await send(tee, [ix("close_ephemeral", perKeys(dealer), Buffer.from([0]))], [authority], { skipPreflight: true }).catch(() => {});
-    await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
+    await send(tee, [ix("undelegate_table", [w(authority.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
     return waitFor(async () => { const a = await base.getAccountInfo(runtime); return a && a.owner.equals(PROGRAM_ID) ? a : null; }, 120_000, 500);
   }
 

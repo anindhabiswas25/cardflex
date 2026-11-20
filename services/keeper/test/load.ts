@@ -15,7 +15,7 @@ import {
   ACTION, ENDPOINTS, PHASE, act, buyIn, decodeRuntime, decodeTableConfig, joinSeat, newSalt, newSessionKey, perConnection,
   perLogin, rules, submitSalt, tableAddresses, type TableRuntime,
 } from "@card-flex/client-sdk";
-import { confirmByPolling } from "@card-flex/client-sdk";
+import { confirmByPolling, sendAndConfirm } from "@card-flex/client-sdk";
 import { checkVault, closeTablePer, createTable, delegateTable, openTablePer } from "../../admin/src/admin.ts";
 import { Keeper } from "../src/keeper.ts";
 import { runKeeper } from "../src/run.ts";
@@ -72,20 +72,7 @@ async function retry<T>(label: string, f: () => Promise<T>, tries = 5): Promise<
 process.on("unhandledRejection", (e) => { fail("unhandled"); console.error("unhandled:", String((e as Error)?.message ?? e).slice(0, 160)); });
 
 async function send(conn: Connection, ixs: TransactionInstruction[], signers: Keypair[], skipPreflight = false, retries = 2) {
-  for (let a = 0; ; a++) {
-    try {
-      const tx = new Transaction().add(...ixs);
-      const bh = await conn.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = bh.blockhash; tx.feePayer = signers[0].publicKey; tx.sign(...signers);
-      const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight });
-      const err = await confirmByPolling(conn, sig);
-      if (err) throw new Error(JSON.stringify(err));
-      return;
-    } catch (e) {
-      if (a >= retries) throw e;
-      await sleep(1000);
-    }
-  }
+  await sendAndConfirm(conn, ixs, signers, { skipPreflight, retries }); // CF-067: never twice
 }
 /** Bounded parallelism for setup. */
 async function pool<T>(items: T[], k: number, f: (x: T, i: number) => Promise<void>) {
