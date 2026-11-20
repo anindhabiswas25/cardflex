@@ -1096,8 +1096,9 @@ pub struct DealHand<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
-    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
-    #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    /// CHECK: the table's ephemeral dealer: owner, tag and runtime key are
+    /// checked in the handler (`stamped`), no PDA re-derivation.
+    #[account(mut)]
     pub dealer: UncheckedAccount<'info>,
 }
 
@@ -1162,8 +1163,9 @@ pub struct PocDeal<'info> {
     pub authority: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump, has_one = authority)]
     pub runtime: Box<Account<'info, TableRuntime>>,
-    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
-    #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    /// CHECK: the table's ephemeral dealer: owner, tag and runtime key are
+    /// checked in the handler (`stamped`), no PDA re-derivation.
+    #[account(mut)]
     pub dealer: UncheckedAccount<'info>,
 }
 
@@ -1235,8 +1237,8 @@ pub struct RevealHand<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
-    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
-    #[account(seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    /// CHECK: the table's ephemeral dealer: owner, tag and runtime key are
+    /// checked in the handler (`stamped`), no PDA re-derivation.
     pub dealer: UncheckedAccount<'info>,
     #[account(mut, seeds = [HAND_LOG_SEED, runtime.key().as_ref()], bump = hand_log.bump)]
     pub hand_log: Box<Account<'info, HandLog>>,

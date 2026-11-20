@@ -1,5 +1,21 @@
 [
-  { "config": "EfMDxq9QCtNujcPZFmZgtSBiFx9xTaaytcLhZkzam5F3", "name": "Violet Hall", "tier": "Classic", "tone": "violet", "hot": true },
-  { "config": "72vx3CEp2aB2MQH1om1QNDzGo1k4Ur82JRm7etKrDqQa", "name": "Moon Court", "tier": "Starter", "tone": "moon" },
-  { "config": "AciNdk4GTiR2hKZpGwmd54pUKPxmH1SrJseDEFRCVa4i", "name": "Ember Room", "tier": "High roller", "tone": "ember" }
+  {
+    "config": "EfMDxq9QCtNujcPZFmZgtSBiFx9xTaaytcLhZkzam5F3",
+    "name": "Violet Hall",
+    "tier": "Classic",
+    "tone": "violet",
+    "hot": true
+  },
+  {
+    "config": "7qcinEeQBnwfHYq1K5Ee6ARfEf3cV2LPh3J5mARvTGpa",
+    "name": "Moon Court",
+    "tier": "Starter",
+    "tone": "moon"
+  },
+  {
+    "config": "AciNdk4GTiR2hKZpGwmd54pUKPxmH1SrJseDEFRCVa4i",
+    "name": "Ember Room",
+    "tier": "High roller",
+    "tone": "ember"
+  }
 ]

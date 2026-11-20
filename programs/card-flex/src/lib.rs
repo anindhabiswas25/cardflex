@@ -50,8 +50,6 @@ pub mod card_flex {
 
     // ---------- CF-006 table (base layer) ----------
 
-    /// Creates `TableConfig` and `TableRuntime` and pre-funds the runtime
-    /// with the ephemeral rent it will spend inside PER.
     /// Creates the program-wide settings once (ADR 0005). Only the program's
     /// upgrade authority can sign it.
     pub fn init_global(
@@ -95,6 +93,8 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// Creates `TableConfig`, `TableRuntime`, `HandLog` and the vault, and
+    /// pre-funds the runtime with the ephemeral rent it will spend inside PER.
     pub fn create_table(ctx: Context<CreateTable>, table_id: u64, max_seats: u8) -> Result<()> {
         require!(!ctx.accounts.global.paused, CardFlexError::Paused);
         require!(
@@ -199,11 +199,10 @@ pub mod card_flex {
             CardFlexError::BadAmount
         );
         // One seat per wallet (ledger init already refuses a taken seat).
-        let seated_wallets: Vec<Pubkey> = (0..MAX_SEATS)
-            .filter(|&i| config.seated & (1 << i) != 0)
-            .map(|i| config.wallets[i])
-            .collect();
-        require!(!seated_wallets.contains(&wallet), CardFlexError::SeatTaken);
+        let seated = |i: usize| config.seated & (1 << i) != 0;
+        let is_seated_wallet =
+            |k: &Pubkey| (0..MAX_SEATS).any(|i| seated(i) && config.wallets[i] == *k);
+        require!(!is_seated_wallet(&wallet), CardFlexError::SeatTaken);
         // Session key: the checks the base layer can make; `join_seat`
         // repeats the full check against the live runtime.
         let config_key = config.key();
@@ -214,10 +213,9 @@ pub mod card_flex {
                 && session_key != config_key
                 && session_key != config.runtime
                 && session_key != ctx.accounts.vault.key()
-                && !seated_wallets.contains(&session_key)
+                && !is_seated_wallet(&session_key)
                 && !(0..MAX_SEATS).any(|i| {
-                    config.seated & (1 << i) != 0
-                        && (config.sessions[i] == session_key || config.sessions[i] == wallet)
+                    seated(i) && (config.sessions[i] == session_key || config.sessions[i] == wallet)
                 }),
             CardFlexError::BadSessionKey
         );
@@ -1302,12 +1300,12 @@ pub mod card_flex {
             CardFlexError::SeatEmpty
         );
         let runtime_key = runtime.key();
-        let (expected, _) =
-            Pubkey::find_program_address(&[SALT_SEED, runtime_key.as_ref(), &[seat]], &crate::ID);
-        require_keys_eq!(ctx.accounts.salt.key(), expected, CardFlexError::BadSalt);
+        require!(
+            stamped(&ctx.accounts.salt, SALT_TAG, &runtime_key, Some(seat)),
+            CardFlexError::BadSalt
+        );
         {
             let mut data = ctx.accounts.salt.try_borrow_mut_data()?;
-            require!(&data[..8] == SALT_TAG, CardFlexError::BadSalt);
             data[41..49].copy_from_slice(&runtime.hand_no.to_le_bytes());
             data[49..81].copy_from_slice(&salt);
         }
@@ -1377,6 +1375,12 @@ pub mod card_flex {
         require!(
             runtime.phase == phase::SALTS_DONE,
             CardFlexError::WrongPhase
+        );
+        // The callback writes the seed into this account: it must be this
+        // table's dealer, or the hand would stall until `cancel_hand`.
+        require!(
+            stamped(&ctx.accounts.dealer, DEALER_TAG, &runtime.key(), None),
+            CardFlexError::BadDealer
         );
         let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
         let commitments: Vec<[u8; 32]> = order
@@ -1451,14 +1455,11 @@ pub mod card_flex {
         );
         let mut salts = Vec::with_capacity(order.len());
         for (&seat, acc) in order.iter().zip(ctx.remaining_accounts) {
-            let (expected, _) = Pubkey::find_program_address(
-                &[SALT_SEED, runtime_key.as_ref(), &[seat]],
-                &crate::ID,
+            require!(
+                stamped(acc, SALT_TAG, &runtime_key, Some(seat)),
+                CardFlexError::BadSalt
             );
-            require_keys_eq!(acc.key(), expected, CardFlexError::BadSalt);
-            require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSalt);
             let data = acc.try_borrow_data()?;
-            require!(&data[..8] == SALT_TAG, CardFlexError::BadSalt);
             require!(
                 data[41..49] == runtime.hand_no.to_le_bytes(),
                 CardFlexError::BadSalt
@@ -1474,9 +1475,12 @@ pub mod card_flex {
             salts.push(salt);
         }
         let seed = fairness_core::shuffle_seed::<SolSha256>(&runtime.hand_ctx, &randomness, &salts);
+        require!(
+            stamped(&ctx.accounts.dealer, DEALER_TAG, &runtime_key, None),
+            CardFlexError::BadDealer
+        );
         {
             let mut d = ctx.accounts.dealer.try_borrow_mut_data()?;
-            require!(&d[..8] == DEALER_TAG, CardFlexError::BadDealer);
             d[40..48].copy_from_slice(&runtime.hand_no.to_le_bytes());
             d[DEALER_VRF_OFFSET..DEALER_VRF_OFFSET + 32].copy_from_slice(&randomness);
             d[DEALER_SEED_OFFSET..DEALER_SEED_OFFSET + 32].copy_from_slice(&seed);
@@ -1500,10 +1504,13 @@ pub mod card_flex {
             ctx.remaining_accounts.len() == order.len(),
             CardFlexError::BadSeatHand
         );
+        require!(
+            stamped(&ctx.accounts.dealer, DEALER_TAG, &runtime_key, None),
+            CardFlexError::BadDealer
+        );
         let mut seed = [0u8; 32];
         {
             let d = ctx.accounts.dealer.try_borrow_data()?;
-            require!(&d[..8] == DEALER_TAG, CardFlexError::BadDealer);
             require!(
                 d[40..48] == runtime.hand_no.to_le_bytes(),
                 CardFlexError::BadDealer
@@ -1519,15 +1526,13 @@ pub mod card_flex {
         }
         let n = order.len();
         for (k, (&seat, acc)) in order.iter().zip(ctx.remaining_accounts).enumerate() {
-            let (expected, _) = Pubkey::find_program_address(
-                &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
-                &crate::ID,
+            require!(
+                stamped(acc, SEAT_HAND_TAG, &runtime_key, Some(seat)),
+                CardFlexError::BadSeatHand
             );
-            require_keys_eq!(acc.key(), expected, CardFlexError::BadSeatHand);
-            require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSeatHand);
             let mut data = acc.try_borrow_mut_data()?;
             require!(
-                data.len() == SEAT_HAND_LEN as usize && &data[..8] == SEAT_HAND_TAG,
+                data.len() == SEAT_HAND_LEN as usize,
                 CardFlexError::BadSeatHand
             );
             data[41..49].copy_from_slice(&runtime.hand_no.to_le_bytes());
@@ -1729,6 +1734,10 @@ pub mod card_flex {
         runtime.phase = phase::IDLE;
         runtime.salts_in = 0;
         runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+        runtime.vrf_caller_seed = [0; 32];
+        // Like every other way a hand ends: a player who asked to leave
+        // during it isn't dealt into the next one (audit 2026-11-21).
+        apply_leaves(runtime);
         Ok(())
     }
 
@@ -1836,14 +1845,11 @@ pub mod card_flex {
         log.salts = [[0; 32]; MAX_SEATS];
         log.salt_commitments = [[0; 32]; MAX_SEATS];
         for (k, (&seat, acc)) in order.iter().zip(ctx.remaining_accounts).enumerate() {
-            let (expected, _) = Pubkey::find_program_address(
-                &[SALT_SEED, runtime_key.as_ref(), &[seat]],
-                &crate::ID,
+            require!(
+                stamped(acc, SALT_TAG, &runtime_key, Some(seat)),
+                CardFlexError::BadSalt
             );
-            require_keys_eq!(acc.key(), expected, CardFlexError::BadSalt);
-            require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSalt);
             let data = acc.try_borrow_data()?;
-            require!(&data[..8] == SALT_TAG, CardFlexError::BadSalt);
             let mut salt = [0u8; 32];
             salt.copy_from_slice(&data[49..81]);
             require!(
@@ -1856,9 +1862,12 @@ pub mod card_flex {
             log.salts[k] = salt;
             log.salt_commitments[k] = runtime.salt_commitments[seat as usize];
         }
+        require!(
+            stamped(&ctx.accounts.dealer, DEALER_TAG, &runtime_key, None),
+            CardFlexError::BadDealer
+        );
         {
             let d = ctx.accounts.dealer.try_borrow_data()?;
-            require!(&d[..8] == DEALER_TAG, CardFlexError::BadDealer);
             log.vrf_output
                 .copy_from_slice(&d[DEALER_VRF_OFFSET..DEALER_VRF_OFFSET + 32]);
         }
@@ -1904,9 +1913,12 @@ pub mod card_flex {
         let runtime_key = runtime.key();
         let deck = poc_test_deck(runtime.hand_no);
 
+        require!(
+            stamped(&ctx.accounts.dealer, DEALER_TAG, &runtime_key, None),
+            CardFlexError::BadDealer
+        );
         {
             let mut data = ctx.accounts.dealer.try_borrow_mut_data()?;
-            require!(&data[..8] == DEALER_TAG, CardFlexError::BadDealer);
             data[40..48].copy_from_slice(&runtime.hand_no.to_le_bytes());
             for (i, card) in deck.iter().enumerate() {
                 data[48 + i] = card.id();
@@ -2043,8 +2055,8 @@ pub struct RequestShuffle<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
-    /// CHECK: ephemeral dealer PDA (callback target), checked by seeds.
-    #[account(seeds = [DEALER_SEED, runtime.key().as_ref()], bump)]
+    /// CHECK: the table's ephemeral dealer (callback target), checked in the
+    /// handler (`stamped`).
     pub dealer: UncheckedAccount<'info>,
     /// CHECK: must be one of MagicBlock's VRF queues (checked in the handler).
     #[account(mut)]
@@ -2059,9 +2071,29 @@ pub struct RequestShuffle<'info> {
 pub struct VrfDeal<'info> {
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
-    /// CHECK: ephemeral dealer PDA, checked by seeds, owner and tag.
-    #[account(mut, seeds = [DEALER_SEED, runtime.key().as_ref()], bump, owner = crate::ID)]
+    /// CHECK: the table's ephemeral dealer: owner, tag and runtime key are
+    /// checked in the handler (`stamped`), no PDA re-derivation.
+    #[account(mut)]
     pub dealer: UncheckedAccount<'info>,
+}
+
+/// True if `acc` is this table's ephemeral account of the given kind: owned
+/// by this program and stamped when it was opened with `tag`, the runtime's
+/// key and (per-seat accounts) the seat. Only the `open_*` instructions write
+/// these stamps, and only into the account's own PDA (checked there), so the
+/// stamp proves the address without re-deriving it: that saves one
+/// `find_program_address` per seat on every action, deal and reveal.
+fn stamped(acc: &AccountInfo, tag: &[u8; 8], runtime: &Pubkey, seat: Option<u8>) -> bool {
+    if *acc.owner != crate::ID {
+        return false;
+    }
+    let Ok(d) = acc.try_borrow_data() else {
+        return false;
+    };
+    d.len() > 40
+        && &d[..8] == tag
+        && d[8..40] == runtime.to_bytes()
+        && seat.is_none_or(|s| d[40] == s)
 }
 
 /// Readers of `TableRuntime`: the table authority, the keeper's read key
@@ -2387,17 +2419,13 @@ fn read_hand_ranks(
     let mut ranks = [teen_patti_core::HandRank { key: 0 }; MAX_SEATS];
     for (k, acc) in accounts.iter().enumerate() {
         let seat = runtime.game.order[k];
-        let (expected, _) = Pubkey::find_program_address(
-            &[SEAT_HAND_SEED, runtime_key.as_ref(), &[seat]],
-            &crate::ID,
+        require!(
+            stamped(acc, SEAT_HAND_TAG, &runtime_key, Some(seat)),
+            CardFlexError::BadSeatHand
         );
-        require_keys_eq!(acc.key(), expected, CardFlexError::BadSeatHand);
-        require_keys_eq!(*acc.owner, crate::ID, CardFlexError::BadSeatHand);
         let d = acc.try_borrow_data()?;
         require!(
-            d.len() == SEAT_HAND_LEN as usize
-                && &d[..8] == SEAT_HAND_TAG
-                && d[41..49] == runtime.hand_no.to_le_bytes(),
+            d.len() == SEAT_HAND_LEN as usize && d[41..49] == runtime.hand_no.to_le_bytes(),
             CardFlexError::BadSeatHand
         );
         let cards: [card_types::Card; 3] = [

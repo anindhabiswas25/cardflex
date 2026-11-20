@@ -5,7 +5,7 @@
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
   abortLostHand, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
-  revealHand, sideShowView, sizeOf, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
+  revealHand, sideShowView, sizeOf, startHand, cashOut, decodeLedger, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
 import type { Store } from "@card-flex/api/store";
@@ -31,7 +31,13 @@ export type KeeperOpts = {
 export type Snapshot = { rt: TableRuntime | null; slot: bigint; lamports?: number };
 
 export type TableState = {
-  lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number;
+  lastCommitSecs: bigint; backoffUntil: number; failures: number; hands: number;
+  /**
+   * Per seat: the sit-down (seat epoch) whose departure was last synced. A
+   * bitmask isn't enough: a player who joins and leaves the same seat within
+   * one read looks like the old, already-synced departure (found in E2E).
+   */
+  syncedEpochs: number[];
   /** CF-053: last seen hand progress and when it changed (ms). */
   progress: string; progressAt: number;
   /** Base-layer TableConfig, re-read at most every few seconds while idle. */
@@ -43,6 +49,13 @@ export type TableState = {
   /** Runtime lamports above its rent, in the PER (pays PER accounts; commits need a margin). */
   headroom?: number;
 };
+
+/** Departed seats whose current sit-down (epoch) was already synced. */
+export function syncedDepartures(rt: Pick<TableRuntime, "departed" | "seat_epoch">, syncedEpochs: number[]): number {
+  let m = 0;
+  for (let k = 0; k < 6; k++) if ((rt.departed >> k) & 1 && syncedEpochs[k] === rt.seat_epoch[k]) m |= 1 << k;
+  return m;
+}
 
 const RUNTIME_LEN = 8 + sizeOf({ defined: { name: "TableRuntime" } });
 
@@ -120,7 +133,35 @@ export class Keeper {
       if (committed || !isProgramError(e, "StaleCommit")) throw e;
     }
     st.lastCommitSecs = BigInt(Math.floor(Date.now() / 1000));
-    st.departedSynced = rt.departed;
+    for (let k = 0; k < 6; k++) if ((rt.departed >> k) & 1) st.syncedEpochs[k] = rt.seat_epoch[k];
+    if (rt.departed) await this.payDeparted(config, cfg.seated);
+  }
+
+  /**
+   * Audit 2026-11-21: pays players whose departure is synced. `cash_out` is
+   * permissionless and pays only the wallet recorded at buy-in; it closes
+   * the ledger, which frees the seat (a ledger nobody cashes out would block
+   * that seat for every new player). Best effort: a failure is logged and
+   * retried after the next sync; the player can always cash out themselves.
+   */
+  private async payDeparted(config: PublicKey, seated: number) {
+    const seats = [0, 1, 2, 3, 4, 5].filter((s) => (seated >> s) & 1);
+    if (!seats.length) return;
+    const t = tableAddresses(config);
+    const infos = await this.o.base.getMultipleAccountsInfo(seats.map((s) => t.ledger(s))).catch(() => []);
+    for (const [i, a] of infos.entries()) {
+      if (!a) continue;
+      const l = decodeLedger(a.data);
+      if (!l.left) continue;
+      await this.send(this.o.base, [cashOut({ payer: this.o.key.publicKey, config, seat: seats[i], wallet: l.wallet })], "cash_out", false)
+        .then(() => this.log(`${config.toBase58().slice(0, 8)} paid seat ${seats[i]} ${l.synced_stack} lamports (cash-out)`))
+        .catch((e) => {
+          // The player may have cashed out a moment earlier: the ledger is gone.
+          if (!/AccountNotInitialized|could not find account|3012/.test(String((e as Error).message ?? e))) {
+            this.log(`${config.toBase58().slice(0, 8)} cash_out seat ${seats[i]} failed: ${String((e as Error).message ?? e).slice(0, 120)}`);
+          }
+        });
+    }
   }
 
   /**
@@ -129,7 +170,7 @@ export class Keeper {
    */
   async tick(config: PublicKey, snap?: Snapshot): Promise<Step> {
     const id = config.toBase58();
-    const st: TableState = this.tables.get(id) ?? { lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 0, progress: "", progressAt: Date.now(), joinFails: new Map() };
+    const st: TableState = this.tables.get(id) ?? { lastCommitSecs: 0n, syncedEpochs: [-1, -1, -1, -1, -1, -1], backoffUntil: 0, failures: 0, hands: 0, progress: "", progressAt: Date.now(), joinFails: new Map() };
     this.tables.set(id, st);
     if (Date.now() < st.backoffUntil) return { kind: "wait", why: "backing off after an error" };
     const rt = snap ? snap.rt : await this.readRuntime(config);
@@ -140,16 +181,13 @@ export class Keeper {
       st.progress = progress;
       st.progressAt = Date.now();
     }
-    // A seat that was synced as departed and then taken by a new player has
-    // its departed bit cleared; forget it, or that player's own departure
-    // would look already synced and wait for the heartbeat (found in the UI E2E).
-    st.departedSynced &= rt.departed;
+
     if (snap?.lamports !== undefined) st.headroom = snap.lamports - (this.rentOfRuntime ??= await this.o.base.getMinimumBalanceForRentExemption(RUNTIME_LEN));
     const stuck = inProgress(rt) && Date.now() - st.progressAt >= (this.o.stuckSecs ?? 120) * 1000;
     const waitingSeats = rt.phase === PHASE.IDLE ? await this.waitingSeats(config, rt, st).catch(() => []) : [];
     const step = decide(rt, {
       nowSecs: BigInt(Math.floor(Date.now() / 1000)), slot, lastCommitSecs: st.lastCommitSecs,
-      heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: st.departedSynced, stuck, waitingSeats,
+      heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: syncedDepartures(rt, st.syncedEpochs), stuck, waitingSeats,
     });
     if (step.kind === "wait") return step;
     const payer = this.o.key.publicKey;
@@ -202,6 +240,8 @@ export class Keeper {
           const after = (await this.readRuntime(config)) ?? rt;
           await this.commitAndSync(config, st, after);
           st.hands++;
+          // Track what play costs the runtime (it can't be refuelled while live).
+          if (st.headroom !== undefined) this.log(`${short} runtime headroom ${st.headroom} lamports after hand #${rt.hand_no}`);
           break;
         }
       }

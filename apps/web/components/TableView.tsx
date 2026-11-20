@@ -184,6 +184,11 @@ export function TableView({ tableId }: { tableId: string }) {
           </>
         )}
 
+        {t.paid !== null && (
+          <button className="mt-3 rounded-2xl bg-lime-500/20 px-4 py-2 text-sm font-bold text-lime-200 ring-1 ring-lime-400/40" onClick={t.clearPaid} data-testid="paid">
+            ◎{sol(t.paid)} was sent to your wallet. <span className="opacity-70">(dismiss)</span>
+          </button>
+        )}
         <Panel t={t} pickSeat={pickSeat} setPickSeat={setPickSeat} openSeats={openSeats} canJoin={canJoin} tee={tee} wallet={!!wallet} balance={balance} />
 
         {t.error && (
@@ -272,6 +277,14 @@ function Panel({ t, pickSeat, setPickSeat, openSeats, canJoin, tee, wallet, bala
     </div>
   );
 
+  if (t.mode === "stalled") {
+    return (
+      <Card title="This table has stalled">
+        <p className="text-sm text-violet-200">Its private rollup hasn&apos;t synced to Solana for the whole refund timeout. Anyone may now switch it to refunds: your last synced stack, ◎{sol(t.ledger?.synced_stack)}, goes straight back to your wallet.</p>
+        <button className="btn btn-gold mt-3" disabled={busy || !t.ledger || t.ledger.synced_stack === 0n} onClick={t.claimRefund} data-testid="start-refund">Refund me ◎{sol(t.ledger?.synced_stack)}</button>
+      </Card>
+    );
+  }
   if (t.mode === "refunded") {
     return (
       <Card title="This table was closed and refunded">
@@ -356,6 +369,9 @@ function Panel({ t, pickSeat, setPickSeat, openSeats, canJoin, tee, wallet, bala
         )
       ) : (
         resultBlock || <p className="mt-4 text-sm text-violet-200">{phaseText(t)}</p>
+      )}
+      {t.mode === "seated" && rt && t.mySeat !== null && !t.seats[t.mySeat]?.dealt && t.seats[t.mySeat]!.stack < (rt.boot || 1n) && (
+        <p className="mt-3 max-w-md text-center text-sm text-amber-200">Your stack is below the boot, so you won&apos;t be dealt in. Leave the table to cash out what&apos;s left and free the seat.</p>
       )}
       <div className="mt-3 flex items-center gap-2">
         {t.mode === "leaving" ? (

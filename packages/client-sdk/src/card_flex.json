@@ -1308,6 +1308,10 @@
     },
     {
       "name": "create_table",
+      "docs": [
+        "Creates `TableConfig`, `TableRuntime`, `HandLog` and the vault, and",
+        "pre-funds the runtime with the ephemeral rent it will spend inside PER."
+      ],
       "discriminator": [
         214,
         142,
@@ -1523,26 +1527,10 @@
         },
         {
           "name": "dealer",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  97,
-                  108,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "runtime"
-              }
-            ]
-          }
+          "docs": [
+            "checked in the handler (`stamped`), no PDA re-derivation."
+          ],
+          "writable": true
         }
       ],
       "args": []
@@ -1967,8 +1955,6 @@
     {
       "name": "init_global",
       "docs": [
-        "Creates `TableConfig` and `TableRuntime` and pre-funds the runtime",
-        "with the ephemeral rent it will spend inside PER.",
         "Creates the program-wide settings once (ADR 0005). Only the program's",
         "upgrade authority can sign it."
       ],
@@ -3218,25 +3204,9 @@
         },
         {
           "name": "dealer",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  97,
-                  108,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "runtime"
-              }
-            ]
-          }
+          "docs": [
+            "handler (`stamped`)."
+          ]
         },
         {
           "name": "oracle_queue",
@@ -3333,25 +3303,9 @@
         },
         {
           "name": "dealer",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  97,
-                  108,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "runtime"
-              }
-            ]
-          }
+          "docs": [
+            "checked in the handler (`stamped`), no PDA re-derivation."
+          ]
         },
         {
           "name": "hand_log",
@@ -4736,26 +4690,10 @@
         },
         {
           "name": "dealer",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  97,
-                  108,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "runtime"
-              }
-            ]
-          }
+          "docs": [
+            "checked in the handler (`stamped`), no PDA re-derivation."
+          ],
+          "writable": true
         }
       ],
       "args": [

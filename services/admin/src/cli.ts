@@ -11,7 +11,7 @@
 //                                     the keeper then logs in with its own key and no authority
 //                                     credential leaves this machine (CF-065).
 //   cf-admin table create --boot <lamports> [--rake-bps N] [--rake-cap <lamports>] [--seats 6] [--refund-timeout 1800] [--id N]
-//   cf-admin table open <config> [--runtime-reserve 0.005]   delegate to the TEE + create permissions,
+//   cf-admin table open <config> [--runtime-reserve 0.05]   delegate to the TEE + create permissions,
 //                                     dealer, seat hands, salts; first funds the runtime's reserve
 //                                     (it can't be topped up once live)
 //   cf-admin table status <config>
@@ -243,7 +243,7 @@ async function main() {
         // margin MagicBlock requires of a commit payer; once delegated it
         // can't be topped up (found in the web E2E: a busy table fell below
         // it and could no longer commit). Fund a reserve before delegating.
-        const reserve = BigInt(Math.round(Number(opt("runtime-reserve", "0.005")) * 1e9));
+        const reserve = BigInt(Math.round(Number(opt("runtime-reserve", "0.05")) * 1e9));
         const ixs = reserve > 0n ? [SystemProgram.transfer({ fromPubkey: kp.publicKey, toPubkey: tableAddresses(config).runtime, lamports: reserve })] : [];
         await send(base, [...ixs, delegateTable(kp.publicKey, config)], kp, `delegate_table (+ runtime reserve ${lamports(reserve)})`);
       }

@@ -7,7 +7,7 @@
 // - Money steps (buy-in, cash-out, refund) are signed by the wallet.
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import {
-  ACTION, PHASE, TABLE_STATUS, act as actIx, buyIn as buyInIx, cashOut as cashOutIx, claimRefund as claimRefundIx, decodeLedger,
+  ACTION, PHASE, TABLE_STATUS, act as actIx, buyIn as buyInIx, cashOut as cashOutIx, claimRefund as claimRefundIx, decodeLedger, emergencyRefund as emergencyRefundIx,
   decodeRuntime, decodeSeatHand, dealPositions, handRecordFromHandLog, joinSeat, leaveSeat, loadVerifier, newSalt, rotateSession, rules,
   submitSalt, tableAddresses, type SeatLedger, type TableRuntime, type Verifier,
 } from "@card-flex/client-sdk";
@@ -34,7 +34,7 @@ export type SeatView = {
   leaving: boolean;
 };
 export type HandResult = { handNo: bigint; reason: number; winners: number[]; payouts: bigint[]; rake: bigint; pot: bigint; shown: Record<number, number[]>; verified: boolean | null };
-export type Mode = "loading" | "missing" | "spectator" | "joining" | "resume" | "seated" | "leaving" | "cashout" | "refunded";
+export type Mode = "loading" | "missing" | "spectator" | "joining" | "resume" | "seated" | "leaving" | "cashout" | "refunded" | "stalled";
 
 const LIVE_POLL_MS = 700;
 const BASE_POLL_MS = 3_500;
@@ -63,6 +63,9 @@ export function useTable(configStr: string) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
+  /** Set when this wallet's left seat was paid (by the keeper or a cash-out click). */
+  const [paid, setPaid] = useState<bigint | null>(null);
+  const prevLedger = useRef<SeatLedger | null>(null);
   const [now, setNow] = useState(() => Date.now() / 1000);
   const prevRt = useRef<TableRuntime | null>(null);
   const saltSent = useRef<string>("");
@@ -96,6 +99,32 @@ export function useTable(configStr: string) {
     const id = setInterval(refreshBase, BASE_POLL_MS);
     return () => clearInterval(id);
   }, [refreshBase]);
+
+  // The keeper pays players whose departure is synced (`cash_out` is
+  // permissionless): a left ledger that disappears was paid out.
+  // The payout can land between two polls, before this tab ever saw the
+  // ledger marked `left`: what counts is that the seat was on its way out
+  // (leaving, departed or left) and its ledger is now gone. The amount is the
+  // seat's final stack (the runtime keeps it until the seat is reused).
+  const exiting = useRef<{ seat: number; stack: bigint } | null>(null);
+  useEffect(() => {
+    const rtNow = live ?? snap?.rt ?? null;
+    if (ledger) {
+      const s = ledger.seat;
+      const out = ledger.left || (!!rtNow && (bit(rtNow.leaving, s) || (bit(rtNow.departed, s) && rtNow.seat_epoch[s] === ledger.epoch)));
+      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : rtNow?.stacks[s] ?? ledger.synced_stack } : null;
+    }
+  }, [ledger, live, snap]);
+  useEffect(() => {
+    const p = prevLedger.current;
+    prevLedger.current = ledger;
+    if (p && !ledger && exiting.current) {
+      setPaid(exiting.current.stack);
+      exiting.current = null;
+      if (config && me) dropSession(config.toBase58(), me);
+      setSession(null);
+    }
+  }, [ledger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- session key for my seat (this tab only) ----
   useEffect(() => {
@@ -309,6 +338,8 @@ export function useTable(configStr: string) {
     if (snap === null) return "missing";
     if (snap.cfg.status === TABLE_STATUS.REFUNDED) return ledger ? "refunded" : "spectator";
     if (ledger?.left) return "cashout";
+    // The rollup stalled: no sync for the whole refund timeout (ADR 0004).
+    if (ledger && snap.live && BigInt(Math.floor(now)) >= BigInt(snap.cfg.last_sync_time) + BigInt(snap.cfg.refund_timeout_secs)) return "stalled";
     if (ledger && rt && bit(rt.departed, ledger.seat) && rt.seat_epoch[ledger.seat] === ledger.epoch) return "cashout";
     if (seated && rt && bit(rt.leaving, mySeat!)) return "leaving";
     if (seated) return "seated";
@@ -316,7 +347,7 @@ export function useTable(configStr: string) {
     if (ledger && session && liveOk === false) return "joining";
     if (ledger && session) return "joining";
     return "spectator";
-  }, [snap, ledger, rt, seated, mySeat, session, liveOk]);
+  }, [snap, ledger, rt, seated, mySeat, session, liveOk, Math.floor(now / 30)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- actions ----
   const run = useCallback(async (label: string, f: () => Promise<unknown>) => {
@@ -369,14 +400,24 @@ export function useTable(configStr: string) {
 
   const cashOut = useCallback(() => run("Cashing out", async () => {
     if (!wallet || !config || !ledger) throw new Error("Nothing to cash out.");
-    await sendWithWallet(wallet, [cashOutIx({ payer: wallet.publicKey, config, seat: ledger.seat, wallet: wallet.publicKey })]);
+    try {
+      await sendWithWallet(wallet, [cashOutIx({ payer: wallet.publicKey, config, seat: ledger.seat, wallet: wallet.publicKey })]);
+    } catch (e) {
+      // The keeper may have paid it a moment earlier (the ledger is gone).
+      const still = await base.getAccountInfo(tableAddresses(config).ledger(ledger.seat)).catch(() => undefined);
+      if (still !== null) throw e;
+    }
+    setPaid(ledger.synced_stack);
     dropSession(config.toBase58(), wallet.publicKey.toBase58());
     setSession(null);
   }), [run, wallet, config, ledger]);
 
   const claimRefund = useCallback(() => run("Claiming refund", async () => {
-    if (!wallet || !config || !ledger) throw new Error("Nothing to claim.");
-    await sendWithWallet(wallet, [claimRefundIx({ payer: wallet.publicKey, config, seat: ledger.seat, wallet: wallet.publicKey })]);
+    if (!wallet || !config || !ledger || !snap) throw new Error("Nothing to claim.");
+    const claim = claimRefundIx({ payer: wallet.publicKey, config, seat: ledger.seat, wallet: wallet.publicKey });
+    // A stalled table is switched to refunds in the same transaction.
+    await sendWithWallet(wallet, snap.cfg.status === TABLE_STATUS.REFUNDED ? [claim] : [emergencyRefundIx({ payer: wallet.publicKey, config }), claim]);
+    setPaid(ledger.synced_stack);
     dropSession(config.toBase58(), wallet.publicKey.toBase58());
     setSession(null);
   }), [run, wallet, config, ledger]);
@@ -393,7 +434,7 @@ export function useTable(configStr: string) {
   }), [run, wallet, config, ledger]);
 
   return {
-    config, snap, rt, mode, seats, mySeat, seated, ledger, session,
+    config, snap, rt, mode, seats, mySeat, seated, ledger, session, paid, clearPaid: () => setPaid(null),
     toAct, legal, turnLeft, inHand, gameLive, result, events, busy, error, clearError: () => setError(null),
     myCards: (myHand && rt && myHand.handNo === rt.hand_no ? myHand.cards : null) ?? (mySeat !== null && result && !gameLive ? result.shown[mySeat] ?? null : null),
     buyIn, actions, leave, cashOut, claimRefund, resume, refresh: refreshBase,

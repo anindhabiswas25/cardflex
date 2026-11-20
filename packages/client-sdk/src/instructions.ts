@@ -94,6 +94,15 @@ export function cashOut(p: { payer: PublicKey; config: PublicKey; seat: number; 
   return buildIx("cash_out", { payer: p.payer, config: p.config, vault: t.vault, ledger: t.ledger(p.seat), wallet: p.wallet }, { seat: p.seat });
 }
 
+/**
+ * Base, permissionless: once a live table has gone `refund_timeout_secs`
+ * without a sync (its rollup stalled), anyone switches it to REFUNDED; then
+ * each seat is paid its last synced stack with `claimRefund`.
+ */
+export function emergencyRefund(p: { payer: PublicKey; config: PublicKey }) {
+  return buildIx("emergency_refund", { payer: p.payer, config: p.config });
+}
+
 /** Base, after an emergency refund: pays the seat's synced stack to its wallet. */
 export function claimRefund(p: { payer: PublicKey; config: PublicKey; seat: number; wallet: PublicKey }) {
   const t = tableAddresses(p.config);

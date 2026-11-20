@@ -76,9 +76,9 @@ commit. The table authority may always commit (`cf-admin table close`).
 - `cf-admin watch --keeper-url http://host:9464/health --keeper <pubkey>`
   alarms on it (`KEEPER_DOWN`, `KEEPER_UNHEALTHY`, `KEEPER_LOW_FUNDS`), and
   `REFUND_NEAR` is the independent check that syncs are landing.
-- "runtime has only N lamports above rent": the table's runtime is close
-  to the margin MagicBlock requires of a commit payer and can't be topped
-  up while live. Close it between hands (`cf-admin table close`), let
+- "runtime has only N lamports above rent" (alarm below 2,000,000): play
+  can't be topped up while live; normal play costs ~0, but a Devnet table
+  once lost ~4M lamports unexplained. The keeper logs `runtime headroom … after hand #n`. Close it between hands (`cf-admin table close`), let
   players cash out, and reopen with `cf-admin table open` (funds a reserve),
   or let the refund path pay players. Always open tables with `table open`.
 - Lots of `fetch failed`: the PER may be throttling this IP (CF-054). Lower

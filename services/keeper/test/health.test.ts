@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { health, READ_STALE_MS, TABLE_FAILING } from "../src/health.ts";
 import type { TableState } from "../src/keeper.ts";
 
-const st = (p: Partial<TableState> = {}): TableState => ({ lastCommitSecs: 0n, departedSynced: 0, backoffUntil: 0, failures: 0, hands: 3, progress: "", progressAt: 1_000_000, joinFails: new Map(), ...p });
+const st = (p: Partial<TableState> = {}): TableState => ({ lastCommitSecs: 0n, syncedEpochs: [-1, -1, -1, -1, -1, -1], backoffUntil: 0, failures: 0, hands: 3, progress: "", progressAt: 1_000_000, joinFails: new Map(), ...p });
 
 test("CF-060: healthy keeper", () => {
   const h = health(new Map([["T1", st()]]), { startedAt: 0, lastReadAt: 1_000_000, lastScanAt: 1_000_000, tables: 1 }, 1_005_000);
@@ -28,7 +28,7 @@ test("CF-064 review: a table that hasn't named the keeper is unhealthy", () => {
 });
 
 test("a table whose runtime is close to the commit margin is unhealthy", () => {
-  const h = health(new Map([["TableCCCCCCCC", st({ headroom: 14_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000);
+  const h = health(new Map([["TableCCCCCCCC", st({ headroom: 1_000_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000);
   assert.equal(h.ok, false);
   assert.match(h.reasons[0], /above rent/);
   assert.equal(health(new Map([["T", st({ headroom: 5_000_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000).ok, true);

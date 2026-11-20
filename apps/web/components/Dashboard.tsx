@@ -1,22 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { TABLE_STATUS, cashOut, claimRefund, type SeatLedger } from "@card-flex/client-sdk";
+import { TABLE_STATUS, cashOut, claimRefund, emergencyRefund, type SeatLedger } from "@card-flex/client-sdk";
 import { useCallback, useEffect, useState } from "react";
 import { api, type ApiPlayer } from "@/lib/api";
-import { loadTables, myLedgers, sendWithWallet, type TableSnapshot } from "@/lib/chain";
+import { base, loadTables, myLedgers, sendWithWallet, type TableSnapshot } from "@/lib/chain";
 import { errorText, short, sol } from "@/lib/format";
 import { metaFor } from "@/lib/lobby";
 import { useSettings } from "@/lib/settings";
 import { useWallet } from "@/lib/wallet";
 
-type Seat = SeatLedger & { snap: TableSnapshot | null; state: "playing" | "joining" | "leaving" | "syncing" | "cashout" | "refund" | "closed" };
+type Seat = SeatLedger & { address: import("@solana/web3.js").PublicKey; snap: TableSnapshot | null; state: "playing" | "joining" | "leaving" | "syncing" | "cashout" | "refund" | "stalled" | "closed" };
 const bit = (m: number, s: number) => ((m >> s) & 1) === 1;
 
 function seatState(l: SeatLedger, s: TableSnapshot | null): Seat["state"] {
   if (!s) return "closed";
   if (s.cfg.status === TABLE_STATUS.REFUNDED) return "refund";
   if (l.left) return "cashout";
+  // No sync for the whole refund timeout: the table's rollup stalled, and
+  // anyone may switch it to refunds (ADR 0004).
+  if (s.live && BigInt(Math.floor(Date.now() / 1000)) >= BigInt(s.cfg.last_sync_time) + BigInt(s.cfg.refund_timeout_secs)) return "stalled";
   const rt = s.rt;
   if (rt && bit(rt.departed, l.seat) && rt.seat_epoch[l.seat] === l.epoch) return "syncing";
   if (rt && bit(rt.leaving, l.seat)) return "leaving";
@@ -50,13 +53,20 @@ export function Dashboard() {
     return () => clearInterval(id);
   }, [load]);
 
-  async function pay(l: Seat, kind: "cashout" | "refund") {
+  async function pay(l: Seat, kind: "cashout" | "refund" | "stalled") {
     if (!wallet) return;
     setBusy(l.config.toBase58());
     setMsg(null);
     try {
       const p = { payer: wallet.publicKey, config: l.config, seat: l.seat, wallet: wallet.publicKey };
-      await sendWithWallet(wallet, [kind === "cashout" ? cashOut(p) : claimRefund(p)]);
+      try {
+        // A stalled table: switch it to refunds and claim in one transaction.
+        const ixs = kind === "cashout" ? [cashOut(p)] : kind === "stalled" ? [emergencyRefund({ payer: wallet.publicKey, config: l.config }), claimRefund(p)] : [claimRefund(p)];
+        await sendWithWallet(wallet, ixs);
+      } catch (e) {
+        // The keeper may have paid it a moment earlier (cash-out closes the ledger).
+        if (kind !== "cashout" || (await base.getAccountInfo(l.address).catch(() => undefined)) !== null) throw e;
+      }
       setMsg(`◎${sol(l.synced_stack)} sent to your wallet.`);
     } catch (e) {
       setMsg(errorText(e));
@@ -142,6 +152,7 @@ export function Dashboard() {
                     <div className="mt-2 flex flex-wrap gap-2">
                       {(s.state === "playing" || s.state === "joining" || s.state === "leaving" || s.state === "syncing") && <Link href={`/table/${id}`} className="btn btn-lime px-3 py-2 text-xs">Back to the table</Link>}
                       {s.state === "cashout" && <button className="btn btn-lime px-3 py-2 text-xs" disabled={busy === id} onClick={() => pay(s, "cashout")}>Cash out ◎{sol(s.synced_stack)}</button>}
+                      {s.state === "stalled" && <button className="btn btn-gold px-3 py-2 text-xs" disabled={busy === id || s.synced_stack === 0n} onClick={() => pay(s, "stalled")} data-testid="start-refund">Start refund &amp; claim ◎{sol(s.synced_stack)}</button>}
                       {s.state === "refund" && <button className="btn btn-gold px-3 py-2 text-xs" disabled={busy === id || s.synced_stack === 0n} onClick={() => pay(s, "refund")}>Claim refund ◎{sol(s.synced_stack)}</button>}
                     </div>
                   </li>
@@ -164,6 +175,7 @@ const STATE_TEXT: Record<Seat["state"], string> = {
   syncing: "left · syncing final stack",
   cashout: "ready to cash out",
   refund: "table refunded · claim your stack",
+  stalled: "table stalled (no sync for its refund timeout) · refund available",
   closed: "table not found",
 };
 

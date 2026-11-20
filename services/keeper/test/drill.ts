@@ -141,13 +141,15 @@ check("every finished hand indexed by the keeper", hands.length >= HANDS, hands.
 check("every indexed hand VALID", hands.length > 0 && hands.every((h) => h.verified === 1));
 
 // ---- bot 2 cashes out (keeper synced its leave) ----
-const led2 = decodeLedger((await base.getAccountInfo(t.ledger(2)))!.data);
-check("bot 2's ledger marked left by the keeper's sync", led2.left, `stack ${led2.synced_stack}`);
-if (led2.left) {
-  const before = await base.getBalance(led2.wallet);
-  await send(base, [cashOut({ payer: admin.publicKey, config, seat: 2, wallet: led2.wallet })], [admin]);
-  check("bot 2 cashed out exactly its full buy-in (it never played)", (await base.getBalance(led2.wallet)) - before >= 1_000_000, `${(await base.getBalance(led2.wallet)) - before} lamports incl. ledger rent`);
-}
+// Bot 2 left (3 missed salt rounds): the keeper syncs it and, since the
+// audit of 2026-11-21, pays it out itself (cash_out is permissionless).
+const bot2 = bots[2].wallet.publicKey;
+let led2Info = await base.getAccountInfo(t.ledger(2));
+for (let i = 0; i < 30 && led2Info; i++) { await sleep(2000); led2Info = await base.getAccountInfo(t.ledger(2)); }
+check("bot 2 was synced as departed and paid out by the keeper (ledger closed)", led2Info === null);
+// It never played: everything comes back except two transaction fees.
+const bal2 = await base.getBalance(bot2);
+check("bot 2 got its full buy-in and ledger rent back", bal2 >= 8_000_000 - 20_000, `${bal2} lamports (funded 8,000,000)`);
 
 // ---- reconcile ----
 const cfg = decodeTableConfig((await base.getAccountInfo(config))!.data);

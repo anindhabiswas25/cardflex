@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { PublicKey } from "@solana/web3.js";
 import { PHASE, TABLE_STATUS } from "@card-flex/client-sdk";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "./Avatar";
 import { LobbyTable, type LobbyEntry } from "./LobbyTable";
 import { loadTables } from "@/lib/chain";
@@ -13,38 +13,52 @@ import { useWallet } from "@/lib/wallet";
 
 const bit = (m: number, s: number) => ((m >> s) & 1) === 1;
 
-export function useLobby() {
-  const [tables, setTables] = useState<LobbyEntry[] | null>(null);
-  const [failed, setFailed] = useState(false);
-  const load = useCallback(async () => {
-    try {
-      const snaps = await loadTables(LOBBY.map((m) => new PublicKey(m.config)));
-      setTables(snaps.flatMap((s, i) => {
-        if (!s) return [];
-        const meta = metaFor(LOBBY[i].config);
-        const rt = s.rt;
-        const occ = rt ? rt.occupied : s.cfg.seated;
-        const wallets = rt ? rt.wallets : s.cfg.wallets;
-        const inHand = !!rt && rt.phase >= PHASE.DEALT && rt.phase <= PHASE.REVEALED && rt.game.n > 0;
-        return [{
-          config: meta.config, name: meta.name, tier: meta.tier, tone: meta.toneValue, hot: meta.hot,
-          boot: rt && rt.boot > 0n ? rt.boot : s.cfg.min_buy_in / 40n, minBuyIn: s.cfg.min_buy_in, maxBuyIn: s.cfg.max_buy_in,
-          seated: Array.from({ length: s.cfg.max_seats }, (_, k) => (bit(occ, k) || bit(s.cfg.seated, k) ? (bit(occ, k) ? wallets[k] : s.cfg.wallets[k]).toBase58() : null)),
-          pot: inHand ? rt!.game.pot : 0n, handNo: rt?.hand_no ?? 0n, live: s.live,
-          open: s.live && s.cfg.status === TABLE_STATUS.ACTIVE && s.cfg.min_buy_in > 0n,
-        }];
-      }));
-      setFailed(false);
-    } catch {
-      setFailed(true);
-    }
-  }, []);
+// One poller for every component that shows the lobby (the home page shows
+// it twice: hero counter and table list), shared through a tiny store.
+type LobbyState = { tables: LobbyEntry[] | null; failed: boolean };
+let lobbyState: LobbyState = { tables: null, failed: false };
+const lobbySubs = new Set<(s: LobbyState) => void>();
+let lobbyTimer: ReturnType<typeof setInterval> | null = null;
+
+async function loadLobby() {
+  try {
+    const snaps = await loadTables(LOBBY.map((m) => new PublicKey(m.config)));
+    const tables = snaps.flatMap((s, i) => {
+      if (!s) return [];
+      const meta = metaFor(LOBBY[i].config);
+      const rt = s.rt;
+      const occ = rt ? rt.occupied : s.cfg.seated;
+      const wallets = rt ? rt.wallets : s.cfg.wallets;
+      const inHand = !!rt && rt.phase >= PHASE.DEALT && rt.phase <= PHASE.REVEALED && rt.game.n > 0;
+      return [{
+        config: meta.config, name: meta.name, tier: meta.tier, tone: meta.toneValue, hot: meta.hot,
+        boot: rt && rt.boot > 0n ? rt.boot : s.cfg.min_buy_in / 40n, minBuyIn: s.cfg.min_buy_in, maxBuyIn: s.cfg.max_buy_in,
+        seated: Array.from({ length: s.cfg.max_seats }, (_, k) => (bit(occ, k) || bit(s.cfg.seated, k) ? (bit(occ, k) ? wallets[k] : s.cfg.wallets[k]).toBase58() : null)),
+        pot: inHand ? rt!.game.pot : 0n, handNo: rt?.hand_no ?? 0n, live: s.live,
+        open: s.live && s.cfg.status === TABLE_STATUS.ACTIVE && s.cfg.min_buy_in > 0n,
+      }];
+    });
+    lobbyState = { tables, failed: false };
+  } catch {
+    lobbyState = { ...lobbyState, failed: true };
+  }
+  lobbySubs.forEach((f) => f(lobbyState));
+}
+
+export function useLobby(): LobbyState {
+  const [st, setSt] = useState<LobbyState>(lobbyState);
   useEffect(() => {
-    load();
-    const id = setInterval(load, 8_000);
-    return () => clearInterval(id);
-  }, [load]);
-  return { tables, failed };
+    lobbySubs.add(setSt);
+    if (!lobbyTimer) {
+      loadLobby();
+      lobbyTimer = setInterval(loadLobby, 8_000);
+    }
+    return () => {
+      lobbySubs.delete(setSt);
+      if (!lobbySubs.size && lobbyTimer) { clearInterval(lobbyTimer); lobbyTimer = null; }
+    };
+  }, []);
+  return st;
 }
 
 const FILTERS = ["All", "Low boot", "High roller", "Seats open"] as const;

@@ -92,10 +92,10 @@ try {
   await P[1].shot(join(process.env.E2E_OUT ?? KEYS, "three-result.png"));
   for (const p of P) { await p.click("[data-testid=leave]"); await sleep(800); }
   for (const p of P) {
-    await p.waitFor(`!!document.querySelector('[data-testid=cash-out]')`, 8 * 60_000, 2000);
-    const label = await p.text("[data-testid=cash-out]");
+    await p.waitFor(`!!document.querySelector('[data-testid=cash-out]') || !!document.querySelector('[data-testid=paid]')`, 8 * 60_000, 2000);
+    const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
     await p.click("[data-testid=cash-out]");
-    await p.waitFor(`!document.querySelector('[data-testid=cash-out]')`, 120000);
+    await p.waitFor(`!document.querySelector('[data-testid=cash-out]') && (!!document.querySelector('[data-testid=paid]') || !!document.querySelector('[data-testid=buy-in]'))`, 120000);
     check(`${p.name} cashed out`, true, label);
   }
 } catch (e) {

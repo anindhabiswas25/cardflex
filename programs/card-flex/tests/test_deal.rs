@@ -315,6 +315,18 @@ fn cancel_hand_only_after_vrf_timeout() {
         &send(&mut t.svm, &[ix], &payer),
         card_flex::CardFlexError::TooEarly
     ));
+    // Seat 1 asked to leave during the hand (applied when the hand ends).
+    {
+        use anchor_lang::AccountSerialize;
+        let mut acc = t.svm.get_account(&t.runtime).unwrap();
+        let mut rt = TableRuntime::try_deserialize(&mut acc.data.as_slice()).unwrap();
+        rt.leaving = 1 << 1;
+        let mut data = Vec::new();
+        rt.try_serialize(&mut data).unwrap();
+        data.resize(acc.data.len(), 0);
+        acc.data = data;
+        t.svm.set_account(t.runtime, acc).unwrap();
+    }
     // After the timeout: cancelled, counted, hand number moves on.
     t.svm.warp_to_slot(10 + VRF_TIMEOUT_SLOTS);
     let ix = cancel_ix(&t);
@@ -325,6 +337,11 @@ fn cancel_hand_only_after_vrf_timeout() {
     assert_eq!(
         (rt.phase, rt.hand_no, rt.cancelled_hands, rt.salts_in),
         (phase::IDLE, 4, 1, 0)
+    );
+    // Audit 2026-11-21: the leave applies, so seat 1 isn't dealt again.
+    assert_eq!(
+        (rt.occupied & (1 << 1), rt.departed & (1 << 1), rt.leaving),
+        (0, 1 << 1, 0)
     );
 }
 

@@ -55,6 +55,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-066 | P8: one-machine multi-user test (stands in for CF-062) | Done: see log 2026-11-20 | `pnpm multiuser`, `docs/probes/*-cf066-multiuser-*.json` |
 | CF-067 | P8: old Devnet tables after the layout change; safe retries; CLI args | Done: `migrate_runtime` + `cf-admin table migrate` (Devnet: old table migrated and played, 12/12); old live tables refund exactly (Devnet 4/4); `sendAndConfirm` never applies a transaction twice; fixed migration budget, keeper permission budget, misleading `BadSeatHand` on locked tables | `docs/findings/cf-064-065-p8-closeout.md` |
 | CF-069 | P7: web app wired to Devnet (lobby, table, verify, dashboard, wallets, sounds/settings) | Done: headless-Chrome E2E on Devnet 2p 13/13, 3p Side Show 7/7, Wallet Standard 6/6, phone width clean; fixed keeper departedSynced, API >100-account read, runtime headroom (`table open` reserve + keeper health) | `apps/web`, `docs/findings/cf-069-web-app.md` |
+| CF-070 | Whole-codebase audit and optimisation | Done: `act` −38% CU (71,097 → 44,023), `deal_hand` −17%; fixed `cancel_hand` not applying leaves; keeper pays departed players (seats no longer blocked); refund flow for stalled tables in the app; runtime reserve 0.05 SOL + headroom alarm. Devnet: privacy 230/230, handflow 67/67, keeper drill 13/13, web 2p 13/13, 3p 9/9, wallet 6/6, refund 2/2 | `docs/findings/cf-070-audit.md` |
 | CF-062 | P9 prerequisite: multi-machine load test (bots spread over several machines/IPs, one keeper), 50 tables, latency targets | Deferred: no extra machines now; CF-066 covers multi-user correctness from one IP. Run before public launch traffic when machines exist | `pnpm load-test` per machine |
 
 ## Open program items (P8)
@@ -89,6 +90,17 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-21 — CF-070 audit. Program: stamp checks instead of PDA
+  re-derivation in hot paths (`act` 71,097 → 44,023 CU, 6-seat deal
+  106,590 → 88,436, size −13 KB); bug fixed: `cancel_hand` didn't apply
+  pending leaves. Off-chain: the keeper pays departed players itself (a
+  ledger nobody cashed out blocked its seat); the app recognises those
+  payouts, offers "Start refund & claim" for stalled tables, tells busted
+  players to leave, polls the lobby once. Found: one Devnet table lost ~4M
+  lamports of runtime balance in an hour (cause unknown; normal play
+  measured ~0) and then couldn't commit; safeguards: 0.05 SOL reserve at
+  open, headroom logged per hand, alarm below 2M; question for MagicBlock.
+  Deployed (bytes verified); full Devnet regression green.
 - 2026-11-20 — CF-069: the web app is real. Lobby/table/verify/dashboard
   read Solana + PER; buy-in/cash-out/refund signed by the wallet (Wallet
   Standard or a Devnet test wallet), moves/salts/leave by a tab-only session

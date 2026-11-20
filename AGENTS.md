@@ -64,6 +64,8 @@ pnpm check:rules         # rules v1 vectors, independent Python
 pnpm test:sdk            # client SDK tests (rebuilds the WASM verifier first)
 pnpm test:api            # indexer + API tests (offline, real Devnet hand records)
 pnpm api                 # run the Devnet indexer + API on :4000 (CARDFLEX_DB, PORT, POLL_MS)
+pnpm stack               # keeper + API + web from ~/.config/cardflex/devnet.env (Ctrl-C stops all)
+pnpm e2e 2p|3p|wallet|refund   # browser tests with the saved wallets (~/.config/cardflex/e2e)
 pnpm web                 # CF-069 player app on :3000 (needs keeper; API optional)
 pnpm keeper              # CF-051 keeper (CARDFLEX_KEEPER_KEY = fee payer + own read key, CARDFLEX_DB, HEALTH_PORT)
 pnpm keeper-drill        # Devnet: keeper runs a table unattended with bots, incl. an absent player
@@ -122,6 +124,11 @@ Planned crates and apps are listed in PRD §7.
   per-seat session key as the reader of `SeatHand` (findings CF-003).
 - The SDK's attestation check doesn't pin measurements or check TCB status;
   the client must do its own check (findings CF-003).
+- Local keys and settings (dev machine): `~/.config/cardflex/` holds
+  devnet-deployer.json, card_flex-program-keypair.json, keeper.json,
+  e2e/player-a..e.json, devnet.env (tables, key paths, ports) and a
+  README; hand history in `~/.local/share/cardflex/cardflex.db`. Never copy
+  these into the repo.
 - Program is deployed on devnet at `4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL`.
   The upgrade authority is the devnet deployer `Cf3ux3ZqSfYutZyxLeEWLeNkpUkPBMneyU3VUwEUww8x`.
   Keys live outside the repo in `~/.config/cardflex/` on the dev machine:
@@ -285,12 +292,24 @@ Planned crates and apps are listed in PRD §7.
   runtime in PER; others see the last committed copy. `pnpm check:web` is
   in `pnpm verify`. E2E: `apps/web/e2e` (headless Chrome over CDP; funded
   player keypairs from `E2E_KEYS`, never in the repo).
-- Runtime headroom (CF-069): the runtime pays PER accounts and is the
-  commit payer; below a margin above rent (~14–15k lamports observed)
-  `commit_hand` fails `InsufficientFundsForRent`, and a live runtime can't
-  be topped up (base transfers don't reach the PER). ALWAYS open tables
-  with `cf-admin table open` (funds a 0.005 SOL reserve before delegating).
-  Keeper `/health` alarms below 100,000 lamports.
+- Runtime headroom (CF-069, CF-070): the runtime pays for the table's PER
+  accounts and is the commit payer; it can't be topped up while live (base
+  transfers don't reach the PER). Normal play costs it ~0 (measured: joins,
+  hands, Side Show grants refunded on revoke, commits), but one Devnet table
+  lost ~4M lamports in an hour for an unexplained reason and then every
+  commit failed (`InsufficientFundsForRent`, ~1.0M left). So: ALWAYS open
+  tables with `cf-admin table open` (default reserve 0.05 SOL); the keeper
+  logs headroom after every hand and `/health` alarms below 2,000,000.
+  Refuel = close between hands, then `table open` again. Ask MagicBlock.
+- Account stamps (audit 2026-11-21): seat hands, salts and the dealer are
+  recognised in hot paths by `stamped()` (owner = program, tag, runtime key,
+  seat) instead of re-deriving the PDA. This is only sound because the
+  `open_*` instructions check the PDA before writing the stamp and nothing
+  else ever writes those bytes: keep it that way. `any_lost` still derives
+  PDAs (it must prove a specific address is missing).
+- Departed players are paid by the keeper (`cash_out` is permissionless and
+  pays only the recorded wallet): a ledger nobody cashes out would block its
+  seat. Clients must treat "my left ledger disappeared" as paid.
 - License: Apache-2.0 (`LICENSE`, `NOTICE`); every crate and package says so.
 - Joining (CF-063): a hand needs 2+ players; a player who buys in mid-hand
   is seated by the keeper between hands (join_waiting before start_hand)

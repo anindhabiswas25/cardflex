@@ -6,6 +6,15 @@ data anywhere.
 
 ## Run it locally (the full stack)
 
+On the dev machine everything is configured in `~/.config/cardflex/devnet.env`:
+
+```bash
+pnpm stack                 # keeper + API + web on :3000; Ctrl-C stops all three
+pnpm e2e 2p                # browser tests with the saved wallets (2p | 3p | wallet | refund)
+```
+
+By hand:
+
 ```bash
 pnpm install --frozen-lockfile
 # 1. the keeper drives the tables (named on each table with `cf-admin table keeper`)

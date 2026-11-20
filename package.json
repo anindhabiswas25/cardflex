@@ -14,6 +14,8 @@
     "verify": "pnpm check:toolchain && pnpm build:program && pnpm lint:rust && pnpm test:rust && pnpm check:fairness && pnpm check:rules && pnpm test:sdk && pnpm test:api && pnpm test:admin && pnpm test:keeper && pnpm check:web && pnpm check:g2",
     "check:web": "pnpm --filter @card-flex/web typecheck",
     "web": "pnpm --filter @card-flex/web dev",
+    "stack": "bash scripts/dev-stack.sh",
+    "e2e": "bash scripts/e2e.sh",
     "mb-stack": "mb-stack",
     "probe": "pnpm --filter @card-flex/probes probe",
     "build:program:devnet-poc": "anchor build -- --features poc-test-deck",

@@ -8,11 +8,13 @@ export const READ_STALE_MS = 30_000;
 /** Consecutive failed steps on one table before it counts as failing. */
 export const TABLE_FAILING = 5;
 /**
- * Runtime lamports above rent below which a table is at risk: a table opened
- * with ~15,000 lamports of headroom stopped committing after it fell to
- * 13,856 (web E2E, 2026-11-20). `cf-admin table open` now adds 0.005 SOL.
+ * Runtime lamports above rent below which a table is at risk. Normal play
+ * costs the runtime ~0, but one Devnet table lost ~4M lamports in an hour
+ * for an unexplained reason (2026-11-21), after which commits failed with
+ * ~1.0M left; it can't be topped up while live. Close and reopen
+ * (`table open` funds a reserve) before it runs out.
  */
-export const HEADROOM_MIN = 100_000;
+export const HEADROOM_MIN = 2_000_000;
 
 export type TableHealth = { table: string; hands: number; failures: number; progressAgeSecs: number; lastCommitSecs: number };
 export type Health = { ok: boolean; reasons: string[]; uptimeSecs: number; tables: number; lastReadAgeSecs: number | null; perTable: TableHealth[] };

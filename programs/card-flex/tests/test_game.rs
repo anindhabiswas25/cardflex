@@ -1256,3 +1256,48 @@ fn commit_refuses_a_fake_fee_vault() {
     let e = send(&mut t.svm, &[ix], &[&payer]).unwrap_err();
     assert!(e.contains("BadFeeVault"), "{e}");
 }
+
+/// Audit 2026-11-21: seat hands are recognised by their stamp (program owner,
+/// tag, runtime key, seat) instead of a PDA re-derivation. A program-owned
+/// account with a valid-looking hand must still be refused if it belongs to
+/// another table, another seat, or was never stamped.
+#[test]
+fn act_refuses_hands_stamped_for_another_table_or_seat() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..2].copy_from_slice(&[100 * BOOT; 2]);
+    let mut t = dealt_table(2, stacks, [5; 32], (0, 0));
+    let s0 = t.sessions[0].insecure_clone();
+    let payer = t.payer.insecure_clone();
+    let hand_no = t.runtime().hand_no;
+    let real = t.svm.get_account(&t.hands[1]).unwrap();
+    let forge = |t: &mut Table, runtime: Pubkey, seat: u8, tag: &[u8; 8]| {
+        let k = Pubkey::new_unique();
+        let mut a = real.clone();
+        a.data[..8].copy_from_slice(tag);
+        a.data[8..40].copy_from_slice(runtime.as_ref());
+        a.data[40] = seat;
+        a.data[41..49].copy_from_slice(&hand_no.to_le_bytes());
+        t.svm.set_account(k, a).unwrap();
+        k
+    };
+    let rt = t.runtime;
+    let other_table = forge(&mut t, Pubkey::new_unique(), 1, SEAT_HAND_TAG);
+    let wrong_seat = forge(&mut t, rt, 0, SEAT_HAND_TAG);
+    let untagged = forge(&mut t, rt, 1, b"NOTAHAND");
+    for bad in [other_table, wrong_seat, untagged] {
+        let ix = t.act_ix(&s0.pubkey(), 1, BOOT, 0, &[t.hands[0], bad]);
+        let e = send(&mut t.svm, &[ix], &[&payer, &s0]).unwrap_err();
+        assert!(e.contains("BadSeatHand"), "{bad}: {e}");
+    }
+    // An account owned by someone else, even with a perfect stamp.
+    let mut foreign = real.clone();
+    foreign.owner = Pubkey::new_unique();
+    let k = Pubkey::new_unique();
+    t.svm.set_account(k, foreign).unwrap();
+    let ix = t.act_ix(&s0.pubkey(), 1, BOOT, 0, &[t.hands[0], k]);
+    assert!(send(&mut t.svm, &[ix], &[&payer, &s0])
+        .unwrap_err()
+        .contains("BadSeatHand"));
+    // The genuine accounts still work.
+    t.act(0, Action::Chaal { amount: BOOT }).unwrap();
+}

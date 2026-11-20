@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "e2e:2p": "node e2e/play.mjs",
     "e2e:3p": "node e2e/play3.mjs",
-    "e2e:wallet": "node e2e/stdwallet.mjs"
+    "e2e:wallet": "node e2e/stdwallet.mjs",
+    "e2e:refund": "node e2e/refund.mjs"
   },
   "dependencies": {
     "@card-flex/client-sdk": "workspace:*",

@@ -95,3 +95,13 @@ test("waiting players are seated between hands, before the next start", () => {
   // Never during a hand: the newcomer waits for the next one.
   assert.notEqual(decide(runtime((r) => { two(r); r.phase = PHASE.DEALT; r.turn_deadline = 2_000n; }), ctx({ waitingSeats: [2] })).kind, "join_waiting");
 });
+
+test("a player who joins and leaves a seat between two reads is still synced (epochs, not bits)", async () => {
+  const { syncedDepartures } = await import("../src/keeper.ts");
+  // Seat 0's previous sit-down (epoch 3) left and was synced.
+  const synced = [3, -1, -1, -1, -1, -1];
+  assert.equal(syncedDepartures({ departed: 0b1, seat_epoch: [3, 0, 0, 0, 0, 0] }, synced), 0b1);
+  // A new sit-down (epoch 4) joined and left before the keeper saw the seat taken:
+  // same departed bit, new epoch -> not synced yet.
+  assert.equal(syncedDepartures({ departed: 0b1, seat_epoch: [4, 0, 0, 0, 0, 0] }, synced), 0);
+});

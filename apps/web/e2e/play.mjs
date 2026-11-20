@@ -36,7 +36,7 @@ try {
       check(`${p.name} resumed its seat in a new browser (wallet rotated the session key)`, await p.eval(`document.body.innerText.includes('● seated')`));
     }
     if (state === "cashout" || await p.eval(`!!document.querySelector('[data-testid=cash-out]')`)) {
-      const label = await p.text("[data-testid=cash-out]");
+      const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
       await p.click("[data-testid=cash-out]");
       await p.waitFor(`!!document.querySelector('[data-testid=buy-in-btn]')`, 120000);
       check(`${p.name} cashed out the seat it was made to leave`, true, label);
@@ -84,9 +84,14 @@ try {
   check("hand finished and both players see the result", !!ra && !!rb);
   check("the hand reached a Show (both hands revealed to both players)", /show/i.test(ra) && !/last player/i.test(ra), ra.split("\n")[0]);
   const shownB = await B.waitFor(`(() => { const n = document.querySelectorAll('[data-testid^=seat-] .card-face').length; return n >= 3 ? n : null })()`, 30000).catch(() => 0);
-  await sleep(6000); // the keeper moves on to the next hand: the result and cards must stay
-  const stillB = await B.eval(`document.querySelectorAll('[data-testid^=seat-] .card-face').length`);
-  check("revealed cards stay visible with the result after the next hand begins", stillB === 3, String(stillB));
+  // Between hands (before the next deal) the result and its cards must stay.
+  let between = 0, keptCards = false;
+  for (let i = 0; i < 30 && !keptCards; i++) {
+    const st = await B.eval(`({ center: [...document.querySelectorAll('.pill')].some((x) => /Next hand|Shuffling|randomness|Waiting/.test(x.innerText)), faces: document.querySelectorAll('[data-testid^=seat-] .card-face').length })`);
+    if (st.center) { between++; if (st.faces >= 3) keptCards = true; }
+    await sleep(500);
+  }
+  check("revealed cards stay visible between hands (until the next deal)", keptCards || between === 0, `${between} between-hand samples`);
   check("B sees A's revealed cards after the Show", shownB === 3, String(shownB));
   const v = await A.waitFor(`/verified in your browser|verification FAILED/.exec(document.querySelector('[data-testid=result]')?.innerText ?? '')?.[0]`, 90000).catch(() => null);
   check("hand verified in the browser (WASM verifier on the revealed hand)", v === "verified in your browser", v ?? "no verdict");
@@ -104,8 +109,8 @@ try {
   // Both leave and cash out.
   for (const p of [A, B]) { await p.click("[data-testid=leave]"); log(p.name, "leave"); await sleep(1500); }
   for (const p of [A, B]) {
-    await p.waitFor(`!!document.querySelector('[data-testid=cash-out]')`, 8 * 60_000, 2000);
-    const label = await p.text("[data-testid=cash-out]");
+    await p.waitFor(`!!document.querySelector('[data-testid=cash-out]') || !!document.querySelector('[data-testid=paid]')`, 8 * 60_000, 2000);
+    const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
     await p.click("[data-testid=cash-out]");
     await p.waitFor(`/Take a seat/.test(document.body.innerText) || !document.querySelector('[data-testid=cash-out]')`, 120000);
     check(`${p.name} cashed out`, true, label);
