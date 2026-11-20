@@ -7,6 +7,12 @@ import type { RunStatus } from "./run.ts";
 export const READ_STALE_MS = 30_000;
 /** Consecutive failed steps on one table before it counts as failing. */
 export const TABLE_FAILING = 5;
+/**
+ * Runtime lamports above rent below which a table is at risk: a table opened
+ * with ~15,000 lamports of headroom stopped committing after it fell to
+ * 13,856 (web E2E, 2026-11-20). `cf-admin table open` now adds 0.005 SOL.
+ */
+export const HEADROOM_MIN = 100_000;
 
 export type TableHealth = { table: string; hands: number; failures: number; progressAgeSecs: number; lastCommitSecs: number };
 export type Health = { ok: boolean; reasons: string[]; uptimeSecs: number; tables: number; lastReadAgeSecs: number | null; perTable: TableHealth[] };
@@ -21,6 +27,7 @@ export function health(tables: Map<string, TableState>, run: RunStatus, now: num
   for (const [table, st] of tables) {
     perTable.push({ table, hands: st.hands, failures: st.failures, progressAgeSecs: Math.round((now - st.progressAt) / 1000), lastCommitSecs: Number(st.lastCommitSecs) });
     if (st.failures >= TABLE_FAILING) reasons.push(`${table.slice(0, 8)}: ${st.failures} failed steps in a row`);
+    if (st.headroom !== undefined && st.headroom < HEADROOM_MIN) reasons.push(`${table.slice(0, 8)}: runtime has only ${st.headroom} lamports above rent; it can't commit below ~15,000 and can't be topped up while live (close it at a quiet moment, refund players or reopen with a reserve)`);
     if (st.notKeeper) reasons.push(`${table.slice(0, 8)}: table hasn't named this keeper (cf-admin table keeper); hands sync only every 240 s`);
   }
   return { ok: reasons.length === 0, reasons, uptimeSecs: Math.round((now - run.startedAt) / 1000), tables: run.tables, lastReadAgeSecs: readAge === null ? null : Math.round(readAge / 1000), perTable };

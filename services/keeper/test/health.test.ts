@@ -26,3 +26,10 @@ test("CF-064 review: a table that hasn't named the keeper is unhealthy", () => {
   assert.equal(h.ok, false);
   assert.match(h.reasons[0], /hasn't named this keeper/);
 });
+
+test("a table whose runtime is close to the commit margin is unhealthy", () => {
+  const h = health(new Map([["TableCCCCCCCC", st({ headroom: 14_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000);
+  assert.equal(h.ok, false);
+  assert.match(h.reasons[0], /above rent/);
+  assert.equal(health(new Map([["T", st({ headroom: 5_000_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000).ok, true);
+});

@@ -1,18 +1,26 @@
 // Indexer core (CF-018): tables for the lobby, and every revealed hand —
 // rebuilt as a cf-hand-record/2, verified with the WASM verifier (CF-040),
 // and replayed with the rules to get each seat's bets and net result.
-import { DELEGATION_PROGRAM_ID, decodeRuntime, decodeTableConfig, dealPositions, handRecordFromHandLog, rules, type Verifier } from "@card-flex/client-sdk";
+import { DELEGATION_PROGRAM_ID, sizeOf, decodeRuntime, decodeTableConfig, dealPositions, handRecordFromHandLog, rules, type Verifier } from "@card-flex/client-sdk";
 import type { ChainSource } from "./source.ts";
 import type { Store, HandSeatRow } from "./store.ts";
 
 const s = (x: bigint | number) => x.toString();
 
-export type IndexStats = { tables: number; newHands: number; invalidHands: number; errors: string[] };
+export type IndexStats = { tables: number; newHands: number; invalidHands: number; errors: string[]; oldLayout?: number };
+
+const RUNTIME_LEN = 8 + sizeOf({ defined: { name: "TableRuntime" } });
 
 export async function indexOnce(src: ChainSource, store: Store, verifier: Verifier, now = Date.now()): Promise<IndexStats> {
   const stats: IndexStats = { tables: 0, newHands: 0, invalidHands: 0, errors: [] };
   for (const t of await src.listTables()) {
     const config = t.config.toBase58();
+    // Tables made by an older program layout (CF-067) can't be decoded:
+    // count them, don't report them as errors on every pass.
+    if (t.runtimeData && t.runtimeData.length !== RUNTIME_LEN) {
+      stats.oldLayout = (stats.oldLayout ?? 0) + 1;
+      continue;
+    }
     try {
       const cfg = decodeTableConfig(t.configData);
       const rt = t.runtimeData ? decodeRuntime(t.runtimeData) : null;

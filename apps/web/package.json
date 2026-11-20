@@ -1,0 +1,35 @@
+{
+  "name": "@card-flex/web",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "sync-wasm": "cp ../../packages/client-sdk/wasm/cf_verify.wasm public/cf_verify.wasm",
+    "predev": "pnpm sync-wasm",
+    "prebuild": "pnpm sync-wasm",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "e2e:2p": "node e2e/play.mjs",
+    "e2e:3p": "node e2e/play3.mjs",
+    "e2e:wallet": "node e2e/stdwallet.mjs"
+  },
+  "dependencies": {
+    "@card-flex/client-sdk": "workspace:*",
+    "@solana/web3.js": "1.98.0",
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.4",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.4",
+    "typescript": "5.9.3"
+  }
+}

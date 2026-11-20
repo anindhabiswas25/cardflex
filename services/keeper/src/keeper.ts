@@ -5,7 +5,7 @@
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
   abortLostHand, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
-  revealHand, sideShowView, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
+  revealHand, sideShowView, sizeOf, startHand, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
 import type { Store } from "@card-flex/api/store";
@@ -28,7 +28,7 @@ export type KeeperOpts = {
 };
 
 /** A runtime read taken by the scheduler (run.ts) with the PER slot at that time. */
-export type Snapshot = { rt: TableRuntime | null; slot: bigint };
+export type Snapshot = { rt: TableRuntime | null; slot: bigint; lamports?: number };
 
 export type TableState = {
   lastCommitSecs: bigint; departedSynced: number; backoffUntil: number; failures: number; hands: number;
@@ -40,10 +40,15 @@ export type TableState = {
   joinFails: Map<string, number>;
   /** The table hasn't named this keeper's key (set_keeper): its per-hand commits are refused. */
   notKeeper?: boolean;
+  /** Runtime lamports above its rent, in the PER (pays PER accounts; commits need a margin). */
+  headroom?: number;
 };
+
+const RUNTIME_LEN = 8 + sizeOf({ defined: { name: "TableRuntime" } });
 
 export class Keeper {
   readonly o: KeeperOpts;
+  private rentOfRuntime?: number;
   readonly tables = new Map<string, TableState>();
   constructor(o: KeeperOpts) {
     this.o = o;
@@ -135,6 +140,11 @@ export class Keeper {
       st.progress = progress;
       st.progressAt = Date.now();
     }
+    // A seat that was synced as departed and then taken by a new player has
+    // its departed bit cleared; forget it, or that player's own departure
+    // would look already synced and wait for the heartbeat (found in the UI E2E).
+    st.departedSynced &= rt.departed;
+    if (snap?.lamports !== undefined) st.headroom = snap.lamports - (this.rentOfRuntime ??= await this.o.base.getMinimumBalanceForRentExemption(RUNTIME_LEN));
     const stuck = inProgress(rt) && Date.now() - st.progressAt >= (this.o.stuckSecs ?? 120) * 1000;
     const waitingSeats = rt.phase === PHASE.IDLE ? await this.waitingSeats(config, rt, st).catch(() => []) : [];
     const step = decide(rt, {

@@ -56,6 +56,20 @@ export function joinSeat(p: { payer: PublicKey; config: PublicKey; seat: number;
   return buildIx("join_seat", { payer: p.payer, runtime: t.runtime, ledger: t.ledger(p.seat), ...per }, { seat: p.seat });
 }
 
+/**
+ * PER, signed by the seat's WALLET: replaces a lost or expired session key
+ * (e.g. a new device). The old key loses access at once. Refused while a
+ * Side Show grant is live (`GrantActive`).
+ */
+export function rotateSession(p: { wallet: PublicKey; config: PublicKey; seat: number; newSession: PublicKey }) {
+  const t = tableAddresses(p.config);
+  return buildIx("rotate_session", {
+    wallet: p.wallet, runtime: t.runtime, hand: t.seatHand(p.seat), hand_permission: permissionPda(t.seatHand(p.seat)),
+    runtime_permission: permissionPda(t.runtime), permission_program: PERMISSION_PROGRAM_ID,
+    ephemeral_vault: MAGIC_PROGRAMS.ephemeralVault, magic_program: MAGIC_PROGRAMS.magicProgram,
+  }, { seat: p.seat, new_session: p.newSession });
+}
+
 /** PER, session key signs. `dealingOrder` = the dealt seats (runtime.game.order[..n]). */
 export function act(p: { session: PublicKey; config: PublicKey; action: number; amount: bigint; expectedSeq: bigint; dealingOrder: number[] }) {
   const t = tableAddresses(p.config);

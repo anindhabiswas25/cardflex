@@ -64,6 +64,7 @@ pnpm check:rules         # rules v1 vectors, independent Python
 pnpm test:sdk            # client SDK tests (rebuilds the WASM verifier first)
 pnpm test:api            # indexer + API tests (offline, real Devnet hand records)
 pnpm api                 # run the Devnet indexer + API on :4000 (CARDFLEX_DB, PORT, POLL_MS)
+pnpm web                 # CF-069 player app on :3000 (needs keeper; API optional)
 pnpm keeper              # CF-051 keeper (CARDFLEX_KEEPER_KEY = fee payer + own read key, CARDFLEX_DB, HEALTH_PORT)
 pnpm keeper-drill        # Devnet: keeper runs a table unattended with bots, incl. an absent player
 TABLE=<old> pnpm --filter @card-flex/keeper migrate-drill   # CF-067: migrate an old table and play on it
@@ -93,6 +94,7 @@ packages/client-sdk/   CF-016 TS client: PDAs, IDL-driven decoders + instruction
 packages/probes/       common.mjs helpers, table.mjs setup; probe.mjs (CF-003), archive/tablepoc.mjs
                        (CF-006), privacy-suite.mjs (CF-007/009), handflow.mjs (CF-010/011), game.mjs (CF-025);
                        archive/roundtrip.mjs needs the pre-slim build (commit e017823)
+apps/web/              CF-069 player app (Next.js): lobby, table, verify, dashboard
 services/api/          CF-018 Devnet indexer + read-only HTTP API (ADR 0006)
 services/admin/        CF-041 cf-admin operator CLI (signs locally; never a key-holding server)
 services/keeper/       CF-051 keeper: decide.ts (pure, tested per phase) + keeper.ts (executor)
@@ -276,6 +278,19 @@ Planned crates and apps are listed in PRD §7.
 - The SDK IDL must come from the DEFAULT build: after `pnpm deploy:devnet`
   (test-deck build) run `anchor build` before `sync-idl`, or `poc_deal`
   leaks into the SDK.
+- Web app (CF-069, `apps/web`, README there): no mock data; lobby =
+  `apps/web/lobby.json` (display names) + chain reads. Session keys only in
+  the tab's sessionStorage; wallet signs only money steps and recovery
+  (`rotate_session` via `perLoginWithSigner`). Seated players read the LIVE
+  runtime in PER; others see the last committed copy. `pnpm check:web` is
+  in `pnpm verify`. E2E: `apps/web/e2e` (headless Chrome over CDP; funded
+  player keypairs from `E2E_KEYS`, never in the repo).
+- Runtime headroom (CF-069): the runtime pays PER accounts and is the
+  commit payer; below a margin above rent (~14–15k lamports observed)
+  `commit_hand` fails `InsufficientFundsForRent`, and a live runtime can't
+  be topped up (base transfers don't reach the PER). ALWAYS open tables
+  with `cf-admin table open` (funds a 0.005 SOL reserve before delegating).
+  Keeper `/health` alarms below 100,000 lamports.
 - License: Apache-2.0 (`LICENSE`, `NOTICE`); every crate and package says so.
 - Joining (CF-063): a hand needs 2+ players; a player who buys in mid-hand
   is seated by the keeper between hands (join_waiting before start_hand)

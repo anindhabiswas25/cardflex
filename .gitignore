@@ -18,6 +18,8 @@ dist/
 !.env.example
 *-keypair.json
 id.json
+player-*.json
+*.png.tmp
 
 # OS / editor
 .DS_Store

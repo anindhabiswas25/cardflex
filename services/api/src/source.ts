@@ -24,7 +24,10 @@ export class RpcSource implements ChainSource {
   async listTables(): Promise<RawTable[]> {
     // Every TableConfig of the current layout (older Devnet test layouts differ in size).
     const configs = await this.base.getProgramAccounts(PROGRAM_ID, { filters: [{ dataSize: TABLE_CONFIG_LEN }] });
-    const runtimes = await this.base.getMultipleAccountsInfo(configs.map((c) => runtimePda(c.pubkey)));
+    // getMultipleAccountsInfo takes at most 100 keys (Devnet has hundreds of tables).
+    const keys = configs.map((c) => runtimePda(c.pubkey));
+    const runtimes: Awaited<ReturnType<Connection["getMultipleAccountsInfo"]>> = [];
+    for (let i = 0; i < keys.length; i += 100) runtimes.push(...(await this.base.getMultipleAccountsInfo(keys.slice(i, i + 100))));
     return configs.map((c, i) => ({
       config: c.pubkey,
       configData: Uint8Array.from(c.account.data),

@@ -19,7 +19,7 @@ for (;;) {
   const t0 = performance.now();
   try {
     const st = await indexOnce(src, store, verifier);
-    if (st.newHands || st.errors.length) console.log(new Date().toISOString(), st);
+    if (st.newHands || st.errors.length) console.log(new Date().toISOString(), { ...st, errors: st.errors.slice(0, 5) });
   } catch (e) {
     console.error("index pass failed:", String((e as Error).message ?? e));
   }

@@ -1,7 +1,7 @@
 // PER (Private Ephemeral Rollup) access: session keys and auth tokens.
 // Findings CF-003: the token lasts 30 days with no refresh endpoint, so the
 // identity that reads a hand is a per-sit-down session key, never the wallet.
-import { Connection, Keypair, Transaction, type Commitment, type ConnectionConfig, type TransactionInstruction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, Transaction, type Commitment, type ConnectionConfig, type TransactionInstruction } from "@solana/web3.js";
 import { getAuthToken } from "@magicblock-labs/ephemeral-rollups-sdk";
 import nacl from "tweetnacl";
 import { ENDPOINTS } from "./constants.ts";
@@ -14,6 +14,15 @@ export type PerToken = { token: string; expiresAt: number };
 /** Logs a session key in to PER (the key signs a challenge; no wallet pop-up). */
 export async function perLogin(session: Keypair, perUrl: string = ENDPOINTS.devnet.per): Promise<PerToken> {
   const { token } = await getAuthToken(perUrl, session.publicKey, async (m: Uint8Array) => nacl.sign.detached(m, session.secretKey));
+  return { token, expiresAt: jwtExpiry(token) ?? Date.now() + 30 * 864e5 };
+}
+
+/**
+ * Logs any signer in to PER, e.g. a browser wallet's `signMessage` (used only
+ * for recovery steps the wallet itself must sign in PER, like rotate_session).
+ */
+export async function perLoginWithSigner(publicKey: PublicKey, sign: (message: Uint8Array) => Promise<Uint8Array>, perUrl: string = ENDPOINTS.devnet.per): Promise<PerToken> {
+  const { token } = await getAuthToken(perUrl, publicKey, sign);
   return { token, expiresAt: jwtExpiry(token) ?? Date.now() + 30 * 864e5 };
 }
 

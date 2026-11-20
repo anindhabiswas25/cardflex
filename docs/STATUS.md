@@ -1,6 +1,6 @@
 # Status
 
-Current phase: **P8 (hardening), program and ops work complete.** CF-052–061 and CF-063–066 done; CF-056 done except the multisig handover (team decision). CF-062 (multi-machine load test) is replaced for now by CF-066, a one-machine multi-user test (no extra machines available, 2026-11-20 PM decision); re-run CF-062 when machines exist. Next: the UI (P7, `apps/web`). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
+Current phase: **P8 (hardening), program and ops work complete.** CF-052–061 and CF-063–066 done; CF-056 done except the multisig handover (team decision). CF-062 (multi-machine load test) is replaced for now by CF-066, a one-machine multi-user test (no extra machines available, 2026-11-20 PM decision); re-run CF-062 when machines exist. P7 UI wired end to end (CF-069): every page on real Devnet data, tested in headless Chrome. Next: P9 prep (public Devnet hosting of web + keeper + API). P0–P6 done; P7 non-UI parts done and committed (CF-016/018/040/041), UI in progress (`apps/web`, not committed). Rules v1 signed off 2026-11-19. G1 and G2 passed from one location (other regions still to run the probes, CF-003); G3 signed off as GO (conditional) 2026-11-18. P8 does not wait on MagicBlock answers: open questions are sent, but every P8 ticket assumes the worst case and measures what it can itself (2026-11-19 PM decision). Update this file whenever a ticket
 starts, finishes or gets blocked. Newest entries first in the log.
 ## Tickets
 
@@ -54,6 +54,7 @@ starts, finishes or gets blocked. Newest entries first in the log.
 | CF-065 | P8: keeper's own read key (CF-055 open item) | Done: `set_keeper` / `cf-admin table keeper`; keeper logs in with its own key, reads the runtime only (Devnet: 0 of 13 secret accounts readable); restarts every 20 days for a fresh token | `TableRuntime.keeper`, `docs/runbooks/keeper.md` |
 | CF-066 | P8: one-machine multi-user test (stands in for CF-062) | Done: see log 2026-11-20 | `pnpm multiuser`, `docs/probes/*-cf066-multiuser-*.json` |
 | CF-067 | P8: old Devnet tables after the layout change; safe retries; CLI args | Done: `migrate_runtime` + `cf-admin table migrate` (Devnet: old table migrated and played, 12/12); old live tables refund exactly (Devnet 4/4); `sendAndConfirm` never applies a transaction twice; fixed migration budget, keeper permission budget, misleading `BadSeatHand` on locked tables | `docs/findings/cf-064-065-p8-closeout.md` |
+| CF-069 | P7: web app wired to Devnet (lobby, table, verify, dashboard, wallets, sounds/settings) | Done: headless-Chrome E2E on Devnet 2p 13/13, 3p Side Show 7/7, Wallet Standard 6/6, phone width clean; fixed keeper departedSynced, API >100-account read, runtime headroom (`table open` reserve + keeper health) | `apps/web`, `docs/findings/cf-069-web-app.md` |
 | CF-062 | P9 prerequisite: multi-machine load test (bots spread over several machines/IPs, one keeper), 50 tables, latency targets | Deferred: no extra machines now; CF-066 covers multi-user correctness from one IP. Run before public launch traffic when machines exist | `pnpm load-test` per machine |
 
 ## Open program items (P8)
@@ -74,6 +75,9 @@ starts, finishes or gets blocked. Newest entries first in the log.
   `devnet-deployer.json` (fee payer + current upgrade authority).
 - Ask MagicBlock about the write-latency tail on Devnet (CF-004) and missed
   `accountSubscribe` updates for ephemeral accounts (CF-006).
+- Ask MagicBlock: the commit payer's required margin above rent, and how
+  to top up a delegated account's balance inside the ER (CF-069; a live
+  table's runtime can't be refuelled today).
 - Ask MagicBlock which local base-layer (solana-test-validator) version their
   validator 1.1.1 expects for commits (local commits fail with 3.1.10 and 4.0.3).
 - Ask MagicBlock: open questions in delivery plan §11 (4 is answered).
@@ -85,6 +89,19 @@ starts, finishes or gets blocked. Newest entries first in the log.
 
 ## Log
 
+- 2026-11-20 — CF-069: the web app is real. Lobby/table/verify/dashboard
+  read Solana + PER; buy-in/cash-out/refund signed by the wallet (Wallet
+  Standard or a Devnet test wallet), moves/salts/leave by a tab-only session
+  key, resume via `rotate_session`; TEE attestation checked in the browser;
+  revealed hands verified in the browser (WASM). Headless-Chrome E2E on
+  Devnet: 2 players 13/13, 3 players with Side Show 7/7, Wallet Standard
+  6/6. Found and fixed: keeper waited for the heartbeat before syncing a
+  returning player's departure (4 min → 11 s); API indexer read >100
+  accounts per call (failed every pass); a table opened with ~15,000
+  lamports of runtime headroom stopped committing after churn
+  (InsufficientFundsForRent; can't top up a live runtime) → `table open`
+  funds a 0.005 SOL reserve, keeper health alarms below 100,000. Lobby
+  tables: Violet Hall EfMDxq9…, Moon Court 72vx3CE…, Ember Room AciNdk4….
 - 2026-11-20 — CF-067: follow-up on three issues from the P8 close-out.
   (1) Old tables (1,212-byte runtime, ~280 test tables on Devnet): money was
   never trapped (refund path doesn't read the runtime; proven live on an old

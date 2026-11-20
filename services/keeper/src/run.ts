@@ -78,7 +78,7 @@ export async function runKeeper(keeper: Keeper, o: RunOpts): Promise<void> {
         const infos = chunks.flat();
         list.forEach((c, i) => {
           const a = infos[i];
-          snaps.set(c.toBase58(), { rt: a ? decodeRuntime(a.data) : null, slot: BigInt(slot as number), at });
+          snaps.set(c.toBase58(), { rt: a ? decodeRuntime(a.data) : null, slot: BigInt(slot as number), at, lamports: a?.lamports });
         });
         if (o.status) o.status.lastReadAt = Date.now();
       } catch (e) {

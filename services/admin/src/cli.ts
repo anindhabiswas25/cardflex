@@ -11,7 +11,9 @@
 //                                     the keeper then logs in with its own key and no authority
 //                                     credential leaves this machine (CF-065).
 //   cf-admin table create --boot <lamports> [--rake-bps N] [--rake-cap <lamports>] [--seats 6] [--refund-timeout 1800] [--id N]
-//   cf-admin table open <config>      delegate to the TEE + create permissions, dealer, seat hands, salts
+//   cf-admin table open <config> [--runtime-reserve 0.005]   delegate to the TEE + create permissions,
+//                                     dealer, seat hands, salts; first funds the runtime's reserve
+//                                     (it can't be topped up once live)
 //   cf-admin table status <config>
 //   cf-admin table check <config> [--strict]   reconcile the vault (simulated check_vault + the terms)
 //   cf-admin table sweep <config>     rake -> treasury
@@ -39,7 +41,7 @@
 // Env: CARDFLEX_BASE_RPC, CARDFLEX_PER_RPC.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
   DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, TABLE_STATUS, decodeGlobal, decodeLedger, decodeRuntime, decodeTableConfig,
   globalPda, perConnection, perLogin, sizeOf, tableAddresses, magicFeeVault, verifyTee,
@@ -236,7 +238,15 @@ async function main() {
     if (cmd === "open") {
       const kp = signer();
       const { cfg, live } = await readTable(config);
-      if (!live) await send(base, [delegateTable(kp.publicKey, config)], kp, "delegate_table");
+      if (!live) {
+        // The runtime pays for the table's PER accounts and must keep a
+        // margin MagicBlock requires of a commit payer; once delegated it
+        // can't be topped up (found in the web E2E: a busy table fell below
+        // it and could no longer commit). Fund a reserve before delegating.
+        const reserve = BigInt(Math.round(Number(opt("runtime-reserve", "0.005")) * 1e9));
+        const ixs = reserve > 0n ? [SystemProgram.transfer({ fromPubkey: kp.publicKey, toPubkey: tableAddresses(config).runtime, lamports: reserve })] : [];
+        await send(base, [...ixs, delegateTable(kp.publicKey, config)], kp, `delegate_table (+ runtime reserve ${lamports(reserve)})`);
+      }
       const tee = perConnection(dry ? null : (await perLogin(kp, perUrl)).token, perUrl);
       // Wait for PER to see the delegated runtime.
       for (let i = 0; !dry && i < 60; i++) {
