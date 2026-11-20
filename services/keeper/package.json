@@ -2,6 +2,7 @@
   "name": "@card-flex/keeper",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "CF-051: keeper that drives Card Flex tables through every phase with permissionless instructions only.",
   "type": "module",
   "scripts": {

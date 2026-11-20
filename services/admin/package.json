@@ -2,9 +2,12 @@
   "name": "@card-flex/admin",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "CF-041: operator CLI (global settings, pause, create/open/close tables, reconcile, sweep rake). Signs locally; holds no keys of its own.",
   "type": "module",
-  "bin": { "cf-admin": "src/cli.ts" },
+  "bin": {
+    "cf-admin": "src/cli.ts"
+  },
   "scripts": {
     "cli": "node src/cli.ts",
     "test": "node --test test/*.test.ts",

@@ -2,6 +2,7 @@
   "name": "@card-flex/api",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "CF-018: Devnet indexer + read-only HTTP API (lobby, hand history, player records). ADR 0006.",
   "type": "module",
   "scripts": {

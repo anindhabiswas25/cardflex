@@ -40,5 +40,6 @@
   },
   "devDependencies": {
     "@magicblock-labs/ephemeral-validator": "1.1.1"
-  }
+  },
+  "license": "Apache-2.0"
 }

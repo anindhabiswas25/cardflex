@@ -5,7 +5,7 @@ members = ["programs/*", "crates/*"]
 [workspace.package]
 edition = "2021"
 rust-version = "1.89"
-license = "UNLICENSED"
+license = "Apache-2.0"
 publish = false
 
 # Exact pins: every version here matches toolchain.env.
