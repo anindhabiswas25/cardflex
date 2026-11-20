@@ -56,8 +56,15 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install Anchor CLI
+        # avm/anchor-cli 1.1.2's own lockfile needs rustc >= 1.91 (cargo-platform
+        # 0.3.3). Only these host CLI tools build with it; the workspace and the
+        # program stay on the pinned RUST_VERSION (ADR 0001 amendment, CF-069).
+        env:
+          RUSTUP_TOOLCHAIN: "1.91.0"
         run: |
           if ! anchor --version 2>/dev/null | grep -q "$ANCHOR_VERSION"; then
+            rustup toolchain install 1.91.0 --profile minimal
+            cd "$RUNNER_TEMP"
             cargo install --git https://github.com/solana-foundation/anchor avm --tag "v${ANCHOR_VERSION}" --locked --force
             avm install "$ANCHOR_VERSION"
             avm use "$ANCHOR_VERSION"
@@ -87,3 +94,16 @@ jobs:
 
       - name: Gate G2 - verifier rebuilds 10,000 random hands
         run: cargo test -p fairness-verifier --release -- --ignored
+
+      - name: Rules vectors (independent Python implementation)
+        run: pnpm check:rules
+
+      # Same order as `pnpm verify`. The SDK test also checks its IDL copy
+      # against the program built above.
+      - name: JS tests (SDK, API, admin, keeper) and web typecheck
+        run: |
+          pnpm test:sdk
+          pnpm test:api
+          pnpm test:admin
+          pnpm test:keeper
+          pnpm check:web

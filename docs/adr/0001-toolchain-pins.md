@@ -113,3 +113,11 @@ Squads multisig before public Devnet (phase P8).
 the pinned Rust 1.89.0, so `crates/fairness-wasm` (the hand verifier for the
 browser) builds with the same compiler. No version changed and no new tool
 was added: the module exposes a plain C ABI, so `wasm-bindgen` isn't needed.
+
+## Amendment (2026-11-20, CF-069): Rust for the Anchor CLI tools
+
+`avm`/`anchor-cli` 1.1.2 are installed with `cargo install --locked`, and
+their lockfile needs rustc >= 1.91 (`cargo-platform` 0.3.3), so CI failed
+with the 1.89 pin. CI builds only these host CLI tools with Rust 1.91.0
+(`RUSTUP_TOOLCHAIN` on the install step). `RUST_VERSION` = 1.89.0 still
+builds and tests the workspace and the program; no pin changed.
