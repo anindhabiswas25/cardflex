@@ -18,15 +18,18 @@ const b = await launch(9338);
 try {
   const p = await b.page("R", init);
   await p.goto(`${URL0}/dashboard`);
-  const before = await p.waitFor(`(() => { const t = document.querySelector('[data-testid=wallet-pill]')?.innerText; return t && /\\d/.test(t) ? t : null })()`, 30000);
+  // The wallet button shows only the address; the balance is the Dashboard's Wallet tile.
+  const balance = `(() => { const t = document.querySelector('.db-stat b')?.innerText; return t && /\\d/.test(t) ? t : null })()`;
+  await p.waitFor(`document.querySelector('[data-testid=wallet-pill]')?.innerText`, 30000);
+  const before = await p.waitFor(balance, 30000);
   await p.waitFor(`!!document.querySelector('[data-testid=start-refund]')`, 60000);
   const label = await p.text("[data-testid=start-refund]");
   check("dashboard offers a refund for the stalled table", true, label);
   await p.click("[data-testid=start-refund]");
-  const msg = await p.waitFor(`/sent to your wallet/.test(document.body.innerText) ? document.body.innerText.match(/◎[\\d.]+ sent to your wallet/)?.[0] : null`, 120000);
+  const msg = await p.waitFor(`/sent to your wallet/.test(document.body.innerText) ? document.body.innerText.match(/[\\d.]+ SOL sent to your wallet/)?.[0] : null`, 120000);
   check("refund claimed and paid to the wallet", !!msg, msg ?? "");
   await new Promise((r) => setTimeout(r, 16000)); // balance refresh
-  const after = await p.text("[data-testid=wallet-pill]");
+  const after = await p.eval(balance);
   log("wallet before:", before.replace(/\n/g, " "), "after:", after.replace(/\n/g, " "));
   await p.shot(join(process.env.E2E_OUT ?? KEYS, "refund.png"));
 } catch (e) {

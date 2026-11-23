@@ -2,17 +2,20 @@
 // Checks one hand in the browser with the same verifier as `cf-verify`
 // (Rust compiled to WASM). The record comes from the indexer API, or straight
 // from the table's public hand log on Solana (latest hand), or is pasted.
+// Styled like the landing page (dark stage, gold accents, the card art).
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PublicKey } from "@solana/web3.js";
 import { dealPositions, handRecordFromHandLog, tableAddresses, type HandRecord, type VerifyReport } from "@card-flex/client-sdk";
 import { useEffect, useState } from "react";
-import { PlayingCard } from "./PlayingCard";
 import { api } from "@/lib/api";
+import { cardArt } from "@/lib/cards";
 import { base } from "@/lib/chain";
 import { CATEGORY_LABEL, END_REASON, short, sol } from "@/lib/format";
 import { metaFor } from "@/lib/lobby";
 import { getVerifier } from "@/lib/useTable";
 import { rules } from "@card-flex/client-sdk";
+import { Sol } from "./Sol";
 
 type Loaded = { record: HandRecord; source: string };
 
@@ -27,10 +30,19 @@ async function fetchRecord(table: string, hand: string): Promise<Loaded | null> 
   return null;
 }
 
+const HOW = [
+  { t: "Fetch", d: "The hand's public record", icon: <Sol size="20px" /> },
+  { t: "Rebuild", d: "The deck from salts + VRF", icon: "♠" },
+  { t: "Replay", d: "Every bet, payout and rake", icon: "⇅" },
+];
+
 export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
+  const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null | undefined>(table ? undefined : null);
   const [report, setReport] = useState<VerifyReport | null>(null);
   const [pasted, setPasted] = useState("");
+  const [showPaste, setShowPaste] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ table: table ?? "", hand: hand ?? "" });
 
@@ -44,6 +56,13 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
       .catch((e) => { if (!off) { setErr(String(e?.message ?? e)); setLoaded(null); } });
     return () => { off = true; };
   }, [table, hand]);
+
+  useEffect(() => {
+    if (!showRaw) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setShowRaw(false);
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [showRaw]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -63,82 +82,359 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
   const rec = loaded?.record;
   const order = rec?.seats.map((s) => s.seat) ?? [];
   const hands = report?.deck && rec ? order.map((seat, k) => ({ seat, cards: dealPositions(k, order.length).map((p) => report.deck![p]) })) : [];
-  return (
-    <div className="glass rounded-3xl p-6 sm:p-8">
-      <h1 className="font-[family-name:var(--font-display)] text-3xl">{hand ? `Verify hand #${hand}` : "Verify a hand"}</h1>
-      {table && <p className="mt-1 text-sm text-violet-300">{metaFor(table).name} · {short(table)} · checked in your browser by the same verifier as <code>cf-verify</code> (WASM)</p>}
+  const valid = report?.overall === "VALID";
+  const passed = report?.checks.filter((c) => c.status === "VALID").length ?? 0;
+  const failed = report?.checks.filter((c) => c.status === "INVALID").length ?? 0;
+  const skipped = (report?.checks.length ?? 0) - passed - failed; // e.g. "not provided" in this record
 
+  return (
+    <div className={`vf ${table ? "is-result" : "is-index"}`}>
+      {/* coins resting in the bottom corners */}
+      <img className="vf-coin vf-coin-l" src="/landing/coin-stack.webp" alt="" width={280} height={240} aria-hidden />
+      <img className="vf-coin vf-coin-r" src="/landing/coin-pile.webp" alt="" width={400} height={201} aria-hidden />
+
+      {/* ---------- header ---------- */}
+      <section className="vf-hero">
+        <span className="vf-eyebrow">{hand ? "Checked in your browser" : "Verify a hand"}</span>
+        {hand ? (
+          <h1>Hand #{hand}</h1>
+        ) : (
+          <h1>
+            <small>EVERY DEAL</small>
+            ON THE RECORD
+          </h1>
+        )}
+        <p>
+          {table ? (
+            <>
+              {metaFor(table).name} · <code>{short(table)}</code>
+            </>
+          ) : (
+            "Rebuild the deck. Replay the bets. Right in your browser."
+          )}
+        </p>
+      </section>
+
+      {/* ---------- lookup form ---------- */}
       {!table && (
-        <div className="mt-5 grid gap-3">
-          <div className="grid gap-2 sm:grid-cols-[2fr_1fr_auto]">
-            <input className="rounded-xl bg-black/30 px-3 py-2 text-sm ring-1 ring-violet-400/30" placeholder="Table address" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value.trim() })} />
-            <input className="rounded-xl bg-black/30 px-3 py-2 text-sm ring-1 ring-violet-400/30" placeholder="Hand #" value={form.hand} onChange={(e) => setForm({ ...form, hand: e.target.value.trim() })} />
-            <Link className="btn btn-lime text-sm" href={form.table && form.hand ? `/verify/${form.table}/${form.hand}` : "/verify"}>Check</Link>
+        <section className="vf-panel">
+          <form
+            className="vf-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (form.table && form.hand) router.push(`/verify/${form.table}/${form.hand}`);
+            }}
+          >
+            <label>
+              <span>Table</span>
+              <input placeholder="Table address" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value.trim() })} />
+            </label>
+            <label className="vf-hand-no">
+              <span>Hand</span>
+              <input placeholder="#" inputMode="numeric" value={form.hand} onChange={(e) => setForm({ ...form, hand: e.target.value.trim() })} />
+            </label>
+            <button type="submit" className="vf-btn" disabled={!form.table || !form.hand}>
+              <span>✓</span>Check
+            </button>
+          </form>
+          <button type="button" className="vf-toggle" onClick={() => setShowPaste((v) => !v)} aria-expanded={showPaste}>
+            {showPaste ? "−" : "+"} Paste a hand record instead
+          </button>
+          {showPaste && (
+            <div className="vf-paste">
+              <textarea placeholder="cf-hand-record/2 JSON" value={pasted} onChange={(e) => setPasted(e.target.value)} />
+              <button type="button" className="vf-btn vf-btn-ghost" onClick={verifyPasted} disabled={!pasted.trim()}>
+                Verify record
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ---------- how it works (until there is a result) ---------- */}
+      {!report && loaded !== undefined && (
+        <ol className="vf-how">
+          {HOW.map((s, i) => (
+            <li key={s.t}>
+              <span className="vf-ico">{s.icon}</span>
+              <em>{String(i + 1).padStart(2, "0")}</em>
+              <b>{s.t}</b>
+              <small>{s.d}</small>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {loaded === undefined && (
+        <div className="vf-loading">
+          <span className="vf-spin" />
+          Fetching the hand record…
+        </div>
+      )}
+      {table && loaded === null && !err && (
+        <p className="vf-msg">
+          No record for this hand. The indexer API hasn&apos;t seen it, and the table&apos;s hand log now holds a later hand.
+        </p>
+      )}
+      {err && <p className="vf-msg vf-msg-bad">{err}</p>}
+
+      {/* ---------- result ---------- */}
+      {report && rec && (
+        <div className="vf-grid">
+          <div className="vf-col">
+          <section className={`vf-verdict ${valid ? "is-valid" : "is-invalid"}`}>
+            <span className="vf-seal" aria-hidden>
+              {valid ? "✓" : "✕"}
+            </span>
+            <div data-testid="verify-overall">
+              <small>The hand is</small>
+              <strong>{valid ? "VALID" : "INVALID"}</strong>
+            </div>
+            <div className="vf-verdict-meta">
+              <span>{passed} checks passed</span>
+              {failed > 0 && <span className="is-bad">{failed} failed</span>}
+              {skipped > 0 && <span>{skipped} not in this record</span>}
+              <span>from {loaded!.source}</span>
+            </div>
+          </section>
+
+          <section className="vf-sec">
+            <header className="vf-head">
+              <span className="vf-eyebrow">The hand</span>
+              <div className="vf-chips">
+                {END_REASON[rec.game.end_reason] && <span>Ended by {END_REASON[rec.game.end_reason]}</span>}
+                <span>Boot <Sol /> {sol(rec.game.boot)}</span>
+                <span>Rake <Sol /> {sol(rec.game.rake)}</span>
+              </div>
+            </header>
+            <div className="vf-seats">
+              {hands.map(({ seat, cards }) => {
+                const k = order.indexOf(seat);
+                const won = rec.game.winners.includes(seat);
+                // Hand records list payouts and start stacks in dealing order.
+                const payout = BigInt(rec.game.payouts[k] ?? "0");
+                return (
+                  <div key={seat} className={`vf-seat ${won ? "is-won" : ""}`}>
+                    {won && <span className="vf-crown">Winner</span>}
+                    <div className="vf-fan">
+                      {cards.map((c, i) => (
+                        <img key={i} src={cardArt(c)} alt="" width={300} height={440} style={{ "--i": i - 1 } as React.CSSProperties} />
+                      ))}
+                    </div>
+                    <b>{CATEGORY_LABEL[rules.categoryOf(cards)]}</b>
+                    <span>
+                      Seat {seat + 1} · {short(rec.seats[k].wallet)}
+                    </span>
+                    {won && <em>+<Sol /> {sol(payout)}</em>}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+          {table && <Actions table={table} />}
           </div>
-          <p className="text-xs text-violet-300">…or paste a hand record (<code>cf-hand-record/2</code> JSON):</p>
-          <textarea className="h-28 rounded-xl bg-black/30 p-3 font-mono text-xs ring-1 ring-violet-400/30" value={pasted} onChange={(e) => setPasted(e.target.value)} />
-          <button className="btn btn-violet w-fit text-sm" onClick={verifyPasted} disabled={!pasted.trim()}>Verify pasted record</button>
+
+          <section className="vf-sec vf-col">
+            <header className="vf-head">
+              <span className="vf-eyebrow">The checks</span>
+              <button type="button" className="vf-link vf-raw-btn" onClick={() => setShowRaw(true)}>
+                Raw record ↗
+              </button>
+            </header>
+            <ul className="vf-checks">
+              {report.checks.map((c) => (
+                <li key={c.name} className={`is-${c.status.toLowerCase()}`}>
+                  <span className="vf-dot">{c.status === "VALID" ? "✓" : c.status === "INVALID" ? "✕" : "–"}</span>
+                  <div>
+                    <b>{c.name}</b>
+                    {c.detail && <small title={c.detail}>{c.detail}</small>}
+                  </div>
+                  <em>{c.status}</em>
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
       )}
 
-      {loaded === undefined && <p className="mt-6 text-violet-200">Fetching the hand record…</p>}
-      {table && loaded === null && (
-        <p className="mt-6 text-amber-200">
-          No record for this hand: the indexer API isn&apos;t reachable or hasn&apos;t seen it, and the table&apos;s hand log on Solana now holds a later hand. Run the API (<code>pnpm api</code>) to keep every hand.
-        </p>
-      )}
-      {err && <p className="mt-4 text-rose-300">{err}</p>}
-
-      {report && rec && (
-        <>
-          <div className={`mt-6 flex items-center justify-between rounded-2xl px-4 py-3 ${report.overall === "VALID" ? "bg-lime-500/15" : "bg-rose-500/20"}`} data-testid="verify-overall">
-            <span className="font-[family-name:var(--font-display)] text-2xl">{report.overall === "VALID" ? "Hand is VALID" : "Hand is INVALID"}</span>
-            <span className="text-xs text-violet-200">source: {loaded!.source}</span>
+      {/* raw record in a pop-up, so it never makes the page scroll */}
+      {showRaw && rec && (
+        <div className="vf-modal" role="dialog" aria-modal aria-label="Raw hand record">
+          <button type="button" className="vf-modal-shade" aria-label="Close" onClick={() => setShowRaw(false)} />
+          <div className="vf-modal-box">
+            <header>
+              <span className="vf-eyebrow">Raw hand record</span>
+              <button type="button" className="vf-modal-x" aria-label="Close" onClick={() => setShowRaw(false)}>
+                ✕
+              </button>
+            </header>
+            <pre>{JSON.stringify(rec, null, 2)}</pre>
           </div>
-          <ul className="mt-4 divide-y divide-violet-400/15">
-            {report.checks.map((c) => (
-              <li key={c.name} className="flex items-start justify-between gap-4 py-2.5 text-sm">
-                <span>
-                  {c.name}
-                  {c.detail && <span className="block text-xs text-violet-300">{c.detail}</span>}
-                </span>
-                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-black ${c.status === "VALID" ? "bg-lime-500/15 text-lime-300" : c.status === "INVALID" ? "bg-rose-500/20 text-rose-300" : "bg-white/10 text-violet-200"}`}>{c.status}</span>
-              </li>
-            ))}
-          </ul>
-
-          <h2 className="mt-8 font-[family-name:var(--font-display)] text-2xl">The hand</h2>
-          <p className="text-sm text-violet-300">
-            {END_REASON[rec.game.end_reason] ? `Ended by ${END_REASON[rec.game.end_reason]}` : ""} · boot ◎{sol(rec.game.boot)} · rake ◎{sol(rec.game.rake)}
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {hands.map(({ seat, cards }) => {
-              const k = order.indexOf(seat);
-              const won = rec.game.winners.includes(seat);
-              // Hand records list payouts and start stacks in dealing order.
-              const payout = BigInt(rec.game.payouts[k] ?? "0");
-              const start = BigInt(rec.game.start_stacks[k] ?? "0");
-              return (
-                <div key={seat} className={`rounded-2xl p-3 ring-1 ${won ? "bg-amber-400/10 ring-amber-300/50" : "bg-black/20 ring-violet-400/20"}`}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-extrabold">Seat {seat + 1} · {short(rec.seats[k].wallet)}</span>
-                    {won && <span className="font-black text-amber-300">won ◎{sol(payout)}</span>}
-                  </div>
-                  <div className="mt-2 flex items-center gap-3">
-                    <div className="flex">{cards.map((c, i) => <PlayingCard key={i} id={c} width="2.6rem" rotate={(i - 1) * 8} className={i ? "-ml-3" : ""} />)}</div>
-                    <span className="text-sm text-violet-200">{CATEGORY_LABEL[rules.categoryOf(cards)]}{start ? ` · started ◎${sol(start)}` : ""}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <details className="mt-6 text-xs text-violet-300">
-            <summary className="cursor-pointer">Raw hand record</summary>
-            <pre className="mt-2 max-h-80 overflow-auto rounded-xl bg-black/40 p-3">{JSON.stringify(rec, null, 2)}</pre>
-          </details>
-        </>
+        </div>
       )}
-      {table && <Link href={`/table/${table}`} className="btn btn-lime mt-6">Back to the table</Link>}
+
+      {table && !report && <Actions table={table} />}
+
+      <style>{CSS}</style>
     </div>
   );
 }
+
+function Actions({ table }: { table: string }) {
+  return (
+    <div className="vf-actions">
+      <Link href={`/table/${table}`} className="vf-btn">
+        <span>▶</span>Back to the table
+      </Link>
+      <Link href="/verify" className="vf-link">
+        Check another hand
+      </Link>
+    </div>
+  );
+}
+
+const OUT = "cubic-bezier(.2,.8,.2,1)";
+const CSS = `
+.vf{--cl:clamp(96px,min(10.5vw,17vh),160px);--cr:clamp(128px,min(14.5vw,22vh),224px);position:relative;z-index:1;margin:0 auto;width:100%;max-width:60rem;padding:0 16px 150px;font-family:var(--font-outfit),system-ui,sans-serif;color:#fff}
+/* desktop: everything fits one screen (below the 96px top bar), no scrolling */
+@media (min-width:1000px){.vf{display:flex;flex-direction:column;min-height:calc(100dvh - 96px);padding:0 24px 22px}.vf.is-index{justify-content:center;padding-bottom:70px;max-width:min(60rem,calc(100vw - 2 * (var(--cr) + 30px)))}.vf.is-result{max-width:min(76rem,calc(100vw - 2 * (var(--cr) + 30px)))}}
+.vf::before{content:"";position:fixed;inset:0;z-index:-2;background:radial-gradient(55% 45% at 50% 0%,rgba(190,70,255,.22),transparent 70%),radial-gradient(40% 35% at 0% 100%,rgba(255,190,60,.10),transparent 70%),radial-gradient(40% 35% at 100% 100%,rgba(255,190,60,.10),transparent 70%),linear-gradient(#140f0e,#120128 70%)}
+.vf h1,.vf h2,.vf p{margin:0}
+.vf code{font-family:ui-monospace,monospace;font-size:.92em;color:#ffd76a}
+.vf-eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:11.5px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#ffd76a}
+.vf-eyebrow::before,.vf-hero .vf-eyebrow::after{content:"";width:28px;height:1px;background:linear-gradient(90deg,transparent,#ffd76a)}
+.vf-hero .vf-eyebrow::after{transform:scaleX(-1)}
+
+/* coins in the bottom corners of the screen (decor, behind the content) */
+.vf-coin{position:fixed;bottom:14px;z-index:-1;height:auto;pointer-events:none;filter:drop-shadow(0 18px 30px rgba(0,0,0,.55));animation:vf-coin-in .9s ${OUT} .2s both}
+.vf-coin-l{left:18px;width:var(--cl)}
+.vf-coin-r{right:18px;width:var(--cr);animation-delay:.32s}
+@keyframes vf-coin-in{from{opacity:0;transform:translateY(60px)}}
+/* narrow screens: no side gutters, so the coins rest at the end of the page instead */
+@media (max-width:999px){.vf-coin{position:absolute;bottom:18px}}
+
+/* header */
+.vf-hero{display:grid;justify-items:center;gap:14px;margin-top:30px;text-align:center}
+.is-result .vf-hero{gap:8px;margin-top:14px}
+.vf-hero h1{font-size:clamp(38px,min(6.4vw,8vh),72px);line-height:1;font-weight:500;letter-spacing:-1px}
+.vf-hero h1 small{display:block;margin-bottom:8px;font-size:.4em;letter-spacing:4px;color:#ffd76a;font-weight:500}
+.vf-hero p{font-size:16px;color:rgba(255,255,255,.7)}
+
+/* framed panel, like the landing page's stage */
+.is-result .vf-hero h1{font-size:clamp(32px,min(4vw,5vh),46px);line-height:1.05}
+.vf-panel{margin-top:32px;padding:26px;border:6px solid #1d3743;border-radius:40px;background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.01))}
+@media (min-width:640px){.vf-panel{padding:34px 38px;border-width:8px;border-radius:52px}}
+.vf-form{display:grid;gap:14px}
+@media (min-width:700px){.vf-form{grid-template-columns:1fr 130px auto;align-items:end}}
+.vf-form label{display:grid;gap:8px}
+.vf-form label span{font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:rgba(233,221,255,.55)}
+.vf input,.vf textarea{width:100%;padding:15px 18px;border-radius:18px;border:1px solid rgba(255,214,102,.22);background:rgba(6,2,16,.55);color:#fff;font:500 15px var(--font-outfit),sans-serif;outline:none;transition:border-color .2s,box-shadow .2s}
+.vf input:focus,.vf textarea:focus{border-color:#ffd76a;box-shadow:0 0 0 4px rgba(255,214,102,.12)}
+.vf input::placeholder,.vf textarea::placeholder{color:rgba(233,221,255,.35)}
+.vf-btn{display:inline-flex;align-items:center;justify-content:center;gap:14px;height:56px;padding:0 26px 0 8px;border:0;border-radius:99px;background:#ffe800;color:#140f11 !important;font:600 15px var(--font-outfit),sans-serif;cursor:pointer;transition:transform .2s,opacity .2s;white-space:nowrap}
+.vf-btn:hover:not(:disabled){transform:translateY(-2px)}
+.vf-btn:disabled{opacity:.55;cursor:default}
+.vf-btn span{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#fff;font-size:14px}
+.vf-btn-ghost{padding:0 24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,214,102,.35);color:#fff !important}
+.vf-toggle{margin-top:18px;padding:0;border:0;background:none;color:rgba(233,221,255,.65);font:500 13.5px var(--font-outfit),sans-serif;cursor:pointer}
+.vf-toggle:hover{color:#fff}
+.vf-paste{display:grid;gap:12px;margin-top:14px;animation:vf-rise .4s ${OUT} both}
+.vf-paste textarea{height:130px;resize:vertical;font:12.5px ui-monospace,monospace}
+.vf-paste .vf-btn{justify-self:start}
+
+/* how it works */
+.vf-how{display:grid;gap:12px;margin:20px 0 0;padding:0;list-style:none}
+@media (min-width:700px){.vf-how{grid-template-columns:repeat(3,1fr)}}
+.vf-how li{position:relative;display:grid;gap:4px;padding:16px 18px;border-radius:24px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035)}
+.vf-how em{position:absolute;right:18px;top:18px;font-style:normal;font-size:12.5px;font-weight:600;color:rgba(255,214,102,.55)}
+.vf-how b{margin-top:12px;font-size:17px;font-weight:600}
+.vf-how small{font-size:13.5px;color:rgba(233,221,255,.6)}
+.vf-ico{display:grid;place-items:center;width:46px;height:46px;border-radius:15px;font-size:19px;color:#ffd76a;border:1.5px solid transparent;background:linear-gradient(160deg,#341257,#1b0733) padding-box,linear-gradient(160deg,#ffe9a3,#c98a12 55%,#6b3d06) border-box}
+
+/* loading + messages */
+.vf-loading{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:48px;font-size:15px;color:rgba(233,221,255,.75)}
+.vf-spin{width:22px;height:22px;border-radius:50%;border:2.5px solid rgba(255,214,102,.25);border-top-color:#ffd76a;animation:vf-spin .8s linear infinite}
+@keyframes vf-spin{to{transform:rotate(360deg)}}
+.vf-msg{margin-top:28px;padding:18px 22px;border-radius:20px;border:1px solid rgba(255,214,102,.3);background:rgba(255,214,102,.06);font-size:14.5px;line-height:1.5;color:#ffe9a3;text-align:center}
+.vf-msg-bad{border-color:rgba(255,90,110,.4);background:rgba(255,90,110,.08);color:#ffb3bf}
+
+/* verdict */
+.vf-verdict{position:relative;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:18px;padding:18px 24px;border-radius:30px;overflow:hidden;animation:vf-rise .6s ${OUT} both}
+@media (min-width:700px){.vf-verdict{grid-template-columns:auto 1fr auto}}
+.vf-verdict.is-valid{border:1.5px solid rgba(47,224,122,.5);background:radial-gradient(70% 120% at 0% 50%,rgba(47,224,122,.2),transparent 70%),rgba(255,255,255,.03)}
+.vf-verdict.is-invalid{border:1.5px solid rgba(255,90,110,.55);background:radial-gradient(70% 120% at 0% 50%,rgba(255,90,110,.22),transparent 70%),rgba(255,255,255,.03)}
+.vf-seal{display:grid;place-items:center;width:68px;height:68px;border-radius:50%;font-size:31px;font-weight:700;animation:vf-pop .7s ${OUT} .15s both}
+.is-valid .vf-seal{color:#0a2e17;background:radial-gradient(circle at 35% 30%,#8dffc0,#2fe07a 60%,#14a24f);box-shadow:0 0 0 6px rgba(47,224,122,.18),0 0 40px rgba(47,224,122,.45)}
+.is-invalid .vf-seal{color:#3a0610;background:radial-gradient(circle at 35% 30%,#ffb3bf,#ff5a6e 60%,#c22b40);box-shadow:0 0 0 6px rgba(255,90,110,.18),0 0 40px rgba(255,90,110,.45)}
+@keyframes vf-pop{from{transform:scale(.4);opacity:0}60%{transform:scale(1.08)}}
+.vf-verdict small{display:block;font-size:12px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:rgba(233,221,255,.6)}
+.vf-verdict strong{display:block;font-size:clamp(36px,4.4vw,48px);line-height:1.05;font-weight:600;letter-spacing:1px}
+.is-valid strong{color:#5cf09a}
+.is-invalid strong{color:#ff7d8d}
+.vf-verdict-meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+@media (min-width:700px){.vf-verdict-meta{grid-column:auto;flex-direction:column;align-items:flex-end}}
+.vf-verdict-meta{gap:6px}
+.vf-verdict-meta span{padding:4px 11px;border-radius:99px;background:rgba(255,255,255,.07);font-size:11.5px;color:rgba(233,221,255,.75)}
+.vf-verdict-meta span.is-bad{background:rgba(255,90,110,.2);color:#ffb3bf}
+
+/* sections */
+.vf-sec{margin-top:22px;animation:vf-rise .6s ${OUT} .1s both}
+/* result: verdict + hand on the left, the checks on the right */
+.vf-grid{display:grid;gap:22px;margin-top:22px}
+@media (min-width:1000px){.vf-grid{grid-template-columns:1.1fr 1fr;align-items:start}.vf-grid > .vf-sec{margin-top:0}}
+.vf-col{min-width:0}
+.vf-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.vf-chips{display:flex;flex-wrap:wrap;gap:8px}
+.vf-chips span{padding:7px 13px;border-radius:99px;border:1px solid rgba(255,214,102,.22);font-size:12.5px;color:rgba(233,221,255,.8)}
+
+/* seats */
+.vf-seats{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}
+.vf-seat{position:relative;display:grid;justify-items:center;gap:3px;padding:40px 10px 14px;border-radius:26px;text-align:center;border:1px solid rgba(255,255,255,.08);background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.012));transition:border-color .3s,transform .3s ${OUT}}
+.vf-seat:hover{border-color:rgba(255,214,102,.4);transform:translateY(-3px)}
+.vf-seat.is-won{border-color:rgba(255,214,102,.55);background:radial-gradient(120% 70% at 50% 0%,rgba(255,196,60,.2),transparent 70%),linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
+.vf-crown{position:absolute;top:13px;left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:99px;background:#ffe800;color:#140f11;font-size:10.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.vf-fan{display:flex;justify-content:center;height:84px;margin-bottom:8px;--w:56px}
+.vf-fan img{width:var(--w);height:auto;margin:0 calc(var(--w) * -.18);transform:rotate(calc(var(--i) * 9deg)) translateY(calc(var(--i) * var(--i) * 3px));transform-origin:50% 90%;filter:drop-shadow(0 8px 12px rgba(0,0,0,.5));transition:transform .45s ${OUT}}
+.vf-seat:hover .vf-fan img{transform:rotate(calc(var(--i) * 14deg)) translate(calc(var(--i) * 9px),calc(var(--i) * var(--i) * 4px - 4px))}
+.vf-seat b{font-size:15.5px;font-weight:600}
+.vf-seat span{font-size:12.5px;color:rgba(233,221,255,.55)}
+.vf-seat .vf-crown{font-size:10.5px;color:#140f11}
+.vf-seat em{font-style:normal;font-size:15px;font-weight:600;color:#ffe800}
+
+/* checks */
+.vf-checks{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.vf-checks li{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:6px 14px;line-height:1.25;border-radius:15px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03)}
+.vf-checks b{display:block;font-size:13.5px;font-weight:500}
+.vf-checks li > div{min-width:0}
+.vf-checks small{display:block;margin-top:1px;font-size:11.5px;color:rgba(233,221,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vf-dot{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:13px;font-weight:700;background:rgba(255,255,255,.1);color:rgba(233,221,255,.7)}
+.vf-checks .is-valid .vf-dot{background:rgba(47,224,122,.18);color:#5cf09a}
+.vf-checks .is-invalid .vf-dot{background:rgba(255,90,110,.2);color:#ff7d8d}
+.vf-checks em{font-style:normal;font-size:11px;font-weight:600;letter-spacing:1px;color:rgba(233,221,255,.5)}
+.vf-checks .is-valid em{color:#5cf09a}
+.vf-checks .is-invalid em{color:#ff7d8d}
+.vf-raw-btn{padding:0;border:0;background:none;cursor:pointer;font:500 13px var(--font-outfit),sans-serif}
+.vf-modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:20px}
+.vf-modal-shade{position:absolute;inset:0;border:0;background:rgba(6,1,16,.7);backdrop-filter:blur(6px);cursor:default;animation:vf-fade .25s both}
+.vf-modal-box{position:relative;width:min(760px,100%);max-height:min(80vh,720px);display:flex;flex-direction:column;padding:20px 22px;border-radius:28px;background:linear-gradient(170deg,#2a0b47,#120128);border:1px solid rgba(255,214,102,.35);box-shadow:0 40px 90px rgba(0,0,0,.6);animation:vf-rise .35s ${OUT} both}
+.vf-modal-box header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.vf-modal-x{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;cursor:pointer}
+.vf-modal-box pre{margin:0;overflow:auto;padding:16px;border-radius:18px;background:rgba(6,2,16,.6);font-size:11.5px;color:rgba(233,221,255,.8)}
+@keyframes vf-fade{from{opacity:0}}
+
+/* actions */
+.vf-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:24px;margin-top:26px}
+.vf-col .vf-actions{justify-content:flex-start;margin-top:20px}
+.vf-actions .vf-btn{height:50px}
+.vf-actions .vf-btn span{width:36px;height:36px}
+.vf-link{font-size:14px;font-weight:500;color:rgba(255,255,255,.7) !important}
+.vf-link:hover{color:#fff !important}
+@media (min-width:1000px) and (max-height:760px){.vf-hero{margin-top:10px}.vf-panel{margin-top:20px;padding:22px 30px}.vf-how small{display:none}.vf-how li{padding:12px 16px}}
+@media (min-width:1000px) and (max-height:740px){.is-result .vf-hero .vf-eyebrow{display:none}}
+/* phones: the start page fits one screen too (steps hidden, coins tucked under the form) */
+@media (max-width:999px){.vf.is-index{display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 90px);padding-bottom:130px}.is-index .vf-how{display:none}.is-index .vf-hero{margin-top:8px}.is-index .vf-panel{margin-top:22px;padding:20px}}
+/* short laptop screens (e.g. 1366x768): tighten so the result still fits */
+@media (min-width:1000px) and (max-height:820px){.is-result .vf-hero{margin-top:4px}.vf-grid{margin-top:14px}.vf-checks{gap:4px}.vf-checks li{padding:4px 14px}.vf-head{margin-bottom:10px}.vf-sec{margin-top:16px}}
+@keyframes vf-rise{from{opacity:0;transform:translateY(18px)}}
+@media (prefers-reduced-motion:reduce){.vf *{animation:none !important;transition:none !important}}
+`;

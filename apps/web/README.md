@@ -1,6 +1,7 @@
 # Card Flex web app (P7)
 
-The player app: lobby, live table, verify page, dashboard, rules. Next.js 16,
+The player app: landing page, the three boards (Tables), live table, verify
+page, dashboard, rules. Next.js 16,
 everything read from and sent to Solana devnet and MagicBlock's PER. No mock
 data anywhere.
 
@@ -34,7 +35,8 @@ Env (all public endpoints, no secrets): `NEXT_PUBLIC_BASE_RPC`,
 
 | Page | Reads | Sends |
 | --- | --- | --- |
-| `/` and `/tables` | `lobby.json` + every listed table's TableConfig and last committed runtime (base layer) | — |
+| `/` | landing page (`components/CardFlexLanding.tsx`, art in `public/landing/`); wallet balance only once connected | — |
+| `/tables` | `lobby.json` + every listed table's TableConfig and last committed runtime (base layer) | — |
 | `/table/<config>` | base layer for everyone; seated players read the LIVE runtime and their own SeatHand in the PER with their session key | buy-in, cash-out, refund claim (wallet); salts, moves, leave (session key, no pop-ups); resume seat = `rotate_session` (wallet, in PER) |
 | `/verify/<config>/<hand>` | hand record from the API, else the table's public hand log | — (runs `cf-verify` as WASM in the browser) |
 | `/dashboard` | the wallet's seat ledgers on every table (base layer), history from the API | cash-out, refund claim |
@@ -59,9 +61,12 @@ pnpm admin -- table keeper <config> <keeper pubkey>    # before opening
 pnpm admin -- table open <config>                      # funds the runtime reserve, delegates, opens
 ```
 
-Then add `{ "config", "name", "tier", "tone" }` to `lobby.json` (tones:
-violet, ember, moon, gold, neon, velvet). Names and colours are display-only;
-boot, buy-in, seats and players are read on chain.
+Then add `{ "config", "name", "tier", "tone", "board" }` to `lobby.json`.
+`board` picks the themed room: `amethyst` (entry), `emerald` (premium) or
+`ruby` (high roller); its art is `public/boards/<board>-*.webp` and
+`public/cards/back-<board>.webp`. The Tables page shows one table per board;
+a table without a board is drawn as Amethyst. Names and colours are
+display-only; boot, buy-in, seats and players are read on chain.
 
 ## Tested
 

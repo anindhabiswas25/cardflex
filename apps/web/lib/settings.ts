@@ -2,23 +2,30 @@
 // Player preferences, saved in this browser. Shared live between components.
 import { useEffect, useState } from "react";
 
-export type Settings = { sound: boolean; animations: boolean; turnAlert: boolean };
-const DEFAULTS: Settings = { sound: true, animations: true, turnAlert: true };
+// Card animations are always on (the OS "reduce motion" setting is still respected).
+export type Settings = { sound: boolean; turnAlert: boolean };
+const DEFAULTS: Settings = { sound: true, turnAlert: true };
 const KEY = "cf:settings";
 const listeners = new Set<(s: Settings) => void>();
 
 export function readSettings(): Settings {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return DEFAULTS; }
+  try {
+    const { sound, turnAlert } = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") };
+    return { sound, turnAlert };
+  } catch {
+    return DEFAULTS;
+  }
 }
 
-function apply(s: Settings) {
-  if (typeof document !== "undefined") document.documentElement.dataset.motion = s.animations ? "on" : "off";
+// An older version could switch card animations off; clear that leftover flag.
+function apply() {
+  if (typeof document !== "undefined") delete document.documentElement.dataset.motion;
 }
 
 export function writeSettings(patch: Partial<Settings>) {
   const s = { ...readSettings(), ...patch };
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }
-  apply(s);
+  apply();
   listeners.forEach((l) => l(s));
 }
 
@@ -27,7 +34,7 @@ export function useSettings(): [Settings, (p: Partial<Settings>) => void] {
   useEffect(() => {
     const cur = readSettings();
     setS(cur);
-    apply(cur);
+    apply();
     listeners.add(setS);
     return () => { listeners.delete(setS); };
   }, []);

@@ -8,9 +8,7 @@ export default function VerifyIndex() {
   return (
     <>
       <TopBar />
-      <main className="mx-auto mt-12 max-w-3xl px-4 pb-16">
-        <VerifyHand />
-      </main>
+      <VerifyHand />
     </>
   );
 }

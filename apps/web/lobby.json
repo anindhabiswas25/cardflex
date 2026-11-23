@@ -1,21 +1,24 @@
 [
   {
-    "config": "EfMDxq9QCtNujcPZFmZgtSBiFx9xTaaytcLhZkzam5F3",
-    "name": "Violet Hall",
-    "tier": "Classic",
+    "config": "7qcinEeQBnwfHYq1K5Ee6ARfEf3cV2LPh3J5mARvTGpa",
+    "name": "Amethyst Hall",
+    "tier": "Entry",
     "tone": "violet",
+    "board": "amethyst"
+  },
+  {
+    "config": "EfMDxq9QCtNujcPZFmZgtSBiFx9xTaaytcLhZkzam5F3",
+    "name": "Emerald Court",
+    "tier": "Premium",
+    "tone": "neon",
+    "board": "emerald",
     "hot": true
   },
   {
-    "config": "7qcinEeQBnwfHYq1K5Ee6ARfEf3cV2LPh3J5mARvTGpa",
-    "name": "Moon Court",
-    "tier": "Starter",
-    "tone": "moon"
-  },
-  {
     "config": "AciNdk4GTiR2hKZpGwmd54pUKPxmH1SrJseDEFRCVa4i",
-    "name": "Ember Room",
+    "name": "Ruby Throne",
     "tier": "High roller",
-    "tone": "ember"
+    "tone": "ember",
+    "board": "ruby"
   }
 ]

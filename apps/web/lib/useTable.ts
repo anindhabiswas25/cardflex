@@ -245,7 +245,7 @@ export function useTable(configStr: string) {
         const a = rt.game.seats[s], b = p.game.seats[s];
         if (!a || !b) continue;
         if (a.seen && !b.seen) out.push(`${name(s)} saw ${s === mySeat ? "your" : "their"} cards`);
-        if (a.contributed > b.contributed) out.push(`${name(s)} ${b.seen ? "chaal" : "bet blind"} ◎${sol(a.contributed - b.contributed)}`);
+        if (a.contributed > b.contributed) out.push(`${name(s)} ${b.seen ? "chaal" : "bet blind"} ${sol(a.contributed - b.contributed)} SOL`);
         if (b.active && !a.active) out.push(`${name(s)} packed`);
       }
       if (rt.game.phase === 1 && p.game.phase !== 1) out.push(`${name(rt.game.ss_requester)} asks ${name(rt.game.ss_target)} for a Side Show`);

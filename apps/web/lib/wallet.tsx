@@ -166,10 +166,3 @@ export function useWallet(): WalletState {
   return v;
 }
 
-/** Devnet faucet for the test wallet (rate-limited; may fail). */
-export async function requestDevnetSol(to: PublicKey, sol = 1): Promise<void> {
-  const sig = await base.requestAirdrop(to, sol * 1e9);
-  const { confirmByPolling } = await import("@card-flex/client-sdk");
-  const err = await confirmByPolling(base, sig, 60_000);
-  if (err) throw new Error(JSON.stringify(err));
-}

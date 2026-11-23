@@ -1,20 +1,33 @@
 "use client";
 // Lobby: the tables in lobby.json, with everything else read on chain.
-import Link from "next/link";
 import { PublicKey } from "@solana/web3.js";
 import { PHASE, TABLE_STATUS } from "@card-flex/client-sdk";
-import { useEffect, useMemo, useState } from "react";
-import { Avatar } from "./Avatar";
-import { LobbyTable, type LobbyEntry } from "./LobbyTable";
+import { useEffect, useState } from "react";
 import { loadTables } from "@/lib/chain";
-import { hashIndex } from "@/lib/format";
-import { LOBBY, metaFor } from "@/lib/lobby";
-import { useWallet } from "@/lib/wallet";
+import { LOBBY, metaFor, type Tone } from "@/lib/lobby";
 
 const bit = (m: number, s: number) => ((m >> s) & 1) === 1;
 
-// One poller for every component that shows the lobby (the home page shows
-// it twice: hero counter and table list), shared through a tiny store.
+/** One lobby table: display data from lobby.json, the rest read on chain. */
+export type LobbyEntry = {
+  config: string;
+  name: string;
+  tier: string;
+  tone: Tone;
+  hot?: boolean;
+  boot: bigint;
+  minBuyIn: bigint;
+  maxBuyIn: bigint;
+  /** Wallet per seat (null = open). */
+  seated: (string | null)[];
+  /** Chips in the current hand (last committed state), 0 between hands. */
+  pot: bigint;
+  handNo: bigint;
+  live: boolean;
+  open: boolean;
+};
+
+// One poller for every component that shows the lobby, shared through a tiny store.
 type LobbyState = { tables: LobbyEntry[] | null; failed: boolean };
 let lobbyState: LobbyState = { tables: null, failed: false };
 const lobbySubs = new Set<(s: LobbyState) => void>();
@@ -59,83 +72,4 @@ export function useLobby(): LobbyState {
     };
   }, []);
   return st;
-}
-
-const FILTERS = ["All", "Low boot", "High roller", "Seats open"] as const;
-
-export function LobbySection({ limit }: { limit?: number }) {
-  const { tables, failed } = useLobby();
-  const { wallet } = useWallet();
-  const you = wallet?.publicKey.toBase58() ?? null;
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
-  const shown = useMemo(() => {
-    if (!tables) return null;
-    const boots = tables.map((t) => t.boot).sort((a, b) => (a < b ? -1 : 1));
-    const median = boots[Math.floor(boots.length / 2)] ?? 0n;
-    const f = tables.filter((t) =>
-      filter === "Low boot" ? t.boot <= median : filter === "High roller" ? t.boot > median || /high|vip/i.test(t.tier) : filter === "Seats open" ? t.open && t.seated.some((s) => !s) : true,
-    );
-    return limit ? f.slice(0, limit) : f;
-  }, [tables, filter, limit]);
-
-  return (
-    <section className="mt-20" aria-labelledby="tables" id="tables">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 id="tables-h" className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl">Choose your table</h2>
-          <p className="text-violet-300">Boot, buy-in and seats are fixed per table. Amounts in devnet SOL, read live from Solana.</p>
-        </div>
-        <div className="flex flex-wrap gap-2" role="tablist">
-          {FILTERS.map((f) => (
-            <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={`rounded-full px-4 py-1.5 text-sm font-extrabold ${filter === f ? "bg-lime-500 text-lime-950" : "glass text-violet-200"}`}>{f}</button>
-          ))}
-        </div>
-      </div>
-      {failed && !tables && <p className="glass mt-8 rounded-2xl p-4 text-amber-200">Couldn&apos;t reach Solana devnet. Retrying…</p>}
-      {!tables && !failed && (
-        <div className="mt-8 grid gap-6 md:grid-cols-3">
-          {[0, 1, 2].map((i) => <div key={i} className="glass h-[25rem] animate-pulse rounded-[1.75rem]" />)}
-        </div>
-      )}
-      {shown && !shown.length && <p className="glass mt-8 rounded-2xl p-4 text-violet-200">{LOBBY.length ? "No table matches this filter." : "No tables are open yet."}</p>}
-      {shown && shown.length > 0 && (
-        <div className="mt-8 grid gap-6 md:grid-cols-3">
-          {shown.map((t) => <LobbyTable key={t.config} t={t} you={you} />)}
-        </div>
-      )}
-      {limit && tables && tables.length > limit && (
-        <div className="mt-6 text-center"><Link href="/tables" className="btn btn-ghost">All {tables.length} tables →</Link></div>
-      )}
-    </section>
-  );
-}
-
-/** "Play now" (first table with an open seat) and the live player count, for the hero. */
-export function HeroLive() {
-  const { tables } = useLobby();
-  const players = tables ? [...new Set(tables.flatMap((t) => t.seated.filter(Boolean) as string[]))] : [];
-  const hands = tables ? tables.reduce((s, t) => s + Number(t.handNo), 0) : 0;
-  const target = tables?.find((t) => t.open && t.seated.some((s) => !s)) ?? tables?.find((t) => t.open);
-  return (
-    <>
-      <div className="mt-7 flex flex-wrap gap-3">
-        <Link href={target ? `/table/${target.config}` : "/#tables"} className="btn btn-lime px-7 py-4 text-xl">Play now</Link>
-        <a href="#fair" className="btn btn-ghost px-6 py-4 text-lg">How it&apos;s fair</a>
-      </div>
-      <div className="mt-8 flex items-center gap-3 text-sm text-violet-200">
-        {players.length > 0 && (
-          <div className="flex -space-x-3">
-            {players.slice(0, 4).map((w) => (
-              <span key={w} className="rounded-full ring-2 ring-[#120630]">
-                <Avatar name={w} index={hashIndex(w)} size={36} />
-              </span>
-            ))}
-          </div>
-        )}
-        <span>
-          {tables === null ? "Reading the tables…" : <><b className="text-white">{players.length}</b> player{players.length === 1 ? "" : "s"} seated · <b className="text-white">{tables.length}</b> table{tables.length === 1 ? "" : "s"} · <b className="text-white">{hands.toLocaleString()}</b> hands dealt</>}
-        </span>
-      </div>
-    </>
-  );
 }

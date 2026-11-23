@@ -1,30 +1,37 @@
-// Generated avatar: a gradient medallion with the player's initials. No
-// external images, so every player gets a distinct, original look.
-const PALETTES = [
-  ["#f0abfc", "#a21caf"],
-  ["#a5b4fc", "#4338ca"],
-  ["#fcd34d", "#c2410c"],
-  ["#86efac", "#15803d"],
-  ["#fda4af", "#be123c"],
-  ["#67e8f9", "#0e7490"],
-];
+// Player avatar: one of the six Card Flex characters (public/avatars/1-6.webp),
+// picked by `index` (a hash of the wallet), so each player keeps the same
+// character every time they sit down.
+export const AVATAR_COUNT = 6;
 
 export function Avatar({ name, index, size = 64 }: { name: string; index: number; size?: number }) {
-  const [a, b] = PALETTES[index % PALETTES.length];
-  const initials = name.slice(0, 1).toUpperCase();
+  const n = (Math.abs(index) % AVATAR_COUNT) + 1;
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" className="rounded-full block" aria-hidden>
-      <defs>
-        <radialGradient id={`av-${index}`} cx="35%" cy="30%" r="80%">
-          <stop offset="0" stopColor={a} />
-          <stop offset="1" stopColor={b} />
-        </radialGradient>
-      </defs>
-      <circle cx="32" cy="32" r="32" fill={`url(#av-${index})`} />
-      <path d="M0 44 Q 32 30 64 44 L64 64 L0 64 Z" fill="#000" opacity="0.18" />
-      <text x="32" y="42" textAnchor="middle" fontSize="28" fontWeight="900" fill="#fff" style={{ fontFamily: "var(--font-display)" }}>
-        {initials}
-      </text>
-    </svg>
+    <img
+      src={`/avatars/${n}.webp`}
+      alt={name}
+      width={size}
+      height={size}
+      className="block rounded-full object-cover"
+      style={{ width: size, height: size, boxShadow: "inset 0 0 0 2px rgba(255,214,102,.35)" }}
+      draggable={false}
+    />
   );
+}
+
+/**
+ * Characters for everyone at one table. Each wallet prefers its own character
+ * (hash of the address); if someone earlier in seat order already has it, it
+ * takes the next free one, so no two players at a table look the same.
+ */
+export function avatarIndexes(wallets: (string | null | undefined)[], hash: (w: string) => number): Map<string, number> {
+  const out = new Map<string, number>();
+  const used = new Set<number>();
+  for (const w of wallets) {
+    if (!w || out.has(w)) continue;
+    let n = Math.abs(hash(w)) % AVATAR_COUNT;
+    for (let k = 0; k < AVATAR_COUNT && used.has(n); k++) n = (n + 1) % AVATAR_COUNT;
+    used.add(n);
+    out.set(w, n);
+  }
+  return out;
 }

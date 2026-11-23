@@ -5,7 +5,9 @@
 import lobby from "../lobby.json";
 
 export type Tone = { a: string; b: string; c: string; glow: string };
-export type LobbyMeta = { config: string; name: string; tier: string; tone?: keyof typeof TONES; hot?: boolean };
+/** The three themed boards on the Tables page (art in public/boards/<board>-*.webp). */
+export type Board = "amethyst" | "emerald" | "ruby";
+export type LobbyMeta = { config: string; name: string; tier: string; tone?: keyof typeof TONES; hot?: boolean; board?: Board };
 
 export const TONES = {
   violet: { a: "#f0abfc", b: "#c026d3", c: "#581c87", glow: "217 70 239" },
@@ -24,5 +26,5 @@ export function metaFor(config: string): LobbyMeta & { toneValue: Tone } {
   const m = LOBBY.find((x) => x.config === config);
   const h = [...config].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const tone = m?.tone ?? TONE_KEYS[h % TONE_KEYS.length];
-  return { config, name: m?.name ?? `Table ${config.slice(0, 4)}`, tier: m?.tier ?? "Table", tone, hot: m?.hot, toneValue: TONES[tone] };
+  return { config, name: m?.name ?? `Table ${config.slice(0, 4)}`, tier: m?.tier ?? "Table", tone, hot: m?.hot, board: m?.board, toneValue: TONES[tone] };
 }
