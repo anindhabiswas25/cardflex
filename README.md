@@ -271,8 +271,6 @@ toolchain.env               Pinned versions (single source of truth)
 | Document | What it is |
 | --- | --- |
 | [`docs/STATUS.md`](docs/STATUS.md) | What's done, in progress and next |
-| [`Card_Flex_Devnet_PRD_MagicBlock_v1.2.md`](Card_Flex_Devnet_PRD_MagicBlock_v1.2.md) | Engineering spec (decisions D1–D10) |
-| [`Card_Flex_Delivery_Plan.md`](Card_Flex_Delivery_Plan.md) | Phases P0–P9, gates G1–G3, backlog, risks |
 | [`docs/adr/`](docs/adr/) | Architecture decisions (toolchain, account lifecycle, fairness encoding, recovery, seats and money, indexer) |
 | [`docs/spec/`](docs/spec/) | CF-Fairness v2 and Teen Patti rules v1, with test vectors |
 | [`docs/findings/`](docs/findings/) | Measured results: latency, privacy, load, fees, recovery, web E2E |

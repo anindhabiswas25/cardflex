@@ -25,3 +25,8 @@ player-*.json
 .DS_Store
 .idea/
 .vscode/
+
+# Internal planning docs (PRD, delivery plan, research): kept locally, not published
+Card_Flex_Devnet_PRD_MagicBlock_v*.md
+Card_Flex_Delivery_Plan.md
+Card_Flex_MagicBlock_Implementation_Research_v*.md
