@@ -554,6 +554,50 @@ fn a_recent_sync_postpones_the_refund() {
     .expect("refund after timeout");
 }
 
+/// CF-073: an empty table isn't heartbeated by the keeper, so its refund clock
+/// goes stale. It can't be refunded while empty, and its first buy-in restarts
+/// the clock (later buy-ins don't).
+#[test]
+fn an_empty_table_is_not_refundable_and_the_first_buy_in_restarts_the_clock() {
+    let mut t = setup(2);
+    let payer = Keypair::new();
+    t.svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
+    warp_secs(&mut t, 61 * 10); // long past the 60 s timeout, nobody seated
+    let e = send_ix(
+        vec![emergency_ix(&t, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::NothingToRefund)),
+        "{e}"
+    );
+
+    // First buy-in: the full timeout starts now, not at the stale sync.
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    let started = config(&t).last_sync_time;
+    let e = send_ix(
+        vec![emergency_ix(&t, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .unwrap_err();
+    assert!(e.contains(&code(card_flex::CardFlexError::TooEarly)), "{e}");
+
+    // A second buy-in doesn't push the clock (it would delay seat 0's refund).
+    warp_secs(&mut t, 40);
+    buy_in(&mut t, 1, 1_000_000).unwrap();
+    assert_eq!(config(&t).last_sync_time, started);
+    warp_secs(&mut t, 21); // 61 s after the first buy-in
+    send_ix(
+        vec![emergency_ix(&t, payer.pubkey())],
+        &mut t.svm,
+        &[&payer],
+    )
+    .expect("refund 61 s after the first buy-in");
+}
+
 #[test]
 fn only_the_tee_validator_is_trusted() {
     let mut t = setup(1);
@@ -1325,4 +1369,195 @@ fn vault_reconciles_after_every_money_step() {
     let mut ix = check_vault_ix(&t, true);
     ix.accounts.pop();
     assert!(send_ix(vec![ix], &mut t.svm, &[&payer]).is_err());
+}
+
+// ---- CF-076: top-ups ----
+
+fn top_up_ix(t: &T, seat: u8, amount: u64, wallet: &Keypair) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::TopUp { seat, amount }.data(),
+        card_flex::accounts::TopUp {
+            wallet: wallet.pubkey(),
+            global: common::global_address(),
+            config: t.config,
+            vault: t.vault,
+            ledger: ledger(t, seat),
+            runtime: t.runtime,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn apply_ix(t: &T, seat: u8, payer: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::ApplyTopUp { seat }.data(),
+        card_flex::accounts::ApplyTopUp {
+            payer,
+            runtime: t.runtime,
+            ledger: ledger(t, seat),
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// A top-up is payable the moment it is deposited, reaches the stack once
+/// (between hands), and a sync never drops one that hasn't reached it yet.
+#[test]
+fn top_up_is_payable_at_once_applied_once_and_kept_by_sync() {
+    let mut t = setup(2);
+    let (w0, w1) = (t.wallets[0].insecure_clone(), t.wallets[1].insecure_clone());
+    let anyone = t.authority.insecure_clone();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    // Seat 1 buys in but isn't seated yet; it tops up before joining.
+    send_ix(vec![buy_in_ix(&t, 1, 1_000_000, &w1)], &mut t.svm, &[&w1]).unwrap();
+
+    // Limits: at least one boot (25,000); stack may not pass 200 boots (5,000,000).
+    let e = send_ix(vec![top_up_ix(&t, 0, 24_999, &w0)], &mut t.svm, &[&w0]).unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::BadAmount)),
+        "{e}"
+    );
+    let e = send_ix(vec![top_up_ix(&t, 0, 4_000_001, &w0)], &mut t.svm, &[&w0]).unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::TopUpTooLarge)),
+        "{e}"
+    );
+    // Only the seat's own wallet.
+    assert!(send_ix(vec![top_up_ix(&t, 0, 500_000, &w1)], &mut t.svm, &[&w1]).is_err());
+
+    send_ix(vec![top_up_ix(&t, 0, 500_000, &w0)], &mut t.svm, &[&w0]).unwrap();
+    let l0 = ledger_state(&t, 0);
+    assert_eq!(
+        (l0.buy_in, l0.synced_stack),
+        (1_500_000, 1_500_000),
+        "payable at once"
+    );
+    assert_reconciles(&mut t, "top-up");
+
+    // Applied once, between hands.
+    send_ix(
+        vec![apply_ix(&t, 0, anyone.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    let rt = runtime_state(&t);
+    assert_eq!((rt.stacks[0], rt.credited[0]), (1_500_000, 1_500_000));
+    let e = send_ix(
+        vec![apply_ix(&t, 0, anyone.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::NothingToApply)),
+        "{e}"
+    );
+
+    // Seat 1: a top-up before joining is part of the stack it joins with.
+    send_ix(vec![top_up_ix(&t, 1, 200_000, &w1)], &mut t.svm, &[&w1]).unwrap();
+    send_ix(
+        vec![common::join_seat_ix(&w1.pubkey(), t.runtime, t.config, 1)],
+        &mut t.svm,
+        &[&w1],
+    )
+    .unwrap();
+    let rt = runtime_state(&t);
+    assert_eq!((rt.stacks[1], rt.credited[1]), (1_200_000, 1_200_000));
+    assert_reconciles(&mut t, "join after top-up");
+
+    // Never during a hand.
+    send_ix(vec![top_up_ix(&t, 0, 300_000, &w0)], &mut t.svm, &[&w0]).unwrap();
+    let stacks = rt.stacks;
+    commit(&mut t, 0, card_flex::table::phase::DEALT, stacks);
+    let e = send_ix(
+        vec![apply_ix(&t, 0, anyone.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::WrongPhase)),
+        "{e}"
+    );
+
+    // The hand ends (seat 0 lost 300,000 to seat 1) and is synced before the
+    // 300,000 top-up reached the stack: the sync keeps it payable.
+    let record = delegate(&mut t, TEE.parse().unwrap(), card_flex::id());
+    let mut s = [0u64; MAX_SEATS];
+    s[0] = 1_200_000;
+    s[1] = 1_500_000;
+    commit(&mut t, 1, card_flex::table::phase::IDLE, s);
+    send_ix(
+        vec![sync_ix(&t, record, &[ledger(&t, 0), ledger(&t, 1)])],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    assert_eq!(
+        ledger_state(&t, 0).synced_stack,
+        1_500_000,
+        "1,200,000 stack + 300,000 pending"
+    );
+    assert_eq!(ledger_state(&t, 1).synced_stack, 1_500_000);
+    assert_reconciles(&mut t, "sync with a pending top-up");
+
+    // Refund: everyone gets exactly what they're owed, top-ups included.
+    warp_secs(&mut t, 61);
+    send_ix(
+        vec![emergency_ix(&t, anyone.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    let before = (
+        t.svm.get_balance(&w0.pubkey()).unwrap(),
+        t.svm.get_balance(&w1.pubkey()).unwrap(),
+    );
+    send_ix(
+        vec![claim_ix(&t, anyone.pubkey(), 0, w0.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    send_ix(
+        vec![claim_ix(&t, anyone.pubkey(), 1, w1.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    assert_eq!(
+        t.svm.get_balance(&w0.pubkey()).unwrap() - before.0,
+        1_500_000
+    );
+    assert_eq!(
+        t.svm.get_balance(&w1.pubkey()).unwrap() - before.1,
+        1_500_000
+    );
+    // No top-ups on a refunded table.
+    let e = send_ix(vec![top_up_ix(&t, 0, 100_000, &w0)], &mut t.svm, &[&w0]).unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::TableNotActive)),
+        "{e}"
+    );
+}
+
+/// A table whose runtime predates `credited` refuses top-ups until migrated
+/// (a sync there couldn't see a pending one).
+#[test]
+fn top_up_needs_the_migrated_runtime() {
+    let mut t = setup(1);
+    let w0 = t.wallets[0].insecure_clone();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.data.truncate(1_284);
+    t.svm.set_account(t.runtime, acc).unwrap();
+    let e = send_ix(vec![top_up_ix(&t, 0, 100_000, &w0)], &mut t.svm, &[&w0]).unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::RuntimeNotMigrated)),
+        "{e}"
+    );
 }

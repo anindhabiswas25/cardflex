@@ -31,5 +31,5 @@ test("a table whose runtime is close to the commit margin is unhealthy", () => {
   const h = health(new Map([["TableCCCCCCCC", st({ headroom: 1_000_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000);
   assert.equal(h.ok, false);
   assert.match(h.reasons[0], /above rent/);
-  assert.equal(health(new Map([["T", st({ headroom: 5_000_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000).ok, true);
+  assert.equal(health(new Map([["T", st({ headroom: 20_000_000 })]]), { startedAt: 0, lastReadAt: 1_000, lastScanAt: 0, tables: 1 }, 2_000).ok, true);
 });

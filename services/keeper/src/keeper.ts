@@ -4,7 +4,7 @@
 // token grants reads, never signatures).
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  abortLostHand, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
+  abortLostHand, applyTopUp, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
   revealHand, sideShowView, sizeOf, startHand, cashOut, decodeLedger, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
@@ -42,6 +42,10 @@ export type TableState = {
   progress: string; progressAt: number;
   /** Base-layer TableConfig, re-read at most every few seconds while idle. */
   cfg?: { at: number; seated: number; epochs: number[] };
+  /** CF-076: seated players' ledgers (deposits), re-read at most every few seconds while idle. */
+  ledgers?: { at: number; buyIn: (bigint | null)[]; epoch: number[] };
+  /** apply_top_up failures per "seat:buy_in" (e.g. a stale PER clone); skipped after 2. */
+  topUpFails?: Map<string, number>;
   /** join_seat failures per "seat:epoch"; skipped after 2 so a bad ledger can't block the table. */
   joinFails: Map<string, number>;
   /** The table hasn't named this keeper's key (set_keeper): its per-hand commits are refused. */
@@ -99,6 +103,23 @@ export class Keeper {
     return [0, 1, 2, 3, 4, 5].filter((s) =>
       ((seated >> s) & 1) === 1 && ((rt.occupied >> s) & 1) === 0 && epochs[s] > rt.seat_epoch[s] &&
       (st.joinFails.get(`${s}:${epochs[s]}`) ?? 0) < 2);
+  }
+
+  /** CF-076: occupied seats whose deposits aren't all in their stack yet. */
+  private async topUpSeats(config: PublicKey, rt: TableRuntime, st: TableState): Promise<number[]> {
+    const seats = [0, 1, 2, 3, 4, 5].filter((s) => (rt.occupied >> s) & 1);
+    if (!seats.length) return [];
+    if (!st.ledgers || Date.now() - st.ledgers.at > 3_000) {
+      const t = tableAddresses(config);
+      const infos = await this.o.base.getMultipleAccountsInfo([0, 1, 2, 3, 4, 5].map((s) => t.ledger(s)));
+      const ls = infos.map((a) => (a ? decodeLedger(a.data) : null));
+      st.ledgers = { at: Date.now(), buyIn: ls.map((l) => (l && !l.left ? l.buy_in : null)), epoch: ls.map((l) => l?.epoch ?? -1) };
+    }
+    const { buyIn, epoch } = st.ledgers;
+    return seats.filter((s) => {
+      const b = buyIn[s];
+      return b !== null && epoch[s] === rt.seat_epoch[s] && b > rt.credited[s] && (st.topUpFails?.get(`${s}:${b}`) ?? 0) < 2;
+    });
   }
 
   private async commitAndSync(config: PublicKey, st: TableState, rt: TableRuntime) {
@@ -185,9 +206,13 @@ export class Keeper {
     if (snap?.lamports !== undefined) st.headroom = snap.lamports - (this.rentOfRuntime ??= await this.o.base.getMinimumBalanceForRentExemption(RUNTIME_LEN));
     const stuck = inProgress(rt) && Date.now() - st.progressAt >= (this.o.stuckSecs ?? 120) * 1000;
     const waitingSeats = rt.phase === PHASE.IDLE ? await this.waitingSeats(config, rt, st).catch(() => []) : [];
+    const topUpSeats = rt.phase === PHASE.IDLE ? await this.topUpSeats(config, rt, st).catch(() => []) : [];
     const step = decide(rt, {
       nowSecs: BigInt(Math.floor(Date.now() / 1000)), slot, lastCommitSecs: st.lastCommitSecs,
       heartbeatSecs: this.o.heartbeatSecs, handGapSecs: this.o.handGapSecs, departedSynced: syncedDepartures(rt, st.syncedEpochs), stuck, waitingSeats,
+      // CF-073: only from a fresh config read (waitingSeats refreshes it every 3 s when IDLE).
+      ledgers: st.cfg && Date.now() - st.cfg.at <= 10_000 ? st.cfg.seated : undefined,
+      topUpSeats,
     });
     if (step.kind === "wait") return step;
     const payer = this.o.key.publicKey;
@@ -207,6 +232,19 @@ export class Keeper {
             }
           }
           st.cfg = undefined; // re-read before the next decision
+          break;
+        case "apply_top_ups":
+          for (const seat of step.seats) {
+            const key = `${seat}:${st.ledgers?.buyIn[seat] ?? 0n}`;
+            try {
+              await this.send(this.o.per, [applyTopUp({ payer, config, seat })], `apply_top_up ${seat}`);
+              this.log(`${short} added seat ${seat}'s top-up to its stack`);
+            } catch (e) {
+              (st.topUpFails ??= new Map()).set(key, (st.topUpFails.get(key) ?? 0) + 1);
+              throw e;
+            }
+          }
+          st.ledgers = undefined;
           break;
         case "cancel_salts": await this.send(this.o.per, [cancelSalts({ payer, config })], step.kind); break;
         case "request_shuffle": await this.send(this.o.per, [requestShuffle({ payer, config })], step.kind); break;

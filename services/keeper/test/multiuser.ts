@@ -96,6 +96,9 @@ for (let i = 0; i < T; i++) {
   }
   // CF-065: name the keeper's read key before delegating (stored; the permission is built at open).
   await setupSend([setKeeper(admin.publicKey, config, keeperKey.publicKey, false)], [admin]);
+  // Like `cf-admin table open`: fund the runtime's reserve before delegating
+  // (it pays commits once MagicBlock's free ones are used; CF-070/CF-073).
+  await fund(t.runtime, 50_000_000);
   await setupSend([delegateTable(admin.publicKey, config)], [admin]);
   for (let k = 0; k < 60 && !(await adminPer.getAccountInfo(t.runtime).catch(() => null)); k++) await sleep(1000);
   for (const ix of openTablePer(admin.publicKey, config, SEATS)) await sendAndConfirm(adminPer, [ix], [admin], { retries: 2, skipPreflight: true });
@@ -226,10 +229,28 @@ while (now() - runT0 < MINUTES * 60_000) {
     u.cashedOut = true;
     pending.push((async () => {
       const owed = decodeLedger(la.data).synced_stack;
-      const vaultBefore = BigInt((await base.getAccountInfo(tableAddresses(tb.config).vault))!.lamports);
-      await sendAndConfirm(base, [cashOut({ payer: u.wallet.publicKey, config: tb.config, seat: u.seat, wallet: u.wallet.publicKey })], [u.wallet], { retries: 2 });
-      const vaultAfter = BigInt((await base.getAccountInfo(tableAddresses(tb.config).vault))!.lamports);
-      check(`${tb.config.toBase58().slice(0, 8)}: leaver cashed out exactly its synced stack`, owed > 0n && vaultBefore - vaultAfter === BigInt(owed), `${owed} lamports`);
+      const ta = tableAddresses(tb.config);
+      // The keeper pays departed players itself (CF-070), so it may win the
+      // race: that's fine. Either way the payout must be exact: find the
+      // transaction that closed the ledger and read the vault's and wallet's
+      // balance changes from the chain.
+      await sendAndConfirm(base, [cashOut({ payer: u.wallet.publicKey, config: tb.config, seat: u.seat, wallet: u.wallet.publicKey })], [u.wallet], { retries: 2 })
+        .catch((e) => { if (!isProgramError(e, "AccountNotInitialized") && !/3012/.test(String((e as Error).message ?? e))) throw e; });
+      let paid: { by: string; vaultOut: bigint; walletIn: bigint } | null = null;
+      for (let k = 0; k < 10 && !paid; k++) {
+        for (const sg of await base.getSignaturesForAddress(ta.ledger(u.seat), { limit: 6 }, "confirmed")) {
+          const tx = sg.err ? null : await base.getTransaction(sg.signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+          if (!tx?.meta) continue;
+          const keys = tx.transaction.message.getAccountKeys().staticAccountKeys;
+          const v = keys.findIndex((k2) => k2.equals(ta.vault)), w = keys.findIndex((k2) => k2.equals(u.wallet.publicKey));
+          if (v < 0 || w < 0) continue;
+          const vaultOut = BigInt(tx.meta.preBalances[v] - tx.meta.postBalances[v]);
+          if (vaultOut === BigInt(owed)) { paid = { by: keys[0].equals(u.wallet.publicKey) ? "itself" : "the keeper", vaultOut, walletIn: BigInt(tx.meta.postBalances[w] - tx.meta.preBalances[w]) }; break; }
+        }
+        if (!paid) await sleep(2000);
+      }
+      const ledgerGone = !(await base.getAccountInfo(ta.ledger(u.seat)));
+      check(`${tb.config.toBase58().slice(0, 8)}: leaver paid exactly its synced stack`, owed > 0n && ledgerGone && !!paid && paid.walletIn >= BigInt(owed) - 10_000n, paid ? `${owed} lamports by ${paid.by}` : `${owed} lamports: payout not found`);
     })().catch((e) => { fail("cash-out"); console.log("  cash-out failed:", String(e.message ?? e).slice(0, 120)); }));
   }
   if (tables.every((tb) => handsOf(tb) >= HANDS && tb.leaver.cashedOut)) break;

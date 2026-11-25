@@ -7,7 +7,9 @@ import { useEffect, useState } from "react";
 import { PER_RPC } from "./env";
 
 let pending: Promise<AttestationResult> | null = null;
-const run = () => (pending ??= verifyTee(PER_RPC).catch((e) => ({ ok: false, reasons: [String((e as Error)?.message ?? e)] })));
+const once = () => verifyTee(PER_RPC).catch((e): AttestationResult => ({ ok: false, reasons: [String((e as Error)?.message ?? e)] }));
+// A network hiccup (timeout) is retried once by itself; a real failure shows at once.
+const run = () => (pending ??= once().then((r) => (!r.ok && r.reasons.some((x) => /timed out|fetch|network/i.test(x)) ? once() : r)));
 
 export function useTee() {
   const [r, setR] = useState<AttestationResult | null>(null);

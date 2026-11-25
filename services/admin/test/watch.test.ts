@@ -38,6 +38,8 @@ test("refund clock: warn at half the timeout, critical when anyone can refund", 
   assert.deepEqual(codes(facts((f) => { f.nowSecs = 10_000n + 1_800n; })), ["critical:REFUND_DUE"]);
   // A table that isn't live (never delegated, or closed) has no running clock.
   assert.deepEqual(codes(facts((f) => { f.nowSecs = 99_999n; f.live = false; })), []);
+  // CF-073: nor does an empty live table (not heartbeated, can't be refunded).
+  assert.deepEqual(codes(facts((f) => { f.nowSecs = 99_999n; f.cfg.seated = 0; f.ledgerStacks = []; f.vaultLamports = 1_000n + 300n; })), []);
 });
 
 test("refunded table with unclaimed seats; cancel rate", () => {

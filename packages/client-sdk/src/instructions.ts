@@ -47,6 +47,23 @@ export function buyIn(p: { wallet: PublicKey; config: PublicKey; seat: number; a
   return buildIx("buy_in", { wallet: p.wallet, config: p.config, vault: t.vault, ledger: t.ledger(p.seat), global: globalAddr() }, { seat: p.seat, amount: p.amount, session_key: p.sessionKey });
 }
 
+/**
+ * CF-076, base, signed by the seat's WALLET: adds chips to the current
+ * sit-down. Payable at once (cash-out / refund); the keeper puts it in the
+ * stack before the next hand with `applyTopUp`. ≥ 1 boot; the last synced
+ * stack + amount ≤ the table's maximum buy-in.
+ */
+export function topUp(p: { wallet: PublicKey; config: PublicKey; seat: number; amount: bigint }) {
+  const t = tableAddresses(p.config);
+  return buildIx("top_up", { wallet: p.wallet, global: globalAddr(), config: p.config, vault: t.vault, ledger: t.ledger(p.seat), runtime: t.runtime }, { seat: p.seat, amount: p.amount });
+}
+
+/** CF-076, PER, permissionless, between hands: credits a seat's deposited top-up to its stack. */
+export function applyTopUp(p: { payer: PublicKey; config: PublicKey; seat: number }) {
+  const t = tableAddresses(p.config);
+  return buildIx("apply_top_up", { payer: p.payer, runtime: t.runtime, ledger: t.ledger(p.seat) }, { seat: p.seat });
+}
+
 /** Seats a bought-in ledger. `live` = the table is in PER with permissions (then the reader lists are updated). */
 export function joinSeat(p: { payer: PublicKey; config: PublicKey; seat: number; live: boolean }) {
   const t = tableAddresses(p.config);

@@ -155,3 +155,25 @@ money would stay frozen for as long as anyone kept committing.
   copies no stacks (rule 4), so heartbeating during hands is safe.
 - Alarms (`cf-admin watch`): `REFUND_NEAR` at half the timeout, `REFUND_DUE`
   at the timeout, live tables only. Runbooks: `docs/runbooks/`.
+
+## Amendment (2026-11-24, CF-073): no heartbeat for an empty table
+
+Measured on Devnet (`docs/findings/cf-073-runtime-drain.md`): per delegation
+MagicBlock lets a table make 25 commits free, then every commit moves
+2,000,000 lamports (0.002 SOL) from the runtime to its fee vault. With the
+300 s heartbeat an EMPTY table paid ~0.024 SOL/h for nothing and drained its
+0.05 SOL reserve in ~4 h; then it could not commit at all.
+
+- **The keeper skips the idle heartbeat when nobody holds a ledger**
+  (`TableConfig.seated == 0` and no occupied seat). A table with any ledger
+  (bought in, seated, or left and not yet paid) and every hand in progress
+  still heartbeat as before (CF-056).
+- **`emergency_refund` refuses a table without a ledger**
+  (`NothingToRefund`): there is no player money to protect, and the stale
+  clock would otherwise let anyone end an empty table.
+- **The first `buy_in` on an empty table restarts the refund clock**
+  (`last_sync_time := now`); later buy-ins don't move it. So the first
+  player still gets the full timeout before a refund, and nobody can refund
+  a table the moment its first player arrives.
+- `cf-admin watch` raises `REFUND_NEAR`/`REFUND_DUE` only for tables with a
+  ledger. The keeper's headroom alarm is now 5 paid commits (10,000,000).

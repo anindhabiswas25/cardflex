@@ -28,7 +28,7 @@ try {
   // table made them leave, or buy in at the minimum.
   const setMin = `(() => { const r = document.querySelector('[data-testid=buy-in] input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(r, r.min); r.dispatchEvent(new Event('input', { bubbles: true })); return r.min; })()`;
   for (const p of [A, B]) {
-    const state = await p.waitFor(`(() => { const t = document.body.innerText; if (/Resume my seat/i.test(t)) return 'resume'; if (document.querySelector('[data-testid=cash-out]')) return 'cashout'; if (/Syncing your final stack/i.test(t)) return null; const b = document.querySelector('[data-testid=buy-in-btn]'); if (b && !b.disabled) return 'buyin'; if (t.includes('● seated')) return 'seated'; return null })()`, 180000, 1000);
+    const state = await p.waitFor(`(() => { const t = document.body.innerText; if (/Resume my seat/i.test(t)) return 'resume'; if (document.querySelector('[data-testid=cash-out]')) return 'cashout'; if (/Syncing your final stack/i.test(t)) return null; const b = (document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]'))); if (b && !b.disabled) return 'buyin'; if (t.includes('● seated')) return 'seated'; return null })()`, 180000, 1000);
     log(p.name, "arrives:", state);
     if (state === "resume") {
       await p.clickText("button", "Resume my seat");
@@ -38,11 +38,11 @@ try {
     if (state === "cashout" || await p.eval(`!!document.querySelector('[data-testid=cash-out]')`)) {
       const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
       await p.click("[data-testid=cash-out]");
-      await p.waitFor(`!!document.querySelector('[data-testid=buy-in-btn]')`, 120000);
+      await p.waitFor(`!!(document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]')))`, 120000);
       check(`${p.name} cashed out the seat it was made to leave`, true, label);
     }
     if (!(await p.eval(`document.body.innerText.includes('● seated')`))) {
-      await p.waitFor(`!!document.querySelector('[data-testid=buy-in-btn]') && !document.querySelector('[data-testid=buy-in-btn]').disabled`, 60000);
+      await p.waitFor(`!!(document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]'))) && !(document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]'))).disabled`, 60000);
       await p.eval(setMin);
       await sleep(300);
       log(p.name, "buy-in:", await p.text("[data-testid=buy-in-btn]"));
@@ -63,11 +63,11 @@ try {
     for (const p of [A, B]) {
       const myTurn = await p.eval(`/your turn/.test(document.body.innerText)`);
       if (!myTurn) continue;
-      if (!sawMid) { sawMid = true; await p.shot(join(process.env.E2E_OUT ?? KEYS, "table-midhand.png")); const cards = await p.eval(`document.querySelectorAll('[data-testid=my-cards] .card').length`); check("dealt player sees three cards of their own", cards === 3, `${cards}`); }
+      if (!sawMid) { sawMid = true; await p.shot(join(process.env.E2E_OUT ?? KEYS, "table-midhand.png")); const cards = await p.eval(`document.querySelectorAll('[data-testid=my-cards] img').length`); check("dealt player sees three cards of their own", cards === 3, `${cards}`); }
       // Look at the cards first (a blind player can't Show a seen one).
       if (await p.eval(`(() => { const b = [...document.querySelectorAll('button')].find(x => /^see cards$/i.test(x.innerText.trim())); return b && !b.disabled })()`)) {
         await p.clickText("button", "See cards"); log(p.name, "see"); await sleep(2500);
-        const faces = await p.eval(`document.querySelectorAll('[data-testid=my-cards] .card-face').length`);
+        const faces = await p.eval(`[...document.querySelectorAll('[data-testid=my-cards] img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/') && !(i.getAttribute('src') ?? '').startsWith('/cards/back-')).length`);
         check(`${p.name} sees its own card faces after See`, faces === 3, String(faces));
       }
       const showOk = await p.eval(`(() => { const b = [...document.querySelectorAll('button')].find(x => x.innerText.trim().toLowerCase() === 'show'); return b && !b.disabled })()`);
@@ -81,25 +81,28 @@ try {
   const ra = await A.waitFor(`document.querySelector('[data-testid=result]')?.innerText`, 120000);
   const rb = await B.waitFor(`document.querySelector('[data-testid=result]')?.innerText`, 30000);
   log("A result:", ra.replace(/\n/g, " | "));
+  // CF-071 UI: the result (with its verdict and link) is gone once the keeper starts the next hand.
+  const verdict = /verified in your browser|verified ✓|verification FAILED/.exec(ra)?.[0] ?? null;
+  const href = await A.eval(`[...document.querySelectorAll('[data-testid=result] a')].find(a => /verify hand/i.test(a.innerText))?.getAttribute('href')`);
   check("hand finished and both players see the result", !!ra && !!rb);
   check("the hand reached a Show (both hands revealed to both players)", /show/i.test(ra) && !/last player/i.test(ra), ra.split("\n")[0]);
-  const shownB = await B.waitFor(`(() => { const n = document.querySelectorAll('[data-testid^=seat-] .card-face').length; return n >= 3 ? n : null })()`, 30000).catch(() => 0);
+  const shownB = await B.waitFor(`(() => { const n = [...document.querySelectorAll('[data-testid^=seat-] img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/') && !(i.getAttribute('src') ?? '').startsWith('/cards/back-')).length; return n >= 3 ? n : null })()`, 30000).catch(() => 0);
   // Between hands (before the next deal) the result and its cards must stay.
   let between = 0, keptCards = false;
   for (let i = 0; i < 30 && !keptCards; i++) {
-    const st = await B.eval(`({ center: [...document.querySelectorAll('.pill')].some((x) => /Next hand|Shuffling|randomness|Waiting/.test(x.innerText)), faces: document.querySelectorAll('[data-testid^=seat-] .card-face').length })`);
+    const st = await B.eval(`({ center: !!document.querySelector('[data-testid=result]'), faces: [...document.querySelectorAll('[data-testid^=seat-] img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/') && !(i.getAttribute('src') ?? '').startsWith('/cards/back-')).length })`);
     if (st.center) { between++; if (st.faces >= 3) keptCards = true; }
     await sleep(500);
   }
   check("revealed cards stay visible between hands (until the next deal)", keptCards || between === 0, `${between} between-hand samples`);
   check("B sees A's revealed cards after the Show", shownB === 3, String(shownB));
-  const v = await A.waitFor(`/verified in your browser|verification FAILED/.exec(document.querySelector('[data-testid=result]')?.innerText ?? '')?.[0]`, 90000).catch(() => null);
-  check("hand verified in the browser (WASM verifier on the revealed hand)", v === "verified in your browser", v ?? "no verdict");
+  const v = verdict ?? await A.waitFor(`/verified in your browser|verified ✓|verification FAILED/.exec(document.querySelector('[data-testid=result]')?.innerText ?? '')?.[0]`, 30000).catch(() => null);
+  check("hand verified in the browser (WASM verifier on the revealed hand)", v === "verified in your browser" || v === "verified ✓", v ?? "no verdict");
   await A.shot(join(process.env.E2E_OUT ?? KEYS, "table-result.png"));
   await B.shot(join(process.env.E2E_OUT ?? KEYS, "table-result-b.png"));
 
   // The verify page for this hand.
-  const href = await A.eval(`[...document.querySelectorAll('a')].find(a => /verify hand/i.test(a.innerText))?.getAttribute('href')`);
+  check("result links to its verify page", !!href, String(href));
   const V = await b.page("V");
   await V.goto(`${URL0}${href}`);
   const overall = await V.waitFor(`document.querySelector('[data-testid=verify-overall]')?.innerText`, 60000).catch(() => null);

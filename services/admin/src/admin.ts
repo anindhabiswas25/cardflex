@@ -97,9 +97,14 @@ export function setKeeper(authority: PublicKey, config: PublicKey, keeper: Publi
   return buildIx("set_keeper", { authority, runtime: t.runtime, ...perAccs }, { keeper });
 }
 
-/** CF-067: grows an old-layout runtime (base layer, not delegated) to the current size; payer funds the rent. */
-export function migrateRuntime(payer: PublicKey, config: PublicKey) {
-  return buildIx("migrate_runtime", { payer, config, runtime: tableAddresses(config).runtime, system_program: SystemProgram.programId });
+/**
+ * CF-067: grows an old-layout runtime (base layer, not delegated) to the current size; payer funds the rent.
+ * CF-076: ledgers of every bought-in seat follow (`seated` = TableConfig.seated), so `credited` starts right.
+ */
+export function migrateRuntime(payer: PublicKey, config: PublicKey, seated: number) {
+  const t = tableAddresses(config);
+  const ledgers = [0, 1, 2, 3, 4, 5].filter((s) => (seated >> s) & 1).map((s) => ({ pubkey: t.ledger(s), isSigner: false, isWritable: false }));
+  return buildIx("migrate_runtime", { payer, config, runtime: t.runtime, system_program: SystemProgram.programId }, {}, ledgers);
 }
 
 export function sweepRake(payer: PublicKey, config: PublicKey, treasury: PublicKey) {

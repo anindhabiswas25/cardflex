@@ -175,6 +175,72 @@
       ]
     },
     {
+      "name": "apply_top_up",
+      "docs": [
+        "CF-076: anyone (the keeper) credits a seat's deposited top-up to its",
+        "stack, between hands only. Moves exactly `buy_in - credited` of this",
+        "sit-down (epoch), once: afterwards `credited == buy_in`. A stale PER",
+        "clone of the ledger can only show less (deposits only grow within a",
+        "sit-down), never more."
+      ],
+      "discriminator": [
+        138,
+        192,
+        82,
+        119,
+        230,
+        17,
+        120,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "buy_in",
       "docs": [
         "A wallet takes a seat and moves its buy-in into the table vault.",
@@ -4471,6 +4537,161 @@
       ]
     },
     {
+      "name": "top_up",
+      "docs": [
+        "CF-076 (ADR 0005 amendment): the seat's wallet adds chips to its",
+        "current sit-down. The lamports go to the vault and count at once in",
+        "`synced_stack` (cash-out and refunds pay them back even if they never",
+        "reach the table) and in `buy_in` (= all deposits); `apply_top_up` puts",
+        "them in the stack between hands. At least one boot; the last synced",
+        "stack plus the top-up may not exceed the table's maximum buy-in."
+      ],
+      "discriminator": [
+        236,
+        225,
+        96,
+        9,
+        60,
+        106,
+        77,
+        208
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "ledger"
+          ]
+        },
+        {
+          "name": "global",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  108,
+                  111,
+                  98,
+                  97,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.authority",
+                "account": "TableConfig"
+              },
+              {
+                "kind": "account",
+                "path": "config.table_id",
+                "account": "TableConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger",
+          "writable": true
+        },
+        {
+          "name": "runtime",
+          "docs": [
+            "read: top-ups need the CF-076 layout (`credited`)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seat",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "undelegate_table",
       "docs": [
         "Commits `TableRuntime` and returns it to the base layer."
@@ -5083,6 +5304,26 @@
       "code": 6057,
       "name": "PerAccountsMissing",
       "msg": "this table was opened in PER (locked): this step updates permissions, so send it in PER while the table is live"
+    },
+    {
+      "code": 6058,
+      "name": "NothingToRefund",
+      "msg": "no player holds a ledger at this table: there is nothing to refund"
+    },
+    {
+      "code": 6059,
+      "name": "TopUpTooLarge",
+      "msg": "a top-up may not take the stack above the table's maximum buy-in"
+    },
+    {
+      "code": 6060,
+      "name": "NothingToApply",
+      "msg": "this seat has no deposited top-up waiting"
+    },
+    {
+      "code": 6061,
+      "name": "RuntimeNotMigrated",
+      "msg": "this table's runtime has the old layout: migrate it before top-ups"
     }
   ],
   "types": [
@@ -6015,6 +6256,23 @@
               "the seed. Set by the table authority with `set_keeper`."
             ],
             "type": "pubkey"
+          },
+          {
+            "name": "credited",
+            "docs": [
+              "CF-076 (ADR 0005 amendment): per seat, how much of its ledger's",
+              "`buy_in` (= everything deposited this sit-down: buy-in + top-ups) is",
+              "already in `stacks`. `join_seat` sets it to the buy-in; `apply_top_up`",
+              "adds the difference to the stack between hands; `sync_hand` pays a",
+              "difference not applied yet on top of the stack, so a deposit is never",
+              "lost or counted twice."
+            ],
+            "type": {
+              "array": [
+                "u64",
+                6
+              ]
+            }
           }
         ]
       }

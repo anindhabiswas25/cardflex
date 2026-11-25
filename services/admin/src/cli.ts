@@ -275,7 +275,9 @@ async function main() {
       if (!r) return fail("no runtime for this table");
       if (r.data.length === want) return console.log(`runtime already current (${want} bytes)`);
       if (r.owner.equals(DELEGATION_PROGRAM_ID)) return fail("table is live in PER (delegated): can't migrate; players leave by emergency_refund + claim_refund after the refund timeout");
-      await send(base, [migrateRuntime(kp.publicKey, config)], kp, `migrate_runtime ${r.data.length} -> ${want} bytes`);
+      // Only the config: the runtime has the old layout and can't be decoded yet.
+      const cfg = decodeTableConfig((await base.getAccountInfo(config))!.data);
+      await send(base, [migrateRuntime(kp.publicKey, config, cfg.seated)], kp, `migrate_runtime ${r.data.length} -> ${want} bytes (${[0, 1, 2, 3, 4, 5].filter((x) => (cfg.seated >> x) & 1).length} seat ledger(s))`);
       return;
     }
     if (cmd === "keeper") {

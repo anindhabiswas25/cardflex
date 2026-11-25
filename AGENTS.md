@@ -217,6 +217,12 @@ Planned crates and apps are listed in PRD §7.
   permissionless step punish present players for one slow moment: a missed
   salt round is a strike (seat leaves after 3 in a row) and `start_hand`
   waits `HAND_GAP_SECS` after `last_hand_end`.
+- Leaving before the deal (CF-077/079, ADR 0005 amendments): boots are
+  taken only in `deal_hand`. It cancels (no boots) if a dealt-in seat is
+  `leaving`, and otherwise refuses to deal before start + `LEAVE_WINDOW_SECS`
+  (5; start = `salts_deadline - SALT_SECS`). `cancel_salts` is allowed at once
+  when only leaving seats miss a salt. Keeper gap between hands: 9 s. Keep any
+  new "leave" path before the deal free.
 - Lost secret state (CF-053, ADR 0004 amendment): `abort_lost_hand`
   (permissionless; remaining accounts = dealer, seat hands, salts of the
   dealt seats in dealing order) ends a hand only if one of them is missing.
@@ -262,8 +268,8 @@ Planned crates and apps are listed in PRD §7.
   (`cf-admin table keeper`). Readers of the runtime = `runtime_members()`
   (authority + keeper + seated sessions); use it in EVERY path that writes
   the runtime permission. The keeper key is never a hand/salt/dealer reader
-  and can't be a session key. TableRuntime is 1,284 bytes (CF-064/065
-  fields appended after `bump`; older Devnet tables don't load).
+  and can't be a session key. TableRuntime is 1,332 bytes (CF-064/065/076
+  fields appended after `bump`; older tables load only after `migrate_runtime`).
 - Permissions (CF-059): never create a PRIVATE permission with an empty
   member list (MagicBlock doesn't define it); "nobody" = a key nobody holds.
   `tests/test_permission_members.rs` scans every `EphemeralMembersArgs`.
@@ -294,19 +300,39 @@ Planned crates and apps are listed in PRD §7.
   player keypairs from `E2E_KEYS`, never in the repo).
 - Runtime headroom (CF-069, CF-070): the runtime pays for the table's PER
   accounts and is the commit payer; it can't be topped up while live (base
-  transfers don't reach the PER). Normal play costs it ~0 (measured: joins,
-  hands, Side Show grants refunded on revoke, commits), but one Devnet table
-  lost ~4M lamports in an hour for an unexplained reason and then every
-  commit failed (`InsufficientFundsForRent`, ~1.0M left). So: ALWAYS open
-  tables with `cf-admin table open` (default reserve 0.05 SOL); the keeper
-  logs headroom after every hand and `/health` alarms below 2,000,000.
-  Refuel = close between hands, then `table open` again. Ask MagicBlock.
+  transfers don't reach the PER). Joins, hands and Side Show grants cost it
+  ~0, but COMMITS DO (measured 2026-11-24 from PER tx history): per
+  delegation, the first 25 fee-vault commits are free, then EVERY commit
+  moves 2,000,000 lamports from the runtime to the magic fee vault
+  (`EUJssY…`). Before CF-073 the keeper heartbeated (every 300 s) EMPTY
+  tables too: ~0.024 SOL/h each after ~2 h, a 0.05 SOL reserve gone in ~4 h,
+  then every commit failed (`InsufficientFundsForRent`). CF-073: no idle
+  heartbeat without a ledger (`ctx.ledgers`); the program refuses
+  `emergency_refund` there (`NothingToRefund`) and the first `buy_in`
+  restarts the refund clock. Never re-add a heartbeat for empty tables, and
+  never run that keeper against a program without those two checks. A
+  commit needs ≥ 2,000,000 above rent (`COMMIT_COST`). So: ALWAYS
+  open tables with `cf-admin table open` (default reserve 0.05 SOL).
+  Refuel = `cf-admin table close` (its own commit may fail on a drained
+  runtime; the undelegate still lands), `table open` (delegates + reserve;
+  its first PER step fails with `InvalidAccountData` because the runtime and
+  hand-log permissions survive in PER), then `table repair` to recreate the
+  dealer, seat hands and salts. Re-delegating resets the free commits.
 - Account stamps (audit 2026-11-21): seat hands, salts and the dealer are
   recognised in hot paths by `stamped()` (owner = program, tag, runtime key,
   seat) instead of re-deriving the PDA. This is only sound because the
   `open_*` instructions check the PDA before writing the stamp and nothing
   else ever writes those bytes: keep it that way. `any_lost` still derives
   PDAs (it must prove a specific address is missing).
+- Top-up (CF-076, ADR 0005 amendment): `top_up` (base, wallet) raises the
+  ledger's `buy_in` (= all deposits) and `synced_stack` at once;
+  `apply_top_up` (PER, IDLE, permissionless; keeper between hands) moves
+  `buy_in − TableRuntime.credited[seat]` into the stack. `sync_hand` writes
+  `stack + (buy_in − credited)`. Any new path that writes `stacks` from a
+  ledger must also set `credited`. Runtime is 1,332 bytes; `migrate_runtime`
+  needs the bought-in seats' ledgers as remaining accounts. Never deploy a
+  runtime layout change while tables are live: close them with the OLD
+  program first, then deploy, migrate, open, repair.
 - Departed players are paid by the keeper (`cash_out` is permissionless and
   pays only the recorded wallet): a ledger nobody cashes out would block its
   seat. Clients must treat "my left ledger disappeared" as paid.

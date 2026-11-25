@@ -235,6 +235,14 @@ pub mod card_flex {
         config.seat_epochs[seat as usize] = epoch;
         config.wallets[seat as usize] = wallet;
         config.sessions[seat as usize] = session_key;
+        // CF-073: the keeper doesn't heartbeat an empty table (after
+        // MagicBlock's free commits each one costs the runtime 0.002 SOL),
+        // so its refund clock may be long stale. Player money is at risk only
+        // from the first buy-in: start the clock there, or anyone could refund
+        // the table the moment its first player arrives.
+        if config.seated == 0 {
+            config.last_sync_time = Clock::get()?.unix_timestamp;
+        }
         config.seated |= 1 << seat;
         let ledger = &mut ctx.accounts.ledger;
         ledger.config = config_key;
@@ -296,6 +304,8 @@ pub mod card_flex {
             runtime.wallets[s] = ledger.wallet;
             runtime.session_keys[s] = ledger.session_key;
             runtime.stacks[s] = ledger.synced_stack;
+            // CF-076: everything deposited so far is now in the stack.
+            runtime.credited[s] = ledger.buy_in;
             runtime.seat_epoch[s] = ledger.epoch;
             runtime.occupied |= 1 << seat;
             runtime.departed &= !(1 << seat);
@@ -429,6 +439,85 @@ pub mod card_flex {
         config.seated &= !(1 << seat);
         config.wallets[seat as usize] = Pubkey::default();
         config.sessions[seat as usize] = Pubkey::default();
+        Ok(())
+    }
+
+    /// CF-076 (ADR 0005 amendment): the seat's wallet adds chips to its
+    /// current sit-down. The lamports go to the vault and count at once in
+    /// `synced_stack` (cash-out and refunds pay them back even if they never
+    /// reach the table) and in `buy_in` (= all deposits); `apply_top_up` puts
+    /// them in the stack between hands. At least one boot; the last synced
+    /// stack plus the top-up may not exceed the table's maximum buy-in.
+    pub fn top_up(ctx: Context<TopUp>, seat: u8, amount: u64) -> Result<()> {
+        require!(!ctx.accounts.global.paused, CardFlexError::Paused);
+        let config = &ctx.accounts.config;
+        require!(
+            config.status == status::ACTIVE,
+            CardFlexError::TableNotActive
+        );
+        require!(config.max_buy_in != u64::MAX, CardFlexError::NotConfigured);
+        // `credited` must exist, or a sync could drop the deposit.
+        require!(
+            ctx.accounts.runtime.data_len() == 8 + TableRuntime::INIT_SPACE,
+            CardFlexError::RuntimeNotMigrated
+        );
+        require!(seat < config.max_seats, CardFlexError::BadSeat);
+        require!(config.seated & (1 << seat) != 0, CardFlexError::SeatEmpty);
+        let ledger = &ctx.accounts.ledger;
+        require!(
+            !ledger.left && ledger.epoch == config.seat_epochs[seat as usize],
+            CardFlexError::BadLedger
+        );
+        let boot = config.max_buy_in / MAX_BUY_IN_BOOTS;
+        let after = ledger
+            .synced_stack
+            .checked_add(amount)
+            .ok_or(CardFlexError::Overflow)?;
+        require!(amount >= boot.max(1), CardFlexError::BadAmount);
+        require!(after <= config.max_buy_in, CardFlexError::TopUpTooLarge);
+        anchor_lang::system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.key(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.wallet.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+        let ledger = &mut ctx.accounts.ledger;
+        ledger.buy_in = ledger
+            .buy_in
+            .checked_add(amount)
+            .ok_or(CardFlexError::Overflow)?;
+        ledger.synced_stack = after;
+        Ok(())
+    }
+
+    /// CF-076: anyone (the keeper) credits a seat's deposited top-up to its
+    /// stack, between hands only. Moves exactly `buy_in - credited` of this
+    /// sit-down (epoch), once: afterwards `credited == buy_in`. A stale PER
+    /// clone of the ledger can only show less (deposits only grow within a
+    /// sit-down), never more.
+    pub fn apply_top_up(ctx: Context<ApplyTopUp>, seat: u8) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        let ledger = &ctx.accounts.ledger;
+        require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+        require!(seat < runtime.max_seats, CardFlexError::BadSeat);
+        let s = seat as usize;
+        require!(
+            runtime.occupied & (1 << seat) != 0
+                && ledger.config == runtime.config
+                && ledger.epoch == runtime.seat_epoch[s]
+                && !ledger.left,
+            CardFlexError::BadLedger
+        );
+        let add = ledger.buy_in.saturating_sub(runtime.credited[s]);
+        require!(add > 0, CardFlexError::NothingToApply);
+        runtime.stacks[s] = runtime.stacks[s]
+            .checked_add(add)
+            .ok_or(CardFlexError::Overflow)?;
+        runtime.credited[s] = ledger.buy_in;
         Ok(())
     }
 
@@ -704,6 +793,36 @@ pub mod card_flex {
         );
         info.resize(new_len)?;
         info.try_borrow_mut_data()?[old_len..].fill(0);
+        // CF-076: `credited` starts as each current sit-down's deposits (no
+        // top-up existed before this layout: `top_up` refuses old runtimes).
+        // The table isn't delegated here, so these base ledgers are current.
+        // Ledgers of every bought-in seat follow, in seat order.
+        let config = &ctx.accounts.config;
+        let config_key = config.key();
+        let seats: Vec<u8> = (0..MAX_SEATS as u8)
+            .filter(|s| config.seated & (1 << s) != 0)
+            .collect();
+        require!(
+            ctx.remaining_accounts.len() == seats.len(),
+            CardFlexError::BadLedger
+        );
+        if !seats.is_empty() {
+            let mut rt = Box::new(TableRuntime::try_deserialize(
+                &mut &info.try_borrow_data()?[..],
+            )?);
+            for (&seat, acc) in seats.iter().zip(ctx.remaining_accounts) {
+                let (pda, _) = Pubkey::find_program_address(
+                    &[LEDGER_SEED, config_key.as_ref(), &[seat]],
+                    &crate::ID,
+                );
+                require_keys_eq!(acc.key(), pda, CardFlexError::BadLedger);
+                let ledger: Account<SeatLedger> = Account::try_from(acc)?;
+                if ledger.epoch == rt.seat_epoch[seat as usize] {
+                    rt.credited[seat as usize] = ledger.buy_in;
+                }
+            }
+            rt.try_serialize(&mut &mut info.try_borrow_mut_data()?[..])?;
+        }
         Ok(())
     }
 
@@ -779,7 +898,12 @@ pub mod card_flex {
                 && (rt.occupied | rt.departed) & bit != 0
                 && !ledger.left
             {
-                ledger.synced_stack = rt.stacks[seat as usize];
+                // CF-076: a top-up deposited but not yet applied to the stack
+                // (`buy_in` > `credited`) is still the player's money.
+                let pending = ledger.buy_in.saturating_sub(rt.credited[seat as usize]);
+                ledger.synced_stack = rt.stacks[seat as usize]
+                    .checked_add(pending)
+                    .ok_or(CardFlexError::Overflow)?;
                 // CF-032: the committed runtime shows this sit-down left; its
                 // stack is final and may now be cashed out.
                 ledger.left = rt.departed & bit != 0;
@@ -798,6 +922,9 @@ pub mod card_flex {
             config.status == status::ACTIVE,
             CardFlexError::TableNotActive
         );
+        // CF-073: no ledger = no player money to protect. An empty table isn't
+        // heartbeated, so without this anyone could end it for nothing.
+        require!(config.seated != 0, CardFlexError::NothingToRefund);
         let now = Clock::get()?.unix_timestamp;
         require!(
             now >= config
@@ -1498,6 +1625,19 @@ pub mod card_flex {
     pub fn deal_hand(ctx: Context<DealHand>) -> Result<()> {
         let runtime = &mut ctx.accounts.runtime;
         require!(runtime.phase == phase::SEEDED, CardFlexError::WrongPhase);
+        // CF-077: someone dealt in asked to leave before the cards: no hand,
+        // no boot from anyone. Nobody has seen a card yet (the deck is only
+        // derived below), so leaving can't be used to dodge a bad hand.
+        if dealt_leaving(runtime) {
+            return cancel_before_deal(runtime);
+        }
+        // CF-079: the boots go in with the cards; give players LEAVE_WINDOW_SECS
+        // from the start of the hand to leave for free first.
+        let started = runtime.salts_deadline.saturating_sub(SALT_SECS);
+        require!(
+            Clock::get()?.unix_timestamp >= started.saturating_add(LEAVE_WINDOW_SECS),
+            CardFlexError::TooEarly
+        );
         let runtime_key = runtime.key();
         let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
         require!(
@@ -1682,11 +1822,20 @@ pub mod card_flex {
             runtime.phase == phase::SALTS_PENDING,
             CardFlexError::WrongPhase
         );
+        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
+        // CF-077: no need to wait out the deadline when every seat still
+        // missing a salt has asked to leave.
+        let missing: Vec<u8> = order
+            .iter()
+            .copied()
+            .filter(|&s| runtime.salts_in & (1 << s) == 0)
+            .collect();
+        let only_leavers =
+            !missing.is_empty() && missing.iter().all(|&s| runtime.leaving & (1 << s) != 0);
         require!(
-            Clock::get()?.unix_timestamp >= runtime.salts_deadline,
+            only_leavers || Clock::get()?.unix_timestamp >= runtime.salts_deadline,
             CardFlexError::TooEarly
         );
-        let order: Vec<u8> = runtime.dealing_order[..runtime.dealing_count as usize].to_vec();
         for s in order {
             if runtime.salts_in & (1 << s) == 0 {
                 let m = &mut runtime.missed_salts[s as usize];
@@ -1725,20 +1874,7 @@ pub mod card_flex {
             now >= runtime.vrf_request_slot.saturating_add(VRF_TIMEOUT_SLOTS),
             CardFlexError::TooEarly
         );
-        runtime.cancelled_hands = runtime.cancelled_hands.saturating_add(1);
-        runtime.hand_no = runtime
-            .hand_no
-            .checked_add(1)
-            .ok_or(CardFlexError::Overflow)?;
-        runtime.last_hand_end = Clock::get()?.unix_timestamp;
-        runtime.phase = phase::IDLE;
-        runtime.salts_in = 0;
-        runtime.salt_commitments = [[0; 32]; MAX_SEATS];
-        runtime.vrf_caller_seed = [0; 32];
-        // Like every other way a hand ends: a player who asked to leave
-        // during it isn't dealt into the next one (audit 2026-11-21).
-        apply_leaves(runtime);
-        Ok(())
+        cancel_before_deal(runtime)
     }
 
     /// CF-053 (ADR 0004 #8): ends a hand whose secret state was lost, e.g. a
@@ -2155,6 +2291,35 @@ fn create_permission_with<'info>(
     }
     .invoke_signed(signer_seeds)?;
     Ok(())
+}
+
+/// Ends a hand that was never dealt (no boot collected, nothing to reveal):
+/// counted in `cancelled_hands`, the next hand number, pending leaves
+/// applied. Shared by `cancel_hand` (VRF timeout) and CF-077's cancel of a
+/// hand whose dealt-in player asked to leave before the cards.
+fn cancel_before_deal(runtime: &mut TableRuntime) -> Result<()> {
+    runtime.cancelled_hands = runtime.cancelled_hands.saturating_add(1);
+    runtime.hand_no = runtime
+        .hand_no
+        .checked_add(1)
+        .ok_or(CardFlexError::Overflow)?;
+    runtime.last_hand_end = Clock::get()?.unix_timestamp;
+    runtime.phase = phase::IDLE;
+    runtime.salts_in = 0;
+    runtime.salt_commitments = [[0; 32]; MAX_SEATS];
+    runtime.vrf_caller_seed = [0; 32];
+    // Like every other way a hand ends: a player who asked to leave
+    // during it isn't dealt into the next one (audit 2026-11-21).
+    apply_leaves(runtime);
+    Ok(())
+}
+
+/// CF-077: seats of this hand that asked to leave (`leave_seat`) before the
+/// cards were dealt.
+fn dealt_leaving(runtime: &TableRuntime) -> bool {
+    runtime.dealing_order[..runtime.dealing_count as usize]
+        .iter()
+        .any(|&s| runtime.leaving & (1 << s) != 0)
 }
 
 /// Applies pending leaves between hands (ADR 0005 decision 3): the seat is
@@ -2579,4 +2744,12 @@ pub enum CardFlexError {
     BadKeeper,
     #[msg("this table was opened in PER (locked): this step updates permissions, so send it in PER while the table is live")]
     PerAccountsMissing,
+    #[msg("no player holds a ledger at this table: there is nothing to refund")]
+    NothingToRefund,
+    #[msg("a top-up may not take the stack above the table's maximum buy-in")]
+    TopUpTooLarge,
+    #[msg("this seat has no deposited top-up waiting")]
+    NothingToApply,
+    #[msg("this table's runtime has the old layout: migrate it before top-ups")]
+    RuntimeNotMigrated,
 }

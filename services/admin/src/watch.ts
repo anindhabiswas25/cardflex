@@ -51,8 +51,10 @@ export function assess(f: TableFacts, l: Limits = DEFAULT_LIMITS): Alert[] {
   else if (f.vaultLamports > expected) a("warning", "VAULT_SURPLUS", `vault holds ${f.vaultLamports - expected} lamports more than it owes (sent straight to the vault?)`);
 
   // Only a live table has a running refund clock; a closed (undelegated)
-  // one is expected to be old.
-  if (cfg.status === TABLE_STATUS.ACTIVE && f.live) {
+  // one is expected to be old. CF-073: so is an empty one (no ledger): the
+  // keeper doesn't heartbeat it, the program refuses to refund it and the
+  // first buy-in restarts the clock.
+  if (cfg.status === TABLE_STATUS.ACTIVE && f.live && cfg.seated !== 0) {
     const since = f.nowSecs - BigInt(cfg.last_sync_time);
     const timeout = BigInt(cfg.refund_timeout_secs);
     if (since >= timeout) a("critical", "REFUND_DUE", `no sync for ${since} s (timeout ${timeout} s): anyone can call emergency_refund now`);

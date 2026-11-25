@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PHASE } from "@card-flex/client-sdk";
+import { LEAVE_WINDOW_SECS, PHASE, SALT_SECS } from "@card-flex/client-sdk";
 import { useEffect, useRef, useState } from "react";
 import { avatarIndexes } from "./Avatar";
 import { END_REASON, hashIndex, sol } from "@/lib/format";
@@ -53,7 +53,7 @@ export function TableView({ tableId }: { tableId: string }) {
     return () => { document.title = "Card Flex — Fortune Favours the Bold"; };
   }, [myTurnNow, rt?.action_seq]); // eslint-disable-line react-hooks/exhaustive-deps
   const dealtNow = t.gameLive && rt?.phase === PHASE.DEALT;
-  useEffect(() => { if (dealtNow) play("deal"); }, [dealtNow, rt?.hand_no]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dealtNow) play("deal", rt?.dealing_count ?? 2); }, [dealtNow, rt?.hand_no]); // eslint-disable-line react-hooks/exhaustive-deps
   const resultKey = t.result ? `${t.result.handNo}` : "";
   useEffect(() => {
     if (!t.result || t.mySeat === null || !t.seats[t.mySeat]?.dealt) return;
@@ -97,6 +97,9 @@ export function TableView({ tableId }: { tableId: string }) {
 
 export type T = ReturnType<typeof useTable>;
 
+/** Matches the keeper's HAND_GAP_SECS (devnet.env / services/keeper, default 8). */
+const NEXT_HAND_SECS = Number(process.env.NEXT_PUBLIC_HAND_GAP_SECS ?? 9);
+
 export function phaseText(t: T): string {
   const rt = t.rt;
   if (!rt) return "Table not opened yet";
@@ -105,12 +108,19 @@ export function phaseText(t: T): string {
   switch (rt.phase) {
     case PHASE.IDLE: {
       if (players < 2) return "Waiting for players · 2 needed";
-      return `Next hand starting…`;
+      // The keeper pauses NEXT_HAND_SECS after a hand so everyone sees the result.
+      const left = Number(rt.last_hand_end) + NEXT_HAND_SECS - Math.floor(Date.now() / 1000);
+      return left > 0 && rt.last_hand_end > 0n ? `Next hand in ${left}s` : `Next hand starting…`;
     }
-    case PHASE.SALTS_PENDING: return "Shuffling · players add randomness";
+    case PHASE.SALTS_PENDING:
     case PHASE.SALTS_DONE:
     case PHASE.VRF_PENDING:
-    case PHASE.SEEDED: return "Drawing verifiable randomness…";
+    case PHASE.SEEDED: {
+      // CF-079: no boot is taken before the deal; until then leaving is free.
+      const left = Number(rt.salts_deadline) - SALT_SECS + LEAVE_WINDOW_SECS - Math.floor(Date.now() / 1000);
+      if (left > 0) return `Cards in ${left}s · leave now and no boot is taken`;
+      return rt.phase === PHASE.SALTS_PENDING ? "Shuffling · players add randomness" : "Drawing verifiable randomness…";
+    }
     case PHASE.DEALT: return "Dealing…";
     case PHASE.HAND_COMPLETE: return "Hand over · revealing";
     case PHASE.REVEALED: return "Hand over";

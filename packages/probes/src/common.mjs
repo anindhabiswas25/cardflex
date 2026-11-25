@@ -82,7 +82,8 @@ export async function send(conn, instructions, signers, { skipPreflight = false,
       const ok = await landed();
       if (ok) return ok;
       if (e.programError || attempt >= retries) throw e;
-      log(`  retry after: ${String(e.message ?? e).slice(0, 80)}`);
+      // Transport errors are often plain objects (RPC error bodies): show their content, not [object Object].
+      log(`  retry after: ${(e?.message ?? (typeof e === "object" ? JSON.stringify(e) : String(e))).slice(0, 120)}`);
       await sleep(1000);
     }
   }

@@ -29,7 +29,9 @@ export async function launch(port = 9333) {
       const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
       const s = (m, p) => send(m, p, sessionId);
       await s("Page.enable"); await s("Runtime.enable");
-      await s("Emulation.setDeviceMetricsOverride", mobile ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } : { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+      // VIEWPORT=WxH (e.g. 1440x777, a laptop) overrides the desktop size.
+      const [vw, vh] = (process.env.VIEWPORT ?? "1440x1000").split("x").map(Number);
+      await s("Emulation.setDeviceMetricsOverride", mobile ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } : { width: vw, height: vh, deviceScaleFactor: 1, mobile: false });
       if (initScript) await s("Page.addScriptToEvaluateOnNewDocument", { source: initScript });
       const logs = [];
       handlers.add((m) => {
@@ -52,6 +54,8 @@ export async function launch(port = 9333) {
           const t0 = Date.now();
           for (;;) { const v = await p.eval(expr).catch(() => null); if (v) return v; if (Date.now() - t0 > ms) throw new Error(`${name}: timed out waiting for ${expr}`); await new Promise((r) => setTimeout(r, every)); }
         },
+        /** Resize the page (desktop): to check a layout at several window sizes in one session. */
+        async viewport(width, height) { await s("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false }); await new Promise((r) => setTimeout(r, 400)); },
         async shot(file) { const { data } = await s("Page.captureScreenshot", { format: "png" }); writeFileSync(file, Buffer.from(data, "base64")); },
       };
       return p;

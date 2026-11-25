@@ -31,6 +31,16 @@ test("idle: revoke live grants first; sync departed players; heartbeat when quie
   assert.deepEqual(decide(runtime(() => {}), ctx({ lastCommitSecs: 600n })), { kind: "commit_and_sync", reason: "heartbeat" });
 });
 
+test("CF-073: no idle heartbeat for an empty table (each commit costs the runtime)", () => {
+  const due = { lastCommitSecs: 600n };
+  assert.equal(decide(runtime(() => {}), ctx({ ...due, ledgers: 0 })).kind, "wait", "nobody's money at the table");
+  assert.deepEqual(decide(runtime(() => {}), ctx({ ...due, ledgers: 0b1 })), { kind: "commit_and_sync", reason: "heartbeat" }, "a ledger (bought in / unpaid) keeps it");
+  assert.deepEqual(decide(runtime((r) => { r.occupied = 0b1; }), ctx({ ...due, ledgers: 0 })), { kind: "commit_and_sync", reason: "heartbeat" }, "an occupied seat keeps it");
+  assert.deepEqual(decide(runtime(() => {}), ctx(due)), { kind: "commit_and_sync", reason: "heartbeat" }, "config unknown: heartbeat as before");
+  assert.deepEqual(decide(runtime((r) => { r.departed = 0b100; }), ctx({ ledgers: 0 })), { kind: "commit_and_sync", reason: "departed" }, "a departure is still synced");
+  assert.deepEqual(decide(runtime((r) => { r.phase = PHASE.DEALT; r.turn_deadline = 2_000n; r.occupied = 0b11; r.dealing_count = 2; r.dealing_order[0] = 0; r.dealing_order[1] = 1; }), ctx({ ...due, ledgers: 0 })), { kind: "commit_and_sync", reason: "heartbeat" }, "mid-hand heartbeat unchanged");
+});
+
 test("salts: wait for players, cancel after the deadline", () => {
   const r = runtime((x) => { x.phase = PHASE.SALTS_PENDING; x.salts_deadline = 1_030n; });
   assert.equal(decide(r, ctx()).kind, "wait");
@@ -104,4 +114,27 @@ test("a player who joins and leaves a seat between two reads is still synced (ep
   // A new sit-down (epoch 4) joined and left before the keeper saw the seat taken:
   // same departed bit, new epoch -> not synced yet.
   assert.equal(syncedDepartures({ departed: 0b1, seat_epoch: [4, 0, 0, 0, 0, 0] }, synced), 0);
+});
+
+test("CF-076: deposited top-ups go into the stacks between hands, after seating, before the deal", () => {
+  const two = (r: any) => { r.occupied = 0b11; r.stacks[0] = 1_000_000n; r.stacks[1] = 10_000n; };
+  assert.deepEqual(decide(runtime(two), ctx({ topUpSeats: [1] })), { kind: "apply_top_ups", seats: [1] }, "before start_hand");
+  assert.deepEqual(decide(runtime(two), ctx({ topUpSeats: [1], waitingSeats: [2] })), { kind: "join_waiting", seats: [2] }, "seating first");
+  assert.equal(decide(runtime((r) => { two(r); r.phase = PHASE.DEALT; r.turn_deadline = 2_000n; r.dealing_count = 2; r.dealing_order[0] = 0; r.dealing_order[1] = 1; }), ctx({ topUpSeats: [1] })).kind === "apply_top_ups", false, "never mid-hand");
+  assert.equal(decide(runtime(two), ctx({ topUpSeats: [] })).kind, "wait", "seat 1 below the boot and nothing to add: no hand");
+});
+
+test("CF-077: a salt round waiting only on leavers is cancelled at once", () => {
+  const r = (patch: (x: any) => void) => runtime((x) => { x.phase = PHASE.SALTS_PENDING; x.salts_deadline = 1_030n; x.dealing_count = 2; x.dealing_order[0] = 0; x.dealing_order[1] = 1; x.salts_in = 0b01; patch(x); });
+  assert.equal(decide(r(() => {}), ctx()).kind, "wait", "seat 1 still has time");
+  assert.equal(decide(r((x) => { x.leaving = 0b10; }), ctx()).kind, "cancel_salts", "seat 1 is leaving");
+  assert.equal(decide(r((x) => { x.leaving = 0b01; }), ctx()).kind, "wait", "the leaver already sent its salt; the deal will cancel instead");
+});
+
+test("CF-079: no deal in the first seconds of a hand, unless a dealt player is leaving", () => {
+  // start = salts_deadline - 30; deal allowed from start + 5 (+1 s margin)
+  const r = (patch: (x: any) => void) => runtime((x) => { x.phase = PHASE.SEEDED; x.salts_deadline = 1_000n + 30n; x.dealing_count = 2; x.dealing_order[0] = 0; x.dealing_order[1] = 1; x.occupied = 0b11; patch(x); });
+  assert.equal(decide(r(() => {}), ctx({ nowSecs: 1_003n })).kind, "wait", "3 s after the start");
+  assert.equal(decide(r(() => {}), ctx({ nowSecs: 1_006n })).kind, "deal_hand", "window over");
+  assert.equal(decide(r((x) => { x.leaving = 0b10; }), ctx({ nowSecs: 1_001n })).kind, "deal_hand", "a leaver: cancel at once (deal_hand cancels)");
 });

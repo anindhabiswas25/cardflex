@@ -49,6 +49,10 @@ pub const TURN_SECS: i64 = 25;
 /// CF-050: seconds the dealt players have to submit their salts before
 /// anyone may cancel the hand (non-submitters are then made to leave).
 pub const SALT_SECS: i64 = 30;
+/// CF-079: no deal (no boot) sooner than this after `start_hand`, so a
+/// player can still leave the hand for free. `start_hand` sets
+/// `salts_deadline = start + SALT_SECS`, so the start is derived from it.
+pub const LEAVE_WINDOW_SECS: i64 = 5;
 /// A seat is made to leave only after this many salt rounds missed in a row
 /// (security review of CF-050: one slow moment must not evict a player).
 pub const MAX_MISSED_SALTS: u8 = 3;
@@ -357,13 +361,23 @@ pub struct TableRuntime {
     /// runtime permission only: it reads table state, never cards, salts or
     /// the seed. Set by the table authority with `set_keeper`.
     pub keeper: Pubkey,
+    /// CF-076 (ADR 0005 amendment): per seat, how much of its ledger's
+    /// `buy_in` (= everything deposited this sit-down: buy-in + top-ups) is
+    /// already in `stacks`. `join_seat` sets it to the buy-in; `apply_top_up`
+    /// adds the difference to the stack between hands; `sync_hand` pays a
+    /// difference not applied yet on top of the stack, so a deposit is never
+    /// lost or counted twice.
+    pub credited: [u64; MAX_SEATS],
 }
 
 /// CF-067: earlier `TableRuntime` sizes that are a prefix of the current
 /// layout (fields were only appended after `bump` since CF-050): CF-050..063
 /// (1,212 bytes) and CF-064 before CF-065 (1,252). Older layouts (1,190)
 /// moved `bump`, so they can't be migrated; their money leaves by refund.
-pub const MIGRATABLE_RUNTIME_LENS: [usize; 2] = [1_212, 1_252];
+/// CF-076: 1,284 (CF-065 `keeper`, before `credited`).
+pub const MIGRATABLE_RUNTIME_LENS: [usize; 3] = [1_212, 1_252, 1_284];
+/// CF-076: byte offset of `TableRuntime.credited` (after the CF-065 keeper).
+pub const RUNTIME_CREDITED_OFFSET: usize = 1_284;
 
 /// CF-064: byte offset of `TableRuntime.commit_seq` (pinned in test_game.rs).
 pub const RUNTIME_COMMIT_SEQ_OFFSET: usize = 858;
@@ -858,6 +872,39 @@ pub struct JoinSeat<'info> {
     pub ephemeral_vault: Option<UncheckedAccount<'info>>,
     /// CHECK: fixed address, checked in the handler.
     pub magic_program: Option<UncheckedAccount<'info>>,
+}
+
+/// `top_up` (base): the seat's wallet adds chips to its sit-down (CF-076).
+#[derive(Accounts)]
+#[instruction(seat: u8)]
+pub struct TopUp<'info> {
+    #[account(mut)]
+    pub wallet: Signer<'info>,
+    #[account(seeds = [GLOBAL_SEED], bump = global.bump)]
+    pub global: Box<Account<'info, GlobalConfig>>,
+    #[account(mut, seeds = [TABLE_SEED, config.authority.as_ref(), &config.table_id.to_le_bytes()], bump = config.bump)]
+    pub config: Box<Account<'info, TableConfig>>,
+    #[account(mut, seeds = [VAULT_SEED, config.key().as_ref()], bump = config.vault_bump)]
+    pub vault: Box<Account<'info, TableVault>>,
+    #[account(mut, seeds = [LEDGER_SEED, config.key().as_ref(), &[seat]], bump = ledger.bump, has_one = wallet)]
+    pub ledger: Box<Account<'info, SeatLedger>>,
+    /// CHECK: this table's runtime PDA (delegated or not); only its size is
+    /// read: top-ups need the CF-076 layout (`credited`).
+    #[account(seeds = [RUNTIME_SEED, config.key().as_ref()], bump)]
+    pub runtime: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// `apply_top_up` (PER, permissionless, between hands): credits a seat's
+/// deposited top-up to its stack (CF-076).
+#[derive(Accounts)]
+#[instruction(seat: u8)]
+pub struct ApplyTopUp<'info> {
+    pub payer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+    #[account(seeds = [LEDGER_SEED, runtime.config.as_ref(), &[seat]], bump = ledger.bump)]
+    pub ledger: Box<Account<'info, SeatLedger>>,
 }
 
 /// `check_vault`: read-only reconciliation. Ledgers of every bought-in seat

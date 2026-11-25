@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  ACTION, ENDPOINTS, PHASE, act, buyIn, commitHand, decodeRuntime, decodeTableConfig, isProgramError, joinSeat, loadVerifier, magicFeeVault,
+  ACTION, ENDPOINTS, PHASE, act, buyIn, commitHand, decodeLedger, decodeRuntime, decodeTableConfig, isProgramError, joinSeat, loadVerifier, magicFeeVault,
   newSalt, newSessionKey, perConnection, perLogin, rules, sendAndConfirm, sizeOf, submitSalt, tableAddresses, verifierWasmUrl,
 } from "@card-flex/client-sdk";
 import { Store } from "@card-flex/api/store";
@@ -33,13 +33,17 @@ const r0 = (await base.getAccountInfo(t.runtime))!;
 const cfg0 = decodeTableConfig((await base.getAccountInfo(config))!.data);
 console.log(`table ${config.toBase58()}: runtime ${r0.data.length} bytes, seats ${cfg0.max_seats}, seated ${cfg0.seated.toString(2)}`);
 if (r0.data.length === WANT) throw new Error("runtime is already current; pick an old table");
-await send(base, [migrateRuntime(admin.publicKey, config)], [admin]);
+await send(base, [migrateRuntime(admin.publicKey, config, cfg0.seated)], [admin]);
 const r1 = (await base.getAccountInfo(t.runtime))!;
 check(`runtime grown ${r0.data.length} -> ${WANT} bytes`, r1.data.length === WANT);
 check("every old byte kept", Buffer.compare(r0.data, r1.data.subarray(0, r0.data.length)) === 0);
-check("new fields start at zero (no paid commit, no keeper)", r1.data.subarray(r0.data.length).every((b) => b === 0));
+// CF-076: `credited` (from byte 1,284) starts as each seated sit-down's deposits; the rest of the new bytes are zero.
+check("new fields start at zero (no paid commit, no keeper)", r1.data.subarray(r0.data.length, Math.max(r0.data.length, 1284)).every((b) => b === 0));
+const rt1 = decodeRuntime(r1.data);
+const ls = await base.getMultipleAccountsInfo([0, 1, 2, 3, 4, 5].map((s) => t.ledger(s)));
+check("credited = each seated sit-down's buy-in", [0, 1, 2, 3, 4, 5].every((s) => { const a = ls[s]; if (!a) return rt1.credited[s] === 0n; const l = decodeLedger(a.data); return l.epoch === rt1.seat_epoch[s] ? rt1.credited[s] === l.buy_in : rt1.credited[s] === 0n; }));
 check("still rent-exempt", r1.lamports >= (await base.getMinimumBalanceForRentExemption(WANT)));
-const again = await send(base, [migrateRuntime(admin.publicKey, config)], [admin]).then(() => null, (e) => e);
+const again = await send(base, [migrateRuntime(admin.publicKey, config, cfg0.seated)], [admin]).then(() => null, (e) => e);
 check("second migrate refused (BadRuntime)", again !== null && isProgramError(again, "BadRuntime"));
 
 // ---- play on it ----

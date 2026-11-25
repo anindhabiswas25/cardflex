@@ -7,7 +7,7 @@
 // - Money steps (buy-in, cash-out, refund) are signed by the wallet.
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import {
-  ACTION, PHASE, TABLE_STATUS, act as actIx, buyIn as buyInIx, cashOut as cashOutIx, claimRefund as claimRefundIx, decodeLedger, emergencyRefund as emergencyRefundIx,
+  ACTION, PHASE, TABLE_STATUS, act as actIx, buyIn as buyInIx, topUp as topUpIx, cashOut as cashOutIx, claimRefund as claimRefundIx, decodeLedger, emergencyRefund as emergencyRefundIx,
   decodeRuntime, decodeSeatHand, dealPositions, handRecordFromHandLog, joinSeat, leaveSeat, loadVerifier, newSalt, rotateSession, rules,
   submitSalt, tableAddresses, type SeatLedger, type TableRuntime, type Verifier,
 } from "@card-flex/client-sdk";
@@ -33,6 +33,8 @@ export type SeatView = {
   payout: bigint;
   leaving: boolean;
 };
+/** CF-078: a finished sit-down. `deposited` = buy-in + top-ups; `paid` = what the vault sent back. */
+export type ExitSummary = { seat: number; deposited: bigint; paid: bigint; ledger: string; vault: string; wallet: string };
 export type HandResult = { handNo: bigint; reason: number; winners: number[]; payouts: bigint[]; rake: bigint; pot: bigint; shown: Record<number, number[]>; verified: boolean | null };
 export type Mode = "loading" | "missing" | "spectator" | "joining" | "resume" | "seated" | "leaving" | "cashout" | "refunded" | "stalled";
 
@@ -61,6 +63,8 @@ export function useTable(configStr: string) {
   const [peeks, setPeeks] = useState<Record<number, number[]>>({});
   const [result, setResult] = useState<HandResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** CF-078: the sit-down that just ended: what went in, what came back (for the summary + proof). */
+  const [exit, setExit] = useState<ExitSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   /** Set when this wallet's left seat was paid (by the keeper or a cash-out click). */
@@ -106,13 +110,13 @@ export function useTable(configStr: string) {
   // ledger marked `left`: what counts is that the seat was on its way out
   // (leaving, departed or left) and its ledger is now gone. The amount is the
   // seat's final stack (the runtime keeps it until the seat is reused).
-  const exiting = useRef<{ seat: number; stack: bigint } | null>(null);
+  const exiting = useRef<{ seat: number; stack: bigint; deposited: bigint } | null>(null);
   useEffect(() => {
     const rtNow = live ?? snap?.rt ?? null;
     if (ledger) {
       const s = ledger.seat;
       const out = ledger.left || (!!rtNow && (bit(rtNow.leaving, s) || (bit(rtNow.departed, s) && rtNow.seat_epoch[s] === ledger.epoch)));
-      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : rtNow?.stacks[s] ?? ledger.synced_stack } : null;
+      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : rtNow?.stacks[s] ?? ledger.synced_stack, deposited: ledger.buy_in } : null;
     }
   }, [ledger, live, snap]);
   useEffect(() => {
@@ -120,6 +124,7 @@ export function useTable(configStr: string) {
     prevLedger.current = ledger;
     if (p && !ledger && exiting.current) {
       setPaid(exiting.current.stack);
+      if (config && me) setExit({ seat: exiting.current.seat, deposited: exiting.current.deposited, paid: exiting.current.stack, ledger: tableAddresses(config).ledger(exiting.current.seat).toBase58(), vault: tableAddresses(config).vault.toBase58(), wallet: me });
       exiting.current = null;
       if (config && me) dropSession(config.toBase58(), me);
       setSession(null);
@@ -213,6 +218,8 @@ export function useTable(configStr: string) {
   // ---- add my randomness to the shuffle (automatic) ----
   useEffect(() => {
     if (!per || !live || !seated || mySeat === null || !config || live.phase !== PHASE.SALTS_PENDING) return;
+    // CF-077: a player who asked to leave doesn't take part: the round (and the hand) ends at once, no boot.
+    if ((live.leaving >> mySeat) & 1) return;
     if (!live.dealing_order.slice(0, live.dealing_count).includes(mySeat) || bit(live.salts_in, mySeat)) return;
     const tag = `${live.hand_no}`;
     if (saltSent.current === tag) return;
@@ -237,9 +244,10 @@ export function useTable(configStr: string) {
     if (!rt || !p) return;
     const name = (s: number) => (s === mySeat ? "You" : `Seat ${s + 1}`);
     const out: string[] = [];
-    if (rt.hand_no !== p.hand_no || (rt.phase === PHASE.SALTS_PENDING && p.phase !== PHASE.SALTS_PENDING)) out.push(`Hand #${rt.hand_no} starting · players add randomness`);
+    if (rt.phase === PHASE.SALTS_PENDING && (p.phase !== PHASE.SALTS_PENDING || rt.hand_no !== p.hand_no)) out.push(`Hand #${rt.hand_no} starting · players add randomness`);
     if (rt.phase === PHASE.VRF_PENDING && p.phase !== PHASE.VRF_PENDING) out.push("Drawing verifiable randomness…");
     if (rt.phase === PHASE.DEALT && p.phase !== PHASE.DEALT) out.push("Cards dealt");
+    if ((rt.phase === PHASE.HAND_COMPLETE || rt.phase === PHASE.REVEALED || rt.phase === PHASE.IDLE) && p.phase === PHASE.DEALT) out.push("Hand over · next hand in a few seconds");
     if (rt.phase === PHASE.DEALT && p.phase === PHASE.DEALT && rt.hand_no === p.hand_no) {
       for (const s of rt.game.order.slice(0, rt.game.n)) {
         const a = rt.game.seats[s], b = p.game.seats[s];
@@ -408,6 +416,7 @@ export function useTable(configStr: string) {
       if (still !== null) throw e;
     }
     setPaid(ledger.synced_stack);
+    setExit({ seat: ledger.seat, deposited: ledger.buy_in, paid: ledger.synced_stack, ledger: tableAddresses(config).ledger(ledger.seat).toBase58(), vault: tableAddresses(config).vault.toBase58(), wallet: wallet.publicKey.toBase58() });
     dropSession(config.toBase58(), wallet.publicKey.toBase58());
     setSession(null);
   }), [run, wallet, config, ledger]);
@@ -418,6 +427,7 @@ export function useTable(configStr: string) {
     // A stalled table is switched to refunds in the same transaction.
     await sendWithWallet(wallet, snap.cfg.status === TABLE_STATUS.REFUNDED ? [claim] : [emergencyRefundIx({ payer: wallet.publicKey, config }), claim]);
     setPaid(ledger.synced_stack);
+    setExit({ seat: ledger.seat, deposited: ledger.buy_in, paid: ledger.synced_stack, ledger: tableAddresses(config).ledger(ledger.seat).toBase58(), vault: tableAddresses(config).vault.toBase58(), wallet: wallet.publicKey.toBase58() });
     dropSession(config.toBase58(), wallet.publicKey.toBase58());
     setSession(null);
   }), [run, wallet, config, ledger]);
@@ -433,8 +443,25 @@ export function useTable(configStr: string) {
     setSession(s);
   }), [run, wallet, config, ledger]);
 
+  /**
+   * CF-076: add chips to my sit-down (wallet signs). Payable at once; the
+   * keeper puts them in my stack before the next deal (never mid-hand).
+   */
+  const topUp = useCallback((amount: bigint) => run("Adding chips", async () => {
+    if (!wallet || !config || !ledger) throw new Error("Not seated.");
+    await sendWithWallet(wallet, [topUpIx({ wallet: wallet.publicKey, config, seat: ledger.seat, amount })]);
+  }), [run, wallet, config, ledger]);
+  // Deposited but not in the stack yet (applied between hands).
+  const topUpPending = ledger && rt && rt.credited && rt.seat_epoch[ledger.seat] === ledger.epoch && ledger.buy_in > rt.credited[ledger.seat] ? ledger.buy_in - rt.credited[ledger.seat] : 0n;
+  // Same limits as the program: ≥ 1 boot; last synced stack + top-up ≤ max buy-in.
+  // Only once the table runs the CF-076 layout (runtime has `credited`); older tables refuse top-ups.
+  const topUpRange = snap && ledger && !ledger.left && snap.cfg.status === TABLE_STATUS.ACTIVE && !!rt?.credited
+    ? { min: snap.cfg.max_buy_in / 200n, max: snap.cfg.max_buy_in > ledger.synced_stack ? snap.cfg.max_buy_in - ledger.synced_stack : 0n }
+    : null;
+
   return {
     config, snap, rt, mode, seats, mySeat, seated, ledger, session, paid, clearPaid: () => setPaid(null),
+    topUp, topUpPending, topUpRange, exit, clearExit: () => setExit(null),
     toAct, legal, turnLeft, inHand, gameLive, result, events, busy, error, clearError: () => setError(null),
     myCards: (myHand && rt && myHand.handNo === rt.hand_no ? myHand.cards : null) ?? (mySeat !== null && result && !gameLive ? result.shown[mySeat] ?? null : null),
     buyIn, actions, leave, cashOut, claimRefund, resume, refresh: refreshBase,

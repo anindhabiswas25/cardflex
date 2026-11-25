@@ -34,6 +34,10 @@ export const SEEDS = {
 
 export const MAX_SEATS = 6;
 export const TURN_SECS = 25;
+/** table.rs SALT_SECS: `start_hand` sets salts_deadline = start + SALT_SECS. */
+export const SALT_SECS = 30;
+/** CF-079 (table.rs LEAVE_WINDOW_SECS): no deal, so no boot, sooner than this after a hand starts. */
+export const LEAVE_WINDOW_SECS = 5;
 export const RULES_VERSION = 1;
 
 /** TableRuntime.phase values (programs/card-flex/src/table.rs). */

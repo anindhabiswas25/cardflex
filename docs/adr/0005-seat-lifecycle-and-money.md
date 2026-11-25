@@ -104,3 +104,63 @@ commits, so it must decide from committed state alone:
 - Joining in PER relies on MagicBlock cloning a base account into PER
   correctly and freshly. A stale clone can only delay a join (the epoch
   check fails); it can't move money. To be measured in CF-035.
+
+## Amendment (2026-11-25, CF-076): top-up without leaving the seat
+
+A player whose stack runs low can add chips from their wallet and keep the
+seat. Rules v1 are unchanged: chips never enter a hand in progress (no
+all-in; a player who can't pay a bet must still pack).
+
+- **`top_up(seat, amount)`** (base, signed by the ledger's wallet): the
+  lamports go to the TableVault; the ledger's `buy_in` (now = all deposits
+  of this sit-down) and `synced_stack` grow by `amount` at once, so cash-out
+  and refunds pay a top-up back even if it never reaches the table. Limits:
+  ≥ 1 boot; `synced_stack + amount ≤ max_buy_in`; table ACTIVE, not paused,
+  the ledger's current epoch, not left. Refused while the runtime has the
+  old layout (`RuntimeNotMigrated`).
+- **`TableRuntime.credited[seat]`** (appended; runtime 1,284 → 1,332 bytes):
+  how much of the ledger's deposits is in `stacks`. `join_seat` sets it to
+  the buy-in.
+- **`apply_top_up(seat)`** (PER, permissionless, IDLE only): adds
+  `buy_in − credited` to the stack and sets `credited = buy_in`; refused when
+  there is nothing to add. A stale PER clone of the ledger can only show
+  fewer deposits (they only grow within an epoch), never more. The keeper
+  applies top-ups between hands, after seating newcomers, before `start_hand`.
+- **`sync_hand`** between hands: `synced_stack = stack + (buy_in − credited)`,
+  so a deposit not yet applied is never dropped or counted twice.
+- **`migrate_runtime`** takes the ledgers of every bought-in seat (seat
+  order) and sets `credited` to each current sit-down's `buy_in` (the table
+  is undelegated then, so base ledgers are current).
+- Vault identity unchanged: `vault = rent + Σ synced_stack + unswept rake`.
+
+Upgrade order on Devnet: close live tables with the old program, deploy,
+`cf-admin table migrate`, `table open`, `table repair`. The new program can't
+read a 1,284-byte live runtime, and a live table can't be migrated.
+
+## Amendment (2026-11-25, CF-077): leaving before the cards costs nobody a boot
+
+Boots are collected by `deal_hand`. A player who asked to leave
+(`leave_seat`) after `start_hand` but before the deal used to be dealt in
+anyway, time out and pack: everyone's boot went into a pot the others won
+back minus rake.
+
+- `deal_hand` cancels instead of dealing when any dealt-in seat is
+  `leaving`: no boot from anyone, the hand counts in `cancelled_hands`, the
+  next hand number, leaves applied (same reset as `cancel_hand`). Nobody has
+  seen a card at that point (the deck is derived after the check), so
+  leaving can't be used to dodge a bad hand.
+- `cancel_salts` no longer waits for the deadline when every seat still
+  missing a salt is `leaving`; the keeper sends it at once. The web client
+  doesn't submit a salt for a seat that is leaving.
+- In the pause between hands (`HAND_GAP_SECS`, keeper 8 s) a leave applies at
+  once, so no hand starts with fewer than two players.
+
+## Amendment (2026-11-25, CF-079): five seconds to leave for free
+
+A hand went from `start_hand` to `deal_hand` in under 2 s, too short to leave
+before the boot. `deal_hand` now refuses to deal sooner than
+`LEAVE_WINDOW_SECS` (5) after the start (start = `salts_deadline -
+SALT_SECS`, no new field), unless a dealt-in seat is leaving, in which case
+it cancels at once (CF-077). The keeper waits the window (+1 s for clock
+differences); the table shows "Cards in Ns · leave now and no boot is
+taken". The keeper's pause between hands (`HAND_GAP_SECS`) is now 9 s.

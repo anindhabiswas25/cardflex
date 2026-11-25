@@ -2,7 +2,7 @@
 // permissionless step that moves it forward. Pure, so every phase is tested
 // without a chain. Players' own steps (salts, bets) are never taken for them;
 // the keeper only uses the program's timeouts when players don't act.
-import { PHASE, type TableRuntime } from "@card-flex/client-sdk";
+import { LEAVE_WINDOW_SECS, PHASE, SALT_SECS, type TableRuntime } from "@card-flex/client-sdk";
 
 /** Must match programs/card-flex/src/table.rs VRF_TIMEOUT_SLOTS. */
 export const VRF_TIMEOUT_SLOTS = 3_000n;
@@ -10,6 +10,7 @@ export const VRF_TIMEOUT_SLOTS = 3_000n;
 export type Step =
   | { kind: "start_hand" }
   | { kind: "join_waiting"; seats: number[] } // seat players who bought in mid-hand
+  | { kind: "apply_top_ups"; seats: number[] } // CF-076: deposited top-ups into the stacks
   | { kind: "cancel_salts" }
   | { kind: "request_shuffle" }
   | { kind: "cancel_hand" }
@@ -47,6 +48,18 @@ export type Ctx = {
    * a player who arrived mid-hand plays the very next hand.
    */
   waitingSeats?: number[];
+  /**
+   * CF-073: `TableConfig.seated` (seats holding a ledger: bought in, seated,
+   * or left and not yet paid). 0 = nobody's money is at the table, so the
+   * idle heartbeat is skipped: after MagicBlock's free commits each commit
+   * costs the runtime 0.002 SOL. Unknown (undefined) = heartbeat as before.
+   */
+  ledgers?: number;
+  /**
+   * CF-076: seated seats whose ledger shows deposits (`buy_in`) not yet in
+   * the stack (`credited`); applied between hands, before start_hand.
+   */
+  topUpSeats?: number[];
 };
 
 const IN_PROGRESS: number[] = [PHASE.SALTS_PENDING, PHASE.SALTS_DONE, PHASE.VRF_PENDING, PHASE.SEEDED, PHASE.DEALT, PHASE.HAND_COMPLETE];
@@ -87,6 +100,8 @@ function phaseStep(rt: TableRuntime, c: Ctx): Step {
       }
       // Someone bought in during the last hand: seat them before the next one.
       if (c.waitingSeats?.length) return { kind: "join_waiting", seats: c.waitingSeats };
+      // CF-076: chips a player added go in before the next deal.
+      if (c.topUpSeats?.length) return { kind: "apply_top_ups", seats: c.topUpSeats };
       // Players who left must be able to cash out: get their final stack synced.
       if ((rt.departed & ~c.departedSynced) !== 0) return { kind: "commit_and_sync", reason: "departed" };
       const eligible = bits(rt.occupied).filter((s) => rt.stacks[s] >= rt.boot && rt.boot > 0n);
@@ -96,17 +111,33 @@ function phaseStep(rt: TableRuntime, c: Ctx): Step {
         if (c.nowSecs < rt.last_hand_end + gap) return { kind: "wait", why: "pause between hands" };
         return { kind: "start_hand" };
       }
-      if (c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) return { kind: "commit_and_sync", reason: "heartbeat" };
+      // CF-073: no heartbeat for an empty table. Safe: the program refuses
+      // emergency_refund without a ledger and restarts the refund clock at
+      // the first buy-in.
+      const empty = c.ledgers === 0 && rt.occupied === 0;
+      if (!empty && c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) return { kind: "commit_and_sync", reason: "heartbeat" };
+      if (empty) return { kind: "wait", why: "empty table (no heartbeat needed)" };
       return { kind: "wait", why: eligible.length < 2 ? "fewer than 2 players with a stack" : "table not live" };
     }
     case PHASE.SALTS_PENDING:
-      return c.nowSecs >= rt.salts_deadline ? { kind: "cancel_salts" } : { kind: "wait", why: "players submitting salts" };
+    {
+      // CF-077: a round waiting only on players who asked to leave ends at once.
+      const missing = dealt(rt).filter((x) => ((rt.salts_in >> x) & 1) === 0);
+      const onlyLeavers = missing.length > 0 && missing.every((x) => ((rt.leaving >> x) & 1) === 1);
+      return c.nowSecs >= rt.salts_deadline || onlyLeavers ? { kind: "cancel_salts" } : { kind: "wait", why: "players submitting salts" };
+    }
     case PHASE.SALTS_DONE:
       return { kind: "request_shuffle" };
     case PHASE.VRF_PENDING:
       return c.slot >= rt.vrf_request_slot + VRF_TIMEOUT_SLOTS ? { kind: "cancel_hand" } : { kind: "wait", why: "VRF callback" };
-    case PHASE.SEEDED:
-      return { kind: "deal_hand", order: dealt(rt) };
+    case PHASE.SEEDED: {
+      // CF-079: a leaver ends the hand at once (deal_hand cancels, no boot);
+      // otherwise players get LEAVE_WINDOW_SECS from the start to leave for
+      // free (+1 s for clock differences with the PER).
+      const leaver = dealt(rt).some((x) => ((rt.leaving >> x) & 1) === 1);
+      const dealAt = rt.salts_deadline - BigInt(SALT_SECS) + BigInt(LEAVE_WINDOW_SECS) + 1n;
+      return leaver || c.nowSecs >= dealAt ? { kind: "deal_hand", order: dealt(rt) } : { kind: "wait", why: "players may still leave for free" };
+    }
     case PHASE.DEALT: {
       // An accepted Side Show: give the two players their view.
       const pending = viewerPairs(rt).find(([a, b]) => !(((rt.grants >> a) & 1) && ((rt.grants >> b) & 1)));

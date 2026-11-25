@@ -65,9 +65,9 @@ try {
   const pill = await p.waitFor(`document.querySelector('[data-testid=wallet-pill]')?.innerText`, 20000);
   check("connects through standard:connect", /5XAz/.test(pill), pill.replace(/\n/g, " "));
   // Buy in through the wallet's signTransaction, then leave and cash out.
-  await p.waitFor(`!!document.querySelector('[data-testid=buy-in] input[type=range]')`, 60000);
+  await p.waitFor(`!!(document.querySelector('[data-testid=buy-in] input[type=range]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), null))`, 60000); // CF-078: tap a + seat
   await p.eval(`(() => { const r = document.querySelector('[data-testid=buy-in] input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(r, r.min); r.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await p.waitFor(`!document.querySelector('[data-testid=buy-in-btn]').disabled`, 60000);
+  await p.waitFor(`!(document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]'))).disabled`, 60000);
   await p.click("[data-testid=buy-in-btn]");
   await p.waitFor(`/You're bought in|● seated/.test(document.body.innerText)`, 120000);
   check("buy-in signed by the wallet (signTransaction)", (await p.eval(`window.__mockSigns`)) >= 1);

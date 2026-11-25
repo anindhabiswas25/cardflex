@@ -6,10 +6,15 @@ mod common;
 use {
     anchor_lang::{
         prelude::Pubkey,
-        solana_program::{instruction::Instruction, system_program},
+        solana_program::{
+            instruction::{AccountMeta, Instruction},
+            system_program,
+        },
         AccountDeserialize, InstructionData, Space, ToAccountMetas,
     },
-    card_flex::table::{ephemeral_budget, TableRuntime, RUNTIME_SEED, TABLE_SEED},
+    card_flex::table::{
+        ephemeral_budget, TableConfig, TableRuntime, LEDGER_SEED, RUNTIME_SEED, TABLE_SEED,
+    },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_message::{Message, VersionedMessage},
@@ -680,17 +685,31 @@ fn keeper_read_key_rules() {
     assert_eq!(runtime(&t).keeper, Pubkey::default());
 }
 
+/// CF-076: the ledgers of every bought-in seat follow, in seat order.
 fn migrate_ix(t: &Table, payer: Pubkey) -> Instruction {
+    let cfg =
+        TableConfig::try_deserialize(&mut &t.svm.get_account(&t.config).unwrap().data[..]).unwrap();
+    let mut metas = card_flex::accounts::MigrateRuntime {
+        payer,
+        config: t.config,
+        runtime: t.runtime,
+        system_program: system_program::ID,
+    }
+    .to_account_metas(None);
+    for s in 0..6u8 {
+        if cfg.seated & (1 << s) != 0 {
+            let l = Pubkey::find_program_address(
+                &[LEDGER_SEED, t.config.as_ref(), &[s]],
+                &card_flex::id(),
+            )
+            .0;
+            metas.push(AccountMeta::new_readonly(l, false));
+        }
+    }
     Instruction::new_with_bytes(
         card_flex::id(),
         &card_flex::instruction::MigrateRuntime {}.data(),
-        card_flex::accounts::MigrateRuntime {
-            payer,
-            config: t.config,
-            runtime: t.runtime,
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
+        metas,
     )
 }
 
@@ -721,10 +740,18 @@ fn old_runtime_migrates_and_keeps_its_state() {
     assert!(!join(&mut t, &b, 1, Pubkey::new_unique()));
 
     let p = funded(&mut t.svm);
+    // CF-076: the ledgers must come along (here seats 0 and 1).
+    let mut short = migrate_ix(&t, p.pubkey());
+    short.accounts.pop();
+    assert!(!send(&mut t.svm, short, &p), "a missing ledger is refused");
     let ix = migrate_ix(&t, p.pubkey());
     assert!(send(&mut t.svm, ix, &p));
     let acc = t.svm.get_account(&t.runtime).unwrap();
     assert_eq!(acc.data.len(), 8 + TableRuntime::INIT_SPACE);
+    // CF-076: a seated sit-down starts fully credited; a bought-in seat that
+    // hasn't joined yet (b) gets it at join.
+    assert_eq!(runtime(&t).credited[0], 1_000_000);
+    assert_eq!(runtime(&t).credited[1], 0);
     // Rent for the new size AND the whole ephemeral budget (found on Devnet:
     // a runtime left at bare rent couldn't pay for its PER accounts).
     assert!(
@@ -757,6 +784,11 @@ fn old_runtime_migrates_and_keeps_its_state() {
     // Plays on: seating works again (b's buy-in stays in its ledger; a new player joins).
     let c = funded(&mut t.svm);
     assert!(join(&mut t, &c, 2, Pubkey::new_unique()));
+    assert_eq!(
+        runtime(&t).credited[2],
+        1_000_000,
+        "join credits the buy-in"
+    );
     // Already current: refused (nothing to do).
     let ix = migrate_ix(&t, p.pubkey());
     assert!(!send(&mut t.svm, ix, &p));

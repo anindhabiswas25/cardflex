@@ -12,7 +12,8 @@ import { api } from "@/lib/api";
 import { cardArt } from "@/lib/cards";
 import { base } from "@/lib/chain";
 import { CATEGORY_LABEL, END_REASON, short, sol } from "@/lib/format";
-import { metaFor } from "@/lib/lobby";
+import { LOBBY, metaFor } from "@/lib/lobby";
+import { useWallet } from "@/lib/wallet";
 import { getVerifier } from "@/lib/useTable";
 import { rules } from "@card-flex/client-sdk";
 import { Sol } from "./Sol";
@@ -42,8 +43,10 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
   const [report, setReport] = useState<VerifyReport | null>(null);
   const [pasted, setPasted] = useState("");
   const [showPaste, setShowPaste] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ table: table ?? "", hand: hand ?? "" });
 
   useEffect(() => {
@@ -51,6 +54,7 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
     let off = false;
     setLoaded(undefined);
     setReport(null);
+    setCopied(false);
     fetchRecord(table, hand)
       .then((l) => { if (!off) setLoaded(l); })
       .catch((e) => { if (!off) { setErr(String(e?.message ?? e)); setLoaded(null); } });
@@ -118,6 +122,16 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
       {/* ---------- lookup form ---------- */}
       {!table && (
         <section className="vf-panel">
+          <HandPicker />
+          <div className="vf-toggles">
+            <button type="button" className="vf-toggle" onClick={() => { setShowForm((v) => !v); setShowPaste(false); }} aria-expanded={showForm}>
+              {showForm ? "−" : "+"} Enter a table and hand number
+            </button>
+            <button type="button" className="vf-toggle" onClick={() => { setShowPaste((v) => !v); setShowForm(false); }} aria-expanded={showPaste} data-testid="paste-toggle">
+              {showPaste ? "−" : "+"} Paste a hand record
+            </button>
+          </div>
+          {showForm && (
           <form
             className="vf-form"
             onSubmit={(e) => {
@@ -137,15 +151,19 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
               <span>✓</span>Check
             </button>
           </form>
-          <button type="button" className="vf-toggle" onClick={() => setShowPaste((v) => !v)} aria-expanded={showPaste}>
-            {showPaste ? "−" : "+"} Paste a hand record instead
-          </button>
+          )}
           {showPaste && (
             <div className="vf-paste">
-              <textarea placeholder="cf-hand-record/2 JSON" value={pasted} onChange={(e) => setPasted(e.target.value)} />
-              <button type="button" className="vf-btn vf-btn-ghost" onClick={verifyPasted} disabled={!pasted.trim()}>
-                Verify record
-              </button>
+              <textarea placeholder="cf-hand-record/2 JSON (from “Download record” on a hand's page)" value={pasted} onChange={(e) => setPasted(e.target.value)} data-testid="paste-record" />
+              <div className="vf-paste-row">
+                <button type="button" className="vf-btn vf-btn-ghost" onClick={verifyPasted} disabled={!pasted.trim()} data-testid="verify-pasted">
+                  Verify record
+                </button>
+                <label className="vf-link vf-file">
+                  or load a .json file
+                  <input type="file" accept="application/json,.json" onChange={(e) => e.target.files?.[0]?.text().then(setPasted)} />
+                </label>
+              </div>
             </div>
           )}
         </section>
@@ -237,9 +255,17 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
           <section className="vf-sec vf-col">
             <header className="vf-head">
               <span className="vf-eyebrow">The checks</span>
-              <button type="button" className="vf-link vf-raw-btn" onClick={() => setShowRaw(true)}>
-                Raw record ↗
-              </button>
+              <span className="vf-rec-btns">
+                <button type="button" className="vf-link vf-raw-btn" onClick={() => setShowRaw(true)}>
+                  Raw record ↗
+                </button>
+                <button type="button" className="vf-link vf-raw-btn" onClick={() => copyRecord(rec).then(() => setCopied(true))} data-testid="copy-record">
+                  {copied ? "Copied ✓" : "Copy"}
+                </button>
+                <button type="button" className="vf-link vf-raw-btn" onClick={() => downloadRecord(rec)} data-testid="download-record">
+                  Download record ↓
+                </button>
+              </span>
             </header>
             <ul className="vf-checks">
               {report.checks.map((c) => (
@@ -264,6 +290,9 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
           <div className="vf-modal-box">
             <header>
               <span className="vf-eyebrow">Raw hand record</span>
+              <button type="button" className="vf-link vf-raw-btn" onClick={() => downloadRecord(rec)}>
+                Download ↓
+              </button>
               <button type="button" className="vf-modal-x" aria-label="Close" onClick={() => setShowRaw(false)}>
                 ✕
               </button>
@@ -276,6 +305,94 @@ export function VerifyHand({ table, hand }: { table?: string; hand?: string }) {
       {table && !report && <Actions table={table} />}
 
       <style>{CSS}</style>
+    </div>
+  );
+}
+
+/** The record as players keep it: re-check it here (paste) or offline with `cf-verify <file>`. */
+const recordJson = (rec: HandRecord) => JSON.stringify(rec, null, 2);
+function downloadRecord(rec: HandRecord) {
+  const url = URL.createObjectURL(new Blob([recordJson(rec)], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `cardflex-hand-${rec.table.slice(0, 8)}-${rec.hand_no}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+const copyRecord = (rec: HandRecord) => navigator.clipboard.writeText(recordJson(rec));
+
+type PickRow = { table: string; handNo: string; endReason: string; verified: boolean; note: string };
+const reason = (r: string) => r.replace(/_/g, " ");
+
+/** Recent hands to pick from: the wallet's own (if connected), or any lobby table's. From the indexer API. */
+function HandPicker() {
+  const { wallet } = useWallet();
+  const me = wallet?.publicKey.toBase58();
+  const tabs = [...(me ? [{ id: "me", label: "My hands" }] : []), ...LOBBY.map((t) => ({ id: t.config, label: t.name }))];
+  const [tab, setTab] = useState<string | null>(null);
+  const active = tab && tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id;
+  const [rows, setRows] = useState<PickRow[] | null | undefined>(undefined);
+  // Pages, never a scrolling list: as many rows as the screen has room for.
+  const [page, setPage] = useState(0);
+  const [perPage, setPerPage] = useState(5);
+  useEffect(() => {
+    const fit = () => setPerPage(window.innerWidth < 1000 ? 3 : window.innerHeight < 800 ? 4 : 5);
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  useEffect(() => {
+    if (!active) return;
+    let off = false;
+    setRows(undefined);
+    setPage(0);
+    const load: Promise<PickRow[] | null> =
+      active === "me"
+        ? api.player(me!, 30).then((p) => p && p.recent.map((h) => ({ table: h.table, handNo: h.handNo, endReason: h.endReason, verified: h.verified, note: `${h.won ? "won" : "net"} ${BigInt(h.net) > 0n ? "+" : ""}${sol(h.net)}` })))
+        : api.tableHands(active, 30).then((hs) => hs && hs.map((h) => ({ table: h.table, handNo: h.handNo, endReason: h.endReason, verified: h.verified, note: `pot ${sol(h.pot)}` })));
+    load.then((r) => { if (!off) setRows(r); });
+    return () => { off = true; };
+  }, [active, me]);
+  return (
+    <div className="vf-pick" data-testid="hand-picker">
+      <div className="vf-tabs" role="tablist">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={t.id === active} className={t.id === active ? "is-on" : ""} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {rows === undefined && <p className="vf-pick-note">Loading hands…</p>}
+      {rows === null && <p className="vf-pick-note">The hand list comes from our indexer, which isn&apos;t reachable right now. Enter a table and hand below, or paste a record you saved.</p>}
+      {rows && !rows.length && <p className="vf-pick-note">{active === "me" ? "No hands played with this wallet yet." : "No hands at this table yet."}</p>}
+      {rows && rows.length > 0 && (
+        <ul className="vf-pick-list">
+          {rows.slice(page * perPage, (page + 1) * perPage).map((h) => (
+            <li key={`${h.table}-${h.handNo}`}>
+              <Link href={`/verify/${h.table}/${h.handNo}`} data-testid="pick-hand">
+                <b>Hand #{h.handNo}</b>
+                <span>
+                  {metaFor(h.table).name} · {reason(h.endReason)} · <Sol /> {h.note}
+                </span>
+                <em>{h.verified ? "✓ verified" : "check"} →</em>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows && rows.length > perPage && (
+        <div className="vf-pager">
+          <button type="button" aria-label="Newer hands" disabled={page === 0} onClick={() => setPage(page - 1)} data-testid="pick-prev">
+            ‹
+          </button>
+          <span data-testid="pick-range">
+            {page * perPage + 1}–{Math.min((page + 1) * perPage, rows.length)} of {rows.length}
+          </span>
+          <button type="button" aria-label="Older hands" disabled={(page + 1) * perPage >= rows.length} onClick={() => setPage(page + 1)} data-testid="pick-next">
+            ›
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -341,6 +458,33 @@ const CSS = `
 .vf-paste{display:grid;gap:12px;margin-top:14px;animation:vf-rise .4s ${OUT} both}
 .vf-paste textarea{height:130px;resize:vertical;font:12.5px ui-monospace,monospace}
 .vf-paste .vf-btn{justify-self:start}
+
+/* hand picker */
+/* the picker is the start page's content now; the three steps show while a hand loads */
+.is-index .vf-how{display:none}
+.vf-pick{display:grid;gap:12px}
+.vf-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.vf-tabs button{height:36px;padding:0 15px;border-radius:99px;border:1px solid rgba(255,214,102,.22);background:rgba(255,255,255,.04);color:rgba(233,221,255,.75);font:500 13.5px var(--font-outfit),sans-serif;cursor:pointer}
+.vf-tabs button.is-on{background:#ffe800;border-color:#ffe800;color:#140f11}
+.vf-pick-note{padding:12px 4px;font-size:13.5px;color:rgba(233,221,255,.6)}
+.vf-pick-list{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.vf-pick-list a{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:9px 14px;border-radius:15px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);color:#fff !important;transition:border-color .2s,background .2s}
+.vf-pick-list a:hover{border-color:rgba(255,214,102,.45);background:rgba(255,214,102,.06)}
+.vf-pick-list b{font-size:14px;font-weight:600}
+.vf-pick-list span{min-width:0;font-size:12.5px;color:rgba(233,221,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vf-pick-list em{font-style:normal;font-size:12px;font-weight:600;color:#5cf09a}
+@media (max-width:600px){.vf-pick-list a{grid-template-columns:1fr auto;row-gap:2px}.vf-pick-list span{grid-column:1/-1;grid-row:2;white-space:normal}}
+.vf-pager{display:flex;align-items:center;justify-content:center;gap:14px;font-size:12.5px;color:rgba(233,221,255,.6)}
+.vf-pager button{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,214,102,.4);background:rgba(255,214,102,.06);color:#ffd76a;font:600 18px/1 var(--font-outfit),sans-serif;cursor:pointer;transition:background .2s,opacity .2s}
+.vf-pager button:hover:not(:disabled){background:rgba(255,214,102,.16)}
+.vf-pager button:disabled{opacity:.3;cursor:default}
+.vf-toggles{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:18px}
+.vf-toggles .vf-toggle{margin-top:0}
+.vf-toggles + .vf-form{margin-top:16px;animation:vf-rise .4s cubic-bezier(.2,.8,.2,1) both}
+.vf-paste-row{display:flex;flex-wrap:wrap;align-items:center;gap:18px}
+.vf-file{position:relative;cursor:pointer}
+.vf-file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.vf-rec-btns{display:flex;flex-wrap:wrap;gap:16px}
 
 /* how it works */
 .vf-how{display:grid;gap:12px;margin:20px 0 0;padding:0;list-style:none}
@@ -419,7 +563,15 @@ const CSS = `
 .vf-modal-box{position:relative;width:min(760px,100%);max-height:min(80vh,720px);display:flex;flex-direction:column;padding:20px 22px;border-radius:28px;background:linear-gradient(170deg,#2a0b47,#120128);border:1px solid rgba(255,214,102,.35);box-shadow:0 40px 90px rgba(0,0,0,.6);animation:vf-rise .35s ${OUT} both}
 .vf-modal-box header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .vf-modal-x{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;cursor:pointer}
-.vf-modal-box pre{margin:0;overflow:auto;padding:16px;border-radius:18px;background:rgba(6,2,16,.6);font-size:11.5px;color:rgba(233,221,255,.8)}
+.vf-modal-box pre{margin:0;overflow:auto;padding:16px 22px 16px 16px;border-radius:18px;background:rgba(6,2,16,.6);font-size:11.5px;color:rgba(233,221,255,.8)}
+/* a slim pearl bar inside the card instead of the system scrollbar */
+.vf-modal-box pre::-webkit-scrollbar{width:14px;height:14px}
+.vf-modal-box pre::-webkit-scrollbar-button{display:none}
+.vf-modal-box pre::-webkit-scrollbar-track{margin:14px 0;background:transparent}
+.vf-modal-box pre::-webkit-scrollbar-corner{background:transparent}
+.vf-modal-box pre::-webkit-scrollbar-thumb{border:4px solid transparent;border-radius:99px;background:linear-gradient(180deg,#fffaf0,#efe3f7 35%,#dcebf3 65%,#f5e7cf) padding-box;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.vf-modal-box pre::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#ffffff,#f4eafb 35%,#e4f2f8 65%,#fbefd9) padding-box}
+@supports (-moz-appearance:none){.vf-modal-box pre{scrollbar-width:thin;scrollbar-color:#eadff3 transparent}}
 @keyframes vf-fade{from{opacity:0}}
 
 /* actions */

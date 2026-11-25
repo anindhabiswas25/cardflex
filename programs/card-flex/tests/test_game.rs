@@ -158,6 +158,7 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         last_paid_commit: 0,
         paid_commit_hash: [0; 32],
         keeper: Pubkey::default(),
+        credited: [0; MAX_SEATS],
     };
     let mut data = Vec::new();
     rt.try_serialize(&mut data).unwrap();
@@ -617,7 +618,16 @@ fn runtime_byte_offsets() {
     assert_eq!(&d[1220..1252], &rt.paid_commit_hash);
     assert_eq!(RUNTIME_PAID_COMMIT_OFFSET, 1212);
     assert_eq!(&d[1252..1284], rt.keeper.as_ref(), "CF-065 keeper");
-    assert_eq!(d.len(), 1284);
+    // CF-076: credited per seat after the keeper.
+    assert_eq!(RUNTIME_CREDITED_OFFSET, 1284);
+    for i in 0..MAX_SEATS {
+        let o = 1284 + 8 * i;
+        assert_eq!(
+            u64::from_le_bytes(d[o..o + 8].try_into().unwrap()),
+            rt.credited[i]
+        );
+    }
+    assert_eq!(d.len(), 1332);
 }
 
 /// CF-064: the state hash ignores commit bookkeeping but sees game state.
@@ -1300,4 +1310,141 @@ fn act_refuses_hands_stamped_for_another_table_or_seat() {
         .contains("BadSeatHand"));
     // The genuine accounts still work.
     t.act(0, Action::Chaal { amount: BOOT }).unwrap();
+}
+
+// ---- CF-077: a player who leaves before the cards costs nobody a boot ----
+
+fn deal_ix(t: &Table) -> Vec<Instruction> {
+    let mut metas = card_flex::accounts::DealHand {
+        payer: t.payer.pubkey(),
+        runtime: t.runtime,
+        dealer: pda(DEALER_SEED, t, None),
+    }
+    .to_account_metas(None);
+    metas.extend(t.hands.iter().map(|h| AccountMeta::new(*h, false)));
+    let cu = Instruction::new_with_bytes(
+        "ComputeBudget111111111111111111111111111111"
+            .parse()
+            .unwrap(),
+        &[&[2u8][..], &1_400_000u32.to_le_bytes()].concat(),
+        vec![],
+    );
+    vec![
+        cu,
+        Instruction::new_with_bytes(
+            card_flex::id(),
+            &card_flex::instruction::DealHand {}.data(),
+            metas,
+        ),
+    ]
+}
+
+fn cancel_salts_ix(t: &Table) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::CancelSalts {}.data(),
+        card_flex::accounts::CancelSalts {
+            payer: t.payer.pubkey(),
+            runtime: t.runtime,
+        }
+        .to_account_metas(None),
+    )
+}
+
+#[test]
+fn a_player_leaving_before_the_deal_cancels_it_without_boots() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..3].copy_from_slice(&[50 * BOOT; 3]);
+    let mut t = dealt_table(3, stacks, [9; 32], (250, 1_000_000));
+    // Rewind to just before the deal; seat 1 asked to leave meanwhile.
+    rewrite_runtime(&mut t, |rt| {
+        rt.phase = phase::SEEDED;
+        rt.dealt = false;
+        rt.game = GameState::default();
+        rt.stacks = stacks;
+        rt.leaving = 0b010;
+    });
+    let before = t.runtime();
+    let ixs = deal_ix(&t);
+    let payer = t.payer.insecure_clone();
+    send(&mut t.svm, &ixs, &[&payer]).expect("deal_hand ends the hand instead");
+    let after = t.runtime();
+    assert_eq!(after.phase, phase::IDLE, "no hand");
+    assert!(!after.dealt);
+    assert_eq!(after.stacks, stacks, "no boot from anyone");
+    assert_eq!(after.game.pot, 0);
+    assert_eq!(after.hand_no, before.hand_no + 1);
+    assert_eq!(after.cancelled_hands, before.cancelled_hands + 1);
+    assert_eq!(
+        (after.occupied & 0b010, after.departed & 0b010),
+        (0, 0b010),
+        "the leaver is out"
+    );
+    assert_eq!(after.leaving, 0);
+}
+
+#[test]
+fn a_salt_round_waiting_only_on_leavers_ends_at_once() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..2].copy_from_slice(&[50 * BOOT; 2]);
+    let mut t = dealt_table(2, stacks, [5; 32], (0, 0));
+    let deadline = now(&t) + 1_000;
+    // Salt round, seat 0 submitted, seat 1 missing and NOT leaving: too early.
+    rewrite_runtime(&mut t, |rt| {
+        rt.phase = phase::SALTS_PENDING;
+        rt.dealt = false;
+        rt.game = GameState::default();
+        rt.salts_in = 0b01;
+        rt.salts_deadline = deadline;
+    });
+    let payer = t.payer.insecure_clone();
+    let ix = cancel_salts_ix(&t);
+    let e = send(&mut t.svm, &[ix], &[&payer]).unwrap_err();
+    assert!(e.contains("TooEarly"), "{e}");
+    // Seat 1 asks to leave: the round ends now, nothing charged, no strike for seat 0.
+    rewrite_runtime(&mut t, |rt| rt.leaving = 0b10);
+    let ix = cancel_salts_ix(&t);
+    send(&mut t.svm, &[ix], &[&payer]).expect("cancel at once");
+    let after = t.runtime();
+    assert_eq!(after.phase, phase::IDLE);
+    assert_eq!(after.stacks, stacks);
+    assert_eq!(after.missed_salts[0], 0);
+    assert_eq!(after.occupied & 0b10, 0, "the leaver is out");
+}
+
+// ---- CF-079: five seconds to leave for free before the deal ----
+
+#[test]
+fn no_deal_in_the_first_seconds_of_a_hand_but_a_leaver_cancels_at_once() {
+    let mut stacks = [0u64; MAX_SEATS];
+    stacks[..2].copy_from_slice(&[50 * BOOT; 2]);
+    let mut t = dealt_table(2, stacks, [3; 32], (0, 0));
+    let start = now(&t);
+    let rewind = |rt: &mut TableRuntime| {
+        rt.phase = phase::SEEDED;
+        rt.dealt = false;
+        rt.game = GameState::default();
+        rt.stacks = stacks;
+        rt.salts_deadline = start + card_flex::table::SALT_SECS; // the hand started now
+    };
+    rewrite_runtime(&mut t, rewind);
+    let payer = t.payer.insecure_clone();
+    let ixs = deal_ix(&t);
+    let e = send(&mut t.svm, &ixs, &[&payer]).unwrap_err();
+    assert!(e.contains("TooEarly"), "{e}");
+    warp_to(&mut t, start + card_flex::table::LEAVE_WINDOW_SECS);
+    let ixs = deal_ix(&t);
+    send(&mut t.svm, &ixs, &[&payer]).expect("deal after the window");
+    assert_eq!(t.runtime().phase, phase::DEALT);
+    // A leaver inside the window ends the hand at once (no waiting, no boot).
+    let just_started = now(&t) + card_flex::table::SALT_SECS;
+    rewrite_runtime(&mut t, |rt| {
+        rewind(rt);
+        rt.salts_deadline = just_started;
+        rt.leaving = 0b10;
+    });
+    let ixs = deal_ix(&t);
+    send(&mut t.svm, &ixs, &[&payer]).expect("cancel at once");
+    let after = t.runtime();
+    assert_eq!((after.phase, after.stacks), (phase::IDLE, stacks));
 }

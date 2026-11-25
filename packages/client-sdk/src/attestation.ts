@@ -9,6 +9,12 @@ import { getCollateral, verify, Quote } from "@phala/dcap-qvl";
 
 export const PCCS_URL = "https://pccs.phala.network/tdx/certification/v4";
 
+/** Rejects if `p` hasn't settled after `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([p, new Promise<never>((_, rej) => { t = setTimeout(() => rej(new Error(`${what} timed out after ${ms / 1000} s`)), ms); })]).finally(() => clearTimeout(t));
+}
+
 export type Measurements = { mrTd: string; rtMr0: string; rtMr1: string; rtMr2: string };
 
 /** Values observed on devnet-tee on 2026-11-18 (CF-003). Ask MagicBlock for published values per release. */
@@ -44,7 +50,9 @@ export async function verifyTee(perUrl: string, opts: { allow?: Measurements[]; 
   const raw = unb64(body.quote);
   let verified: { status: string; advisory_ids?: string[] };
   try {
-    const collateral = await getCollateral(opts.pccsUrl ?? PCCS_URL, raw);
+    // The library's PCCS request has no timeout of its own: a stalled one left
+    // the check (and every buy-in waiting for it) hanging forever.
+    const collateral = await withTimeout(getCollateral(opts.pccsUrl ?? PCCS_URL, raw), 20_000, "Intel collateral (PCCS)");
     verified = verify(raw, collateral, Math.floor((opts.now ?? Date.now()) / 1000)) as typeof verified;
   } catch (e) {
     return { ok: false, reasons: [`quote did not verify: ${String((e as Error).message ?? e)}`] };

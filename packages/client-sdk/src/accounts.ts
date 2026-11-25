@@ -39,6 +39,7 @@ export type TableRuntime = {
   leaving: number; departed: number; salts_deadline: bigint; missed_salts: number[]; last_hand_end: bigint; bump: number;
   /** CF-064 */ last_paid_commit: bigint; paid_commit_hash: Uint8Array;
   /** CF-065: the keeper's read key (PublicKey.default = none) */ keeper: PublicKey;
+  /** CF-076: per seat, how much of the ledger's deposits (buy_in) is already in `stacks` */ credited: bigint[];
 };
 export type TableConfig = {
   authority: PublicKey; table_id: bigint; max_seats: number; runtime: PublicKey; bump: number; status: number; validator: PublicKey;

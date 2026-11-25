@@ -60,7 +60,9 @@ export function Dashboard() {
     try {
       const ls = await myLedgers(wallet.publicKey);
       const snaps = await loadTables(ls.map((l) => l.config));
-      setSeats(ls.map((l, i) => ({ ...l, snap: snaps[i], state: seatState(l, snaps[i]) })));
+      // claim_refund zeroes the stack but keeps the ledger: a claimed seat on a
+      // refunded table has nothing left to do, so it isn't "my seat" any more.
+      setSeats(ls.map((l, i) => ({ ...l, snap: snaps[i], state: seatState(l, snaps[i]) })).filter((s) => !(s.state === "refund" && s.synced_stack === 0n)));
     } catch {
       setMsg("Couldn't read your seats from Solana. Retrying…");
     }

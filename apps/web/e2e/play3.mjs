@@ -26,13 +26,13 @@ try {
   for (const p of P) {
     // Don't race an earlier player for the same seat: wait until they show up here.
     await p.waitFor(`document.querySelectorAll('[data-testid^=seat-]').length >= ${ready}`, 90000, 1000);
-    const st = await p.waitFor(`(() => { const t = document.body.innerText; if (/Resume my seat/i.test(t)) return 'resume'; if (document.querySelector('[data-testid=cash-out]')) return 'cashout'; const b = document.querySelector('[data-testid=buy-in-btn]'); if (b && !b.disabled) return 'buyin'; if (t.includes('● seated')) return 'seated'; return null })()`, 180000, 1000);
+    const st = await p.waitFor(`(() => { const t = document.body.innerText; if (/Resume my seat/i.test(t)) return 'resume'; if (document.querySelector('[data-testid=cash-out]')) return 'cashout'; const b = (document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]'))); if (b && !b.disabled) return 'buyin'; if (t.includes('● seated')) return 'seated'; return null })()`, 180000, 1000);
     if (st === "resume") { await p.clickText("button", "Resume my seat"); await p.waitFor(`document.body.innerText.includes('● seated')`, 120000); }
-    if (st === "cashout") { await p.click("[data-testid=cash-out]"); await p.waitFor(`!!document.querySelector('[data-testid=buy-in-btn]')`, 120000); }
+    if (st === "cashout") { await p.click("[data-testid=cash-out]"); await p.waitFor(`!!(document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]')))`, 120000); }
     if (!(await p.eval(`document.body.innerText.includes('● seated')`))) {
       await p.waitFor(`!!document.querySelector('[data-testid=buy-in] input[type=range]')`, 60000);
       await p.eval(setMin); await sleep(300);
-      await p.waitFor(`!document.querySelector('[data-testid=buy-in-btn]').disabled`, 60000);
+      await p.waitFor(`!(document.querySelector('[data-testid=buy-in-btn]') ?? (document.querySelector('.tb-socket:not(:disabled)')?.click(), document.querySelector('[data-testid=buy-in-btn]'))).disabled`, 60000);
       await p.click("[data-testid=buy-in-btn]");
       await p.waitFor(`/seated|Seating you/i.test(document.body.innerText) && !/Buying in/.test(document.body.innerText)`, 120000);
       await sleep(1500);
@@ -42,7 +42,7 @@ try {
   }
   for (const p of P) await p.waitFor(`document.body.innerText.includes('● seated')`, 180000);
   // Wait for a hand where all three are dealt.
-  await P[0].waitFor(`document.querySelectorAll('[data-testid^=seat-] .card').length >= 6 && /your turn|to act|Dealing/i.test(document.body.innerText) || document.querySelectorAll('[data-testid^=seat-] .card').length >= 6`, 180000, 700);
+  await P[0].waitFor(`[...document.querySelectorAll('[data-testid^=seat-] img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/')).length >= 6 && /your turn|to act|Dealing/i.test(document.body.innerText) || [...document.querySelectorAll('[data-testid^=seat-] img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/')).length >= 6`, 180000, 700);
   check("three players dealt in", true);
 
   let sideShowAsked = false, sideShowSeen = false, packed = false;
@@ -70,7 +70,7 @@ try {
     // After an accepted Side Show the two players see each other's cards.
     if (sideShowAsked && !sideShowSeen) {
       for (const p of P) {
-        const faces = await p.eval(`document.querySelectorAll('[data-testid^=seat-] .card-face').length`);
+        const faces = await p.eval(`[...document.querySelectorAll('[data-testid^=seat-] img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/') && !(i.getAttribute('src') ?? '').startsWith('/cards/back-')).length`);
         if (faces >= 3 && !(await p.eval(`!!document.querySelector('[data-testid=result]')`))) { sideShowSeen = p.name; check(`Side Show: ${p.name} privately sees its opponent's cards`, true, `${faces} faces`); await p.shot(join(process.env.E2E_OUT ?? KEYS, `sideshow-${p.name}.png`)); }
       }
     }
@@ -83,7 +83,7 @@ try {
   // Result cards stay until the next deal.
   let sawIdleWithCards = false, samples = 0;
   for (let i = 0; i < 30; i++) {
-    const st = await P[1].eval(`({ line: document.querySelector('[data-testid=status-line]')?.innerText ?? '', center: [...document.querySelectorAll('.pill')].map(x=>x.innerText).find(x=>/Next hand|Shuffling|randomness|Waiting/.test(x)) ?? '', faces: document.querySelectorAll('.card-face').length, result: !!document.querySelector('[data-testid=result]') })`);
+    const st = await P[1].eval(`({ line: document.querySelector('[data-testid=status-line]')?.innerText ?? '', center: !!document.querySelector('[data-testid=result]'), faces: [...document.querySelectorAll('img')].filter((i) => (i.getAttribute('src') ?? '').startsWith('/cards/') && !(i.getAttribute('src') ?? '').startsWith('/cards/back-')).length, result: !!document.querySelector('[data-testid=result]') })`);
     if (st.center && st.result) { samples++; if (st.faces > 0) sawIdleWithCards = true; }
     if (sawIdleWithCards) break;
     await sleep(500);

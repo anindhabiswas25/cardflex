@@ -8,13 +8,16 @@ export const READ_STALE_MS = 30_000;
 /** Consecutive failed steps on one table before it counts as failing. */
 export const TABLE_FAILING = 5;
 /**
- * Runtime lamports above rent below which a table is at risk. Normal play
- * costs the runtime ~0, but one Devnet table lost ~4M lamports in an hour
- * for an unexplained reason (2026-11-21), after which commits failed with
- * ~1.0M left; it can't be topped up while live. Close and reopen
- * (`table open` funds a reserve) before it runs out.
+ * Runtime lamports above rent below which a table is at risk. CF-073
+ * (measured on Devnet): per delegation the first 25 commits are free, then
+ * each commit moves 2,000,000 lamports from the runtime to MagicBlock's fee
+ * vault; with less than that above rent every commit fails
+ * (`InsufficientFundsForRent`). The runtime can't be topped up while live, so
+ * warn while ~5 commits are left: close and reopen (`table open` funds a
+ * reserve) before it runs out.
  */
-export const HEADROOM_MIN = 2_000_000;
+export const COMMIT_COST = 2_000_000;
+export const HEADROOM_MIN = 5 * COMMIT_COST;
 
 export type TableHealth = { table: string; hands: number; failures: number; progressAgeSecs: number; lastCommitSecs: number };
 export type Health = { ok: boolean; reasons: string[]; uptimeSecs: number; tables: number; lastReadAgeSecs: number | null; perTable: TableHealth[] };
@@ -29,7 +32,7 @@ export function health(tables: Map<string, TableState>, run: RunStatus, now: num
   for (const [table, st] of tables) {
     perTable.push({ table, hands: st.hands, failures: st.failures, progressAgeSecs: Math.round((now - st.progressAt) / 1000), lastCommitSecs: Number(st.lastCommitSecs) });
     if (st.failures >= TABLE_FAILING) reasons.push(`${table.slice(0, 8)}: ${st.failures} failed steps in a row`);
-    if (st.headroom !== undefined && st.headroom < HEADROOM_MIN) reasons.push(`${table.slice(0, 8)}: runtime has only ${st.headroom} lamports above rent; it can't commit below ~15,000 and can't be topped up while live (close it at a quiet moment, refund players or reopen with a reserve)`);
+    if (st.headroom !== undefined && st.headroom < HEADROOM_MIN) reasons.push(`${table.slice(0, 8)}: runtime has only ${st.headroom} lamports above rent; each commit costs ~${COMMIT_COST} after the free ones and it can't be topped up while live (close it at a quiet moment, refund players or reopen with a reserve)`);
     if (st.notKeeper) reasons.push(`${table.slice(0, 8)}: table hasn't named this keeper (cf-admin table keeper); hands sync only every 240 s`);
   }
   return { ok: reasons.length === 0, reasons, uptimeSecs: Math.round((now - run.startedAt) / 1000), tables: run.tables, lastReadAgeSecs: readAge === null ? null : Math.round(readAge / 1000), perTable };
