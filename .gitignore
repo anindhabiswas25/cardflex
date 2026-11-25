@@ -30,3 +30,7 @@ player-*.json
 Card_Flex_Devnet_PRD_MagicBlock_v*.md
 Card_Flex_Delivery_Plan.md
 Card_Flex_MagicBlock_Implementation_Research_v*.md
+
+# Coding-agent guides (AGENTS.md, CLAUDE.md): kept locally, not published
+AGENTS.md
+CLAUDE.md

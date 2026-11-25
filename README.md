@@ -275,7 +275,6 @@ toolchain.env               Pinned versions (single source of truth)
 | [`docs/spec/`](docs/spec/) | CF-Fairness v2 and Teen Patti rules v1, with test vectors |
 | [`docs/findings/`](docs/findings/) | Measured results: latency, privacy, load, fees, recovery, web E2E |
 | [`docs/runbooks/`](docs/runbooks/) | Deploy, keeper, alarms, incidents, multisig |
-| [`AGENTS.md`](AGENTS.md) | Guide for contributors and coding agents |
 
 ## Project status
 
@@ -303,7 +302,7 @@ Mainnet is a separate decision after P9 and needs external audits.
 
 ## Contributing
 
-Read [`AGENTS.md`](AGENTS.md) first. In short: pinned toolchain only
+Pinned toolchain only
 (changes need an ADR), one commit per ticket with the ticket id
 (`CF-0xx: …`), `pnpm verify` must pass, and the frozen rules and fairness
 bytes change only with a version bump.
