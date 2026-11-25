@@ -116,7 +116,9 @@ export function useTable(configStr: string) {
     if (ledger) {
       const s = ledger.seat;
       const out = ledger.left || (!!rtNow && (bit(rtNow.leaving, s) || (bit(rtNow.departed, s) && rtNow.seat_epoch[s] === ledger.epoch)));
-      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : rtNow?.stacks[s] ?? ledger.synced_stack, deposited: ledger.buy_in } : null;
+      // What the vault will pay: the final stack plus any deposit not in it (CF-076/082: held top-up).
+      const held = rtNow && rtNow.credited && ledger.buy_in > rtNow.credited[s] ? ledger.buy_in - rtNow.credited[s] : 0n;
+      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : rtNow ? rtNow.stacks[s] + held : ledger.synced_stack, deposited: ledger.buy_in } : null;
     }
   }, [ledger, live, snap]);
   useEffect(() => {
@@ -456,7 +458,14 @@ export function useTable(configStr: string) {
   // Same limits as the program: ≥ 1 boot; last synced stack + top-up ≤ max buy-in.
   // Only once the table runs the CF-076 layout (runtime has `credited`); older tables refuse top-ups.
   const topUpRange = snap && ledger && !ledger.left && snap.cfg.status === TABLE_STATUS.ACTIVE && !!rt?.credited
-    ? { min: snap.cfg.max_buy_in / 200n, max: snap.cfg.max_buy_in > ledger.synced_stack ? snap.cfg.max_buy_in - ledger.synced_stack : 0n }
+    ? (() => {
+        // Room left under the table's maximum: from the LIVE stack + what's already
+        // deposited but not yet applied (the program caps the live stack too).
+        const s = ledger.seat;
+        const used = (live && live.seat_epoch[s] === ledger.epoch ? live.stacks[s] + (ledger.buy_in > live.credited[s] ? ledger.buy_in - live.credited[s] : 0n) : ledger.synced_stack);
+        const room = snap.cfg.max_buy_in - (used > ledger.synced_stack ? used : ledger.synced_stack);
+        return { min: snap.cfg.max_buy_in / 200n, max: room > 0n ? room : 0n };
+      })()
     : null;
 
   return {

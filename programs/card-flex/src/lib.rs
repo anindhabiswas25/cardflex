@@ -512,12 +512,25 @@ pub mod card_flex {
                 && !ledger.left,
             CardFlexError::BadLedger
         );
-        let add = ledger.buy_in.saturating_sub(runtime.credited[s]);
-        require!(add > 0, CardFlexError::NothingToApply);
+        let pending = ledger.buy_in.saturating_sub(runtime.credited[s]);
+        require!(pending > 0, CardFlexError::NothingToApply);
+        // `top_up` checks the limit against the last SYNCED stack; the live
+        // stack may be higher. Never let deposits take the live stack above
+        // the table's maximum buy-in (`configure_table`: boot * 200). What
+        // doesn't fit stays pending: still the player's money (sync_hand pays
+        // it back on leaving), never playable.
+        let max_stack = runtime
+            .boot
+            .checked_mul(MAX_BUY_IN_BOOTS)
+            .ok_or(CardFlexError::Overflow)?;
+        let add = pending.min(max_stack.saturating_sub(runtime.stacks[s]));
+        require!(add > 0, CardFlexError::TopUpTooLarge);
         runtime.stacks[s] = runtime.stacks[s]
             .checked_add(add)
             .ok_or(CardFlexError::Overflow)?;
-        runtime.credited[s] = ledger.buy_in;
+        runtime.credited[s] = runtime.credited[s]
+            .checked_add(add)
+            .ok_or(CardFlexError::Overflow)?;
         Ok(())
     }
 

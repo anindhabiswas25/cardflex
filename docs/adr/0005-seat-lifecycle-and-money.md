@@ -164,3 +164,13 @@ SALT_SECS`, no new field), unless a dealt-in seat is leaving, in which case
 it cancels at once (CF-077). The keeper waits the window (+1 s for clock
 differences); the table shows "Cards in Ns · leave now and no boot is
 taken". The keeper's pause between hands (`HAND_GAP_SECS`) is now 9 s.
+
+## Amendment (2026-11-25, CF-082): the buy-in cap holds against the live stack
+
+`top_up` can only check the cap against the last SYNCED stack (the base
+layer doesn't see the live one), so a player who won since the last sync
+could deposit past 200 boots. `apply_top_up` now applies at most
+`boot * 200 − stack` (live, in PER) and moves `credited` by that amount only;
+the rest stays pending: payable on leaving (`sync_hand` adds `buy_in −
+credited`), never playable. Nothing to apply at the cap: `TopUpTooLarge`;
+the keeper skips seats at the cap; the app's slider uses the live stack.

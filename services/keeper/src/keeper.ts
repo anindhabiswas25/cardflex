@@ -118,7 +118,8 @@ export class Keeper {
     const { buyIn, epoch } = st.ledgers;
     return seats.filter((s) => {
       const b = buyIn[s];
-      return b !== null && epoch[s] === rt.seat_epoch[s] && b > rt.credited[s] && (st.topUpFails?.get(`${s}:${b}`) ?? 0) < 2;
+      // A stack already at the table's maximum (200 boots) takes nothing more (the program refuses).
+      return b !== null && epoch[s] === rt.seat_epoch[s] && b > rt.credited[s] && rt.stacks[s] < rt.boot * 200n && (st.topUpFails?.get(`${s}:${b}`) ?? 0) < 2;
     });
   }
 

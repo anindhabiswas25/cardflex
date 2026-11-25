@@ -1561,3 +1561,53 @@ fn top_up_needs_the_migrated_runtime() {
         "{e}"
     );
 }
+
+/// The live stack can be above the last synced one (won since the sync):
+/// a top-up never takes it past the table's maximum buy-in (200 boots); the
+/// rest stays pending, payable on leaving, never playable.
+#[test]
+fn top_up_never_takes_the_live_stack_past_the_maximum_buy_in() {
+    let mut t = setup(1);
+    let w0 = t.wallets[0].insecure_clone();
+    let anyone = t.authority.insecure_clone();
+    buy_in(&mut t, 0, 1_000_000).unwrap();
+    // Won since the last sync: live 4,800,000 (max 5,000,000), synced 1,000,000.
+    let mut s = [0u64; MAX_SEATS];
+    s[0] = 4_800_000;
+    commit(&mut t, 0, phase::IDLE, s);
+    // The base layer only knows the synced stack, so 4,000,000 is accepted...
+    send_ix(vec![top_up_ix(&t, 0, 4_000_000, &w0)], &mut t.svm, &[&w0]).unwrap();
+    // ...but only 200,000 reaches the live stack.
+    send_ix(
+        vec![apply_ix(&t, 0, anyone.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    let rt = runtime_state(&t);
+    assert_eq!(rt.stacks[0], 5_000_000, "capped at 200 boots");
+    assert_eq!(rt.credited[0], 1_200_000);
+    // At the cap nothing more applies.
+    let e = send_ix(
+        vec![apply_ix(&t, 0, anyone.pubkey())],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&code(card_flex::CardFlexError::TopUpTooLarge)),
+        "{e}"
+    );
+    // The 3,800,000 that didn't fit is still the player's money.
+    let record = delegate(&mut t, TEE.parse().unwrap(), card_flex::id());
+    commit(&mut t, 1, phase::IDLE, rt.stacks);
+    send_ix(
+        vec![sync_ix(&t, record, &[ledger(&t, 0)])],
+        &mut t.svm,
+        &[&anyone],
+    )
+    .unwrap();
+    assert_eq!(ledger_state(&t, 0).synced_stack, 5_000_000 + 3_800_000);
+    // (No vault reconciliation here: the 3,800,000 "won" above was written
+    // straight into the runtime, with no losing player behind it.)
+}

@@ -131,6 +131,8 @@ export function BoardTable(p: Props) {
   const [topOpen, setTopOpen] = useState(false);
   const [topAmt, setTopAmt] = useState(0n);
   const inHandNow = !!rt && rt.phase !== PHASE.IDLE;
+  // CF-082: a stack at the table's maximum (200 boots) takes no more chips; extra deposits wait, payable on leaving.
+  const atMax = !!me && !!rt && rt.boot > 0n && me.stack >= rt.boot * 200n;
   const busted = !!me && !!rt && rt.boot > 0n && me.stack + t.topUpPending < rt.boot * 2n;
   const range = t.topUpRange;
   // Default: back up to the table's minimum buy-in (40 boots), within the allowed range.
@@ -421,7 +423,7 @@ export function BoardTable(p: Props) {
             )}
             {t.topUpPending > 0n && (
               <span className="tb-pill is-ok" data-testid="top-up-pending">
-                +<Sol /> {sol(t.topUpPending)} {inHandNow ? "after this hand" : "joining your stack"}
+                +<Sol /> {sol(t.topUpPending)} {atMax ? "held: table max reached · paid back when you leave" : inHandNow ? "after this hand" : "joining your stack"}
               </span>
             )}
             <p className="tb-status" aria-live="polite" data-testid="status-line">
