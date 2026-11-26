@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/media/logo.jpg" alt="Card Flex" width="360">
+<img src="docs/media/logo.jpg" alt="Card Flex" width="260">
 
 ## Private cards. Fair shuffle. Every hand provable.
 
@@ -121,9 +121,10 @@ Card Flex is **not trustless**, and we don't claim it is.
 | Amethyst Hall (entry) | [`CeyYCmBPbtgToBC5onzY3tk71gqUewg92vzxAAsmBKfg`](https://explorer.solana.com/address/CeyYCmBPbtgToBC5onzY3tk71gqUewg92vzxAAsmBKfg?cluster=devnet) |
 | Emerald Court (premium) | [`CH6CvNWrJGKLfgFF7SLoA7gjjuTCaedNUnut2XxCoSbT`](https://explorer.solana.com/address/CH6CvNWrJGKLfgFF7SLoA7gjjuTCaedNUnut2XxCoSbT?cluster=devnet) |
 | Ruby Throne (high roller) | [`4fzQ3EN2Cy5sDjALB6X7jBV5yM157PVqv4XrfvJ7f4D9`](https://explorer.solana.com/address/4fzQ3EN2Cy5sDjALB6X7jBV5yM157PVqv4XrfvJ7f4D9?cluster=devnet) |
+| MagicBlock PER (TEE) validator | [`MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo`](https://explorer.solana.com/address/MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo?cluster=devnet) |
 | MagicBlock PER (TEE) RPC | `https://devnet-tee.magicblock.app` |
 
-Table addresses are each table's `TableConfig` on Solana; the live game state is in the PER and private to the players seated there.
+Table addresses are each table's `TableConfig` on Solana; the live game state is in the PER and private to the players seated there. The program only accepts tables delegated to the TEE validator above.
 
 ## Features
 
