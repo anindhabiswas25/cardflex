@@ -162,7 +162,8 @@ const BELL = (
     <path fill="currentColor" d="M12 2a6 6 0 0 0-6 6v3.6l-1.6 2.9A1 1 0 0 0 5.3 16h13.4a1 1 0 0 0 .9-1.5L18 11.6V8a6 6 0 0 0-6-6Zm0 20a3 3 0 0 0 2.8-2H9.2A3 3 0 0 0 12 22Z" />
   </svg>
 );
-const PREFS: ["sound" | "turnAlert", string, React.ReactNode][] = [
+const PREFS: ["sound" | "music" | "turnAlert", string, React.ReactNode][] = [
+  ["music", "Music", "♫"],
   ["sound", "Sound", "♪"],
   ["turnAlert", "Turn alert", BELL],
 ];

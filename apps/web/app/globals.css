@@ -195,7 +195,7 @@ body {
 .hc-menu-row:hover .hc-menu-go{opacity:1;transform:none}
 @keyframes hc-menu-in{from{opacity:0;transform:translateX(18px)}}
 /* preference tiles (sound, turn alert) */
-.hc-menu-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:18px;animation:hc-menu-in .5s cubic-bezier(.2,.8,.2,1) .46s both}
+.hc-menu-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:18px;animation:hc-menu-in .5s cubic-bezier(.2,.8,.2,1) .46s both}
 .hc-menu-tile{display:grid;grid-template-columns:auto 1fr;align-items:center;row-gap:10px;padding:12px;border-radius:18px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:#fff !important;font:600 13px var(--font-outfit),sans-serif;text-align:left;cursor:pointer;transition:background .2s}
 .hc-menu-tile:hover{background:rgba(255,255,255,.09)}
 .hc-menu-tile > span{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(255,214,102,.12);color:#ffd76a;font-size:14px}
@@ -252,10 +252,9 @@ html[data-land] .hc-menu-ico{width:28px;height:28px;border-radius:9px;font-size:
 html[data-land] .hc-menu-txt b{font-size:13.5px}
 html[data-land] .hc-menu-txt small{display:block;font-size:10.5px}
 html[data-land] .hc-menu-tiles{gap:6px;margin-top:8px}
-html[data-land] .hc-menu-tile{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:12px;font-size:11.5px}
+html[data-land] .hc-menu-tile{row-gap:5px;padding:6px 8px;border-radius:12px;font-size:11.5px}
 html[data-land] .hc-menu-tile > span{width:22px;height:22px;border-radius:7px;font-size:11px}
-html[data-land] .hc-menu-tile > b{order:1;margin-right:4px}
-html[data-land] .hc-menu-tile > .hc-toggle{order:2;width:30px;height:18px}
+html[data-land] .hc-menu-tile > .hc-toggle{width:30px;height:18px}
 html[data-land] .hc-toggle::after{width:14px;height:14px}
 html[data-land] .hc-toggle.is-on::after{left:14px}
 html[data-land] .hc-menu-foot{gap:6px;margin-top:0;padding-top:10px}
@@ -277,3 +276,18 @@ html[data-rot] .hc-menu-shade{background:rgba(6,1,16,.8)}
 @keyframes cf-turn-out{to{opacity:0;visibility:hidden}}
 @media (prefers-reduced-motion:reduce){.cf-turn-phone{animation:none;transform:rotate(-90deg)}}
 
+
+/* Captain's sword cursor (mouse/trackpad only; phones have no cursor).
+   Silver blade everywhere, gold blade over anything clickable; text fields
+   keep the text caret. !important beats the many `cursor:pointer` rules. */
+@media (hover: hover) and (pointer: fine) {
+  html, html * { cursor: url("/cursors/sword.svg") 2 2, auto !important; }
+  html :is(a[href], button, summary, label, select, [role=button], [role=tab], [role=switch], [role=menuitem], [onclick], .cursor-pointer, [style*="cursor: pointer"], input:is([type=checkbox],[type=radio],[type=range],[type=button],[type=submit],[type=color])),
+  html :is(a[href], button, summary, [role=button], .cursor-pointer, [style*="cursor: pointer"]) * {
+    cursor: url("/cursors/sword-hot.svg") 2 2, pointer !important;
+  }
+  html :is(textarea, [contenteditable=true], input:not([type]), input:is([type=text],[type=search],[type=email],[type=number],[type=password],[type=url],[type=tel])) {
+    cursor: text !important;
+  }
+  html :is(:disabled, [aria-disabled=true]), html :is(:disabled, [aria-disabled=true]) * { cursor: not-allowed !important; }
+}

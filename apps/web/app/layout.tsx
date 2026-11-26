@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import { Providers } from "@/components/Providers";
+import { MusicPlayer } from "@/components/MusicPlayer";
+import { TapSound } from "@/components/TapSound";
 import { RotateHint } from "@/components/RotateHint";
 import { RotatedScroll } from "@/components/RotatedScroll";
 import { ORIENT_SCRIPT } from "@/lib/viewport";
@@ -29,6 +31,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <RotatedScroll />
         </div>
         <RotateHint />
+        <MusicPlayer />
+        <TapSound />
       </body>
     </html>
   );
