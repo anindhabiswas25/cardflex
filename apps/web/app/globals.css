@@ -291,3 +291,9 @@ html[data-rot] .hc-menu-shade{background:rgba(6,1,16,.8)}
   }
   html :is(:disabled, [aria-disabled=true]), html :is(:disabled, [aria-disabled=true]) * { cursor: not-allowed !important; }
 }
+
+/* Phones: no backdrop blur. Safari keeps a full-screen blurred copy of the page
+   for each one (x3 pixels on iPhones), part of what crashed the tab; the
+   shades are made a little darker instead. */
+html[data-land] * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+html[data-land] :is(.cf-turn, .hc-menu-shade, .xs-shade, .xt-shade, .tb-modal-shade, .vf-modal-shade) { background-color: rgba(6,1,16,.86); }

@@ -376,7 +376,12 @@ export function CardFlexLanding() {
             ? ({
                 width: sw,
                 height: sh,
-                transform: `translate(0, ${box.y}px) scale(${box.s})`,
+                // zoom, not transform: scale: Safari draws a scaled-down layer at
+                // its full 1280x960 size (x3 on iPhones) and runs out of memory
+                // (tab crash); with zoom it is laid out and drawn at screen size.
+                // `top` is in zoomed units too, hence / s.
+                zoom: box.s,
+                top: box.y / box.s,
                 "--pk": box.pk,
                 "--fk": box.fk,
                 "--sh": `${sh}px`,
