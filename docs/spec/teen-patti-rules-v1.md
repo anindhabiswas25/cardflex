@@ -1,4 +1,4 @@
-# Teen Patti rules v1 — specification
+# Card Flex rules v1 — specification
 
 - **Status:** **Signed off by the PM on 2026-11-19 (CF-014).** Implemented in
   `crates/teen-patti-core` (CF-015). Rows marked ⚑ were the choices

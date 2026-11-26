@@ -1,57 +1,61 @@
 <div align="center">
 
-# Card Flex
+<img src="docs/media/logo.jpg" alt="Card Flex" width="360">
 
-**Provably fair Teen Patti on Solana — private cards, instant moves, every hand verifiable.**
+## Private cards. Fair shuffle. Every hand provable.
+
+A three-card game on Solana. Each hand is shuffled, dealt and played by a Solana program inside **MagicBlock's Private Ephemeral Rollup**, which runs in secure hardware (Intel TDX). Only you can read your cards, buy-ins never leave Solana, and anyone can check every finished hand.
+
+**[Play on Devnet](https://cardflex.189-72-154-215.sslip.io)**
+
+[X @cardflexfun](https://x.com/cardflexfun) · [Rules](https://cardflex.189-72-154-215.sslip.io/rules) · [Verify a hand](https://cardflex.189-72-154-215.sslip.io/verify) · Program [`4XUaBS…3vdL`](https://explorer.solana.com/address/4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL?cluster=devnet)
 
 [![CI](https://github.com/anindhabiswas25/cardflex/actions/workflows/ci.yml/badge.svg)](https://github.com/anindhabiswas25/cardflex/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Network: Solana Devnet](https://img.shields.io/badge/network-Solana%20Devnet-9945FF)
-![Status: pre-release](https://img.shields.io/badge/status-pre--release%20(Devnet)-orange)
 
 </div>
 
-Card Flex is a multiplayer Teen Patti game whose rules, shuffle and money all
-live on-chain. The game runs as an [Anchor](https://www.anchor-lang.com/)
-program inside [MagicBlock](https://www.magicblock.xyz/)'s **Private Ephemeral
-Rollup (PER)**, which executes in an Intel TDX trusted execution environment.
-Buy-ins never leave Solana. Players see only their own cards, play without
-wallet pop-ups, and anyone can check every finished hand.
+<p align="center">
+  <img src="docs/media/hero.jpg" alt="The Card Flex lobby: Amethyst Hall, the entry table" width="900">
+</p>
+
+| Buy in | Play | Verify | Cash out |
+|---|---|---|---|
+| One wallet signature moves your buy-in into the table's vault on Solana. | Up to 6 players, 3 cards each. Moves are signed by a session key, so no wallet pop-ups. | After every hand, rebuild the deck and replay the betting in your browser. | Your synced stack goes back to your wallet. If the rollup stops, you can claim it back yourself. |
 
 > **Devnet only.** Card Flex has not been audited and must not be used with
 > real money. Play responsibly; 18+.
 
----
+## What it is
 
-## Contents
+Card Flex is a fast three-card game for up to six players: a boot from every player, blind or seen betting, chaal, pack, show and side show. It has three themed tables: **Amethyst Hall**, **Emerald Court** and **Ruby Throne**.
 
-- [How a hand works](#how-a-hand-works)
-- [What you trust, and what you can check](#what-you-trust-and-what-you-can-check)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Quick start](#quick-start)
-- [Run the game locally](#run-the-game-locally)
-- [Operating tables](#operating-tables)
-- [Verifying a hand](#verifying-a-hand)
-- [Testing](#testing)
-- [Repository layout](#repository-layout)
-- [Documentation](#documentation)
-- [Project status](#project-status)
-- [Security](#security)
-- [Contributing](#contributing)
-- [License](#license)
+An online card game needs secrets: nobody, not even the house, may see the deck or another player's hand while it's played. A public blockchain can't keep secrets, so most on-chain card games deal on a private server and ask you to trust it. Card Flex runs the dealer itself on-chain, inside a MagicBlock Private Ephemeral Rollup (PER). The PER executes the `card_flex` program in a trusted execution environment, where account data can be private: your cards sit in an account that only your seat's session key can read.
 
----
+The shuffle mixes a secret salt from every player with MagicBlock VRF randomness, and commits to the deck before the first card. When the hand ends, the program publishes everything needed to check it.
+
+## Architecture
+
+![Card Flex architecture: players' browsers, the card_flex program inside the MagicBlock Private Ephemeral Rollup, Solana devnet holding the money, our untrusted keeper/indexer/admin helpers, and anyone verifying hands](docs/media/architecture.png)
+
+Money accounts (TableVault, SeatLedger) never leave Solana; secret accounts (SeatHand, salts, the dealer) never leave the PER ([ADR 0002](docs/adr/0002-account-lifecycle.md)). The keeper holds no table key: every step it takes (start a hand, deal, time out a slow player, reveal, sync) is a permissionless instruction anyone could send. Diagram source: [`docs/media/architecture-src/architecture.excalidraw`](docs/media/architecture-src/architecture.excalidraw) (open it at [excalidraw.com](https://excalidraw.com)).
+
+## Try it in two minutes
+
+1. **Open [the app](https://cardflex.189-72-154-215.sslip.io)** on a desktop or phone (phones play sideways).
+2. **Connect a wallet** set to Devnet (Phantom, Solflare or Backpack), or pick the **Devnet test wallet** to play without an extension. Get devnet SOL from the wallet menu or [faucet.solana.com](https://faucet.solana.com).
+3. **Take a seat** at a table and buy in (40–200 boots). A hand starts when 2 or more players are seated.
+4. **Verify.** After the hand, open it from your dashboard or at `/verify`: the page rebuilds the deck from the published salts and VRF output, replays the betting and checks the winner, payouts and rake, all in your browser.
 
 ## How a hand works
 
 1. **Buy in on Solana.** Your wallet signs one transaction that moves your
-   buy-in (40–200 boots) into the table's vault and registers a fresh
-   **session key** for this seat. The vault is never delegated: money stays
-   on the base layer.
+   buy-in into the table's vault and registers a fresh **session key** for
+   this seat. The vault is never delegated: money stays on the base layer.
 2. **Sit down in the private rollup.** The table's live state runs in the
    PER. Your session key is the only reader of your cards, and it signs your
-   moves — no wallet prompts while you play.
+   moves.
 3. **Shuffle together.** Every dealt player's browser commits a secret
    salt. The program mixes the salts with a **verifiable random value
    (MagicBlock VRF)**, shuffles inside the TEE and deals each hand into a
@@ -63,11 +67,34 @@ wallet pop-ups, and anyone can check every finished hand.
    salts, randomness and action log. Pot and rake are settled, and stacks are
    synced back to your seat ledger on Solana.
 6. **Verify.** Anyone can rebuild the deck from the public record, replay
-   the betting and check the winner, payouts and rake — in the browser
+   the betting and check the winner, payouts and rake, in the browser
    (WebAssembly) or with the `cf-verify` CLI.
 7. **Cash out.** Leave the table, and once your final stack is synced your
    wallet pulls it out of the vault. If the rollup ever stops, every player
    can claim back their last synced stack after a timeout. No redeal, ever.
+
+## Hand ranking
+
+| Rank | Hand | Example |
+|---|---|---|
+| 1 | Trail (three of a kind) | A-A-A is the best hand |
+| 2 | Pure sequence (straight flush) | Q-J-10 of hearts |
+| 3 | Sequence (straight) | 7-6-5, mixed suits |
+| 4 | Color (flush) | three spades, not in a row |
+| 5 | Pair | K-K-4 |
+| 6 | High card | anything else |
+
+A-K-Q is the top sequence and A-2-3 the second; K-A-2 isn't a sequence. Full rules: [the rules v1 spec](docs/spec/teen-patti-rules-v1.md).
+
+## Why it needs MagicBlock
+
+| In the game | MagicBlock piece |
+|---|---|
+| Your cards, the salts and the dealer stay hidden while the hand is played | **Private Ephemeral Rollup** (Intel TDX): per-account read permissions; the app checks the TEE's attestation before you buy in |
+| Fast moves with no fee per action | **Ephemeral Rollup**: the table's runtime is delegated to MagicBlock's validator |
+| A shuffle no single party controls | **VRF**, requested and answered inside the rollup, mixed with every player's salt |
+| Playing without wallet prompts | **Session keys**, one per seat, registered at buy-in |
+| Results and stacks reach Solana after every hand | **Commit and undelegate**: `commit_hand` + `sync_hand` copy the settled stacks to each seat's ledger |
 
 ## What you trust, and what you can check
 
@@ -86,42 +113,21 @@ Card Flex is **not trustless**, and we don't claim it is.
 | Winner, payouts and rake are right | The verifier recomputes the settlement from the replay |
 | Your money can't be trapped | Permissionless timeouts at every phase; `emergency_refund` + `claim_refund` if the rollup stalls |
 
-## Architecture
+## On-chain addresses (devnet)
 
-```text
-            ┌───────────────────────────── browser ─────────────────────────────┐
-            │  apps/web (Next.js)                                                │
-            │   wallet (Wallet Standard)        session key (sessionStorage)     │
-            │   buy-in · cash-out · refund      salts · moves · leave            │
-            │   TEE attestation check           WASM verifier (cf-verify)        │
-            └──────────────┬──────────────────────────────┬─────────────────────┘
-                           │ base-layer txs               │ PER txs / private reads
-                           ▼                              ▼
-   ┌──────────── Solana (base layer) ───────────┐   ┌──── MagicBlock PER (Intel TDX) ────┐
-   │ GlobalConfig   TableConfig   TableVault ◎  │   │ TableRuntime (live game state)      │
-   │ SeatLedger (per seat: buy-in, synced stack)│◄──│ HandLog (public, committed per hand)│
-   │ last committed TableRuntime / HandLog      │   │ SeatHand ×6  (readable only by the  │
-   └────────────────────────────────────────────┘   │   seat's session key)               │
-                           ▲                        │ SaltAccount ×6, DealerState (no     │
-                           │ commit + sync per hand │   human reader; never committed)    │
-   ┌─────────── off-chain services ─────────────┐   └─────────────────────────────────────┘
-   │ keeper  — moves every table forward with    │
-   │           permissionless instructions only  │
-   │ api     — indexer + read-only HTTP API,     │
-   │           verifies every hand it stores     │
-   │ admin   — operator CLI, signs locally       │
-   └─────────────────────────────────────────────┘
-```
+| What | Address |
+|---|---|
+| `card_flex` program | [`4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL`](https://explorer.solana.com/address/4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL?cluster=devnet) |
+| Amethyst Hall (entry) | [`CeyYCmBPbtgToBC5onzY3tk71gqUewg92vzxAAsmBKfg`](https://explorer.solana.com/address/CeyYCmBPbtgToBC5onzY3tk71gqUewg92vzxAAsmBKfg?cluster=devnet) |
+| Emerald Court (premium) | [`CH6CvNWrJGKLfgFF7SLoA7gjjuTCaedNUnut2XxCoSbT`](https://explorer.solana.com/address/CH6CvNWrJGKLfgFF7SLoA7gjjuTCaedNUnut2XxCoSbT?cluster=devnet) |
+| Ruby Throne (high roller) | [`4fzQ3EN2Cy5sDjALB6X7jBV5yM157PVqv4XrfvJ7f4D9`](https://explorer.solana.com/address/4fzQ3EN2Cy5sDjALB6X7jBV5yM157PVqv4XrfvJ7f4D9?cluster=devnet) |
+| MagicBlock PER (TEE) RPC | `https://devnet-tee.magicblock.app` |
 
-- **Account placement** is fixed by [ADR 0002](docs/adr/0002-account-lifecycle.md):
-  money accounts never leave the base layer; secret accounts never leave the PER.
-- **No privileged dealer.** The keeper holds no table key. Every step it
-  takes — start a hand, request randomness, deal, time out, reveal, sync — is
-  a permissionless instruction anyone could send.
+Table addresses are each table's `TableConfig` on Solana; the live game state is in the PER and private to the players seated there.
 
 ## Features
 
-- **Teen Patti rules v1**, frozen by test vectors and an independent Python
+- **Rules v1**, frozen by test vectors and an independent Python
   implementation: blind/seen play, chaal (×1/×2), pack, show, side show,
   128-boot chaal limit, 1,024-boot pot limit, 25 s turns, rake with a cap.
 - **Private cards** via per-seat permissions in the PER; Side Show grants a
@@ -272,7 +278,7 @@ toolchain.env               Pinned versions (single source of truth)
 | --- | --- |
 | [`docs/STATUS.md`](docs/STATUS.md) | What's done, in progress and next |
 | [`docs/adr/`](docs/adr/) | Architecture decisions (toolchain, account lifecycle, fairness encoding, recovery, seats and money, indexer) |
-| [`docs/spec/`](docs/spec/) | CF-Fairness v2 and Teen Patti rules v1, with test vectors |
+| [`docs/spec/`](docs/spec/) | CF-Fairness v2 and the game rules v1, with test vectors |
 | [`docs/findings/`](docs/findings/) | Measured results: latency, privacy, load, fees, recovery, web E2E |
 | [`docs/runbooks/`](docs/runbooks/) | Deploy, keeper, alarms, incidents, multisig |
 
@@ -286,7 +292,7 @@ Development is gate-driven, with no fixed release date.
 | G1 privacy · G2 verifier (10,000 hands) · G3 go/no-go on MagicBlock | ✅ passed |
 | P7: SDK, indexer, admin, player app | ✅ done |
 | P8: hardening (liveness, security review, ops, load, fees, monitoring) | ✅ done; multisig handover pending |
-| P9: public Devnet release | ⏭️ next (multi-machine load test, hosting) |
+| P9: public Devnet release | 🚧 in progress: hosted Devnet build live; multi-machine load test next |
 
 Mainnet is a separate decision after P9 and needs external audits.
 
