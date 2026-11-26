@@ -128,6 +128,7 @@ fn seeded_table(seats: u8) -> Table {
         paid_commit_hash: [0; 32],
         keeper: Pubkey::default(),
         credited: [0; MAX_SEATS],
+        session_base_seq: 0,
     };
     for s in 0..seats as usize {
         rt.dealing_order[s] = s as u8;

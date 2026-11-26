@@ -116,7 +116,7 @@ try {
   // ---- commit + sync (base) ----
   async function commitAndSync(label) {
     const seqBefore = (await base.getAccountInfo(runtime)).data.readBigUInt64LE(RT.commit_seq);
-    await send(tee, [ix("commit_hand", [w(keeper.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [keeper], { skipPreflight: true });
+    await send(tee, [ix("commit_hand", [w(authority.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
     const landed = await waitFor(async () => ((await base.getAccountInfo(runtime)).data.readBigUInt64LE(RT.commit_seq) > seqBefore ? true : null), 90_000, 500);
     check(label, "commit lands on the base layer", true, !!landed.value, `${landed.ms} ms`);
     const seated = (await cfgData())[TC.seated];

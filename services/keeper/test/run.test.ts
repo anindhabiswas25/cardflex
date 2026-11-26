@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair, type Connection, type PublicKey } from "@solana/web3.js";
-import { runKeeper } from "../src/run.ts";
+import { runKeeper, withDeadline } from "../src/run.ts";
 import type { Keeper } from "../src/keeper.ts";
 
 test("CF-061: a slow table doesn't hold back others; reads are batched; no step on a stale snapshot", async () => {
@@ -35,4 +35,13 @@ test("CF-061: a slow table doesn't hold back others; reads are batched; no step 
   const rounds = calls.slot;
   assert.equal(calls.multi, rounds, "one batched read per round for 30 tables (not 30)");
   assert.deepEqual(stale, [], "no step on a snapshot taken before the table's previous step finished");
+});
+
+test("a read that never answers fails at its deadline instead of hanging the loop", async () => {
+  await assert.rejects(withDeadline(new Promise(() => {}), 50), /no answer within 50 ms/);
+});
+
+test("a read that answers in time passes its value (and errors) through", async () => {
+  assert.equal(await withDeadline(Promise.resolve(7), 1_000), 7);
+  await assert.rejects(withDeadline(Promise.reject(new Error("boom")), 1_000), /boom/);
 });

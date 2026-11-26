@@ -75,12 +75,13 @@ try {
   check("seated with a session key (no more wallet prompts while playing)", true, `wallet signatures so far: ${await p.eval("window.__mockSigns")}`);
   await p.click("[data-testid=leave]");
   const tLeave = Date.now();
-  await p.waitFor(`!!document.querySelector('[data-testid=cash-out]') || !!document.querySelector('[data-testid=paid]')`, 5 * 60_000, 2000);
-  const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
-  await p.click("[data-testid=cash-out]");
-  await p.waitFor(`!document.querySelector('[data-testid=cash-out]') && (!!document.querySelector('[data-testid=paid]') || !!document.querySelector('[data-testid=buy-in]'))`, 120000);
-  check("cash-out signed by the wallet", true, `${label} · signatures: ${await p.eval("window.__mockSigns")}`);
-  check("cash-out ready within 60 s of leaving (keeper syncs the departure at once)", Date.now() - tLeave < 60_000, `${Math.round((Date.now() - tLeave) / 1000)} s`);
+  // CF-083: Leave goes straight to Boards; the keeper pays (cash_out is permissionless), no wallet prompt.
+  const signsBefore = await p.eval("window.__mockSigns");
+  const paid = await p.waitFor(`location.pathname === '/tables' && document.querySelector('[data-testid=exit-summary]') ? document.querySelector('[data-testid=exit-paid]')?.innerText : null`, 5 * 60_000, 2000).catch(() => null);
+  check("left to Boards and was paid out by the keeper", !!paid, paid ?? "");
+  check("paid within 60 s of leaving (keeper syncs the departure at once)", Date.now() - tLeave < 60_000, `${Math.round((Date.now() - tLeave) / 1000)} s`);
+  check("no wallet prompt for the payout", (await p.eval("window.__mockSigns")) === signsBefore, `signatures: ${await p.eval("window.__mockSigns")}`);
+  await p.click("[data-testid=exit-close]");
 
 } catch (e) {
   log("ERROR", e.message);

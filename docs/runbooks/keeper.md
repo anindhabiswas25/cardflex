@@ -19,7 +19,10 @@ cf-admin table keeper <config> <keeper pubkey>     # reader of the runtime only
 export CARDFLEX_KEEPER_KEY=~/.config/cardflex/keeper.json   # fee payer + read key, NOT the table authority
 export CARDFLEX_AUTHORITY=<your table authority pubkey>     # drive only your tables
 export CARDFLEX_DB=/var/lib/cardflex/hands.sqlite           # optional: index every hand for the API
-export HEARTBEAT_SECS=300 STUCK_SECS=120 PER_SOCKETS=16
+export HEARTBEAT_SECS=900 STUCK_SECS=120 PER_SOCKETS=16   # CF-084: 900 s (each heartbeat spends a free commit)
+# CF-084 (ADR 0007): the operator key = authority of the tables (never the deployer key).
+# With it the keeper closes and reopens a table whose free-commit session is over.
+export CARDFLEX_OPERATOR_KEY=~/.config/cardflex/operator.json
 export HEALTH_PORT=9464                                     # GET /health (CF-060)
 pnpm keeper
 ```
@@ -83,3 +86,22 @@ commit. The table authority may always commit (`cf-admin table close`).
   or let the refund path pay players. Always open tables with `table open`.
 - Lots of `fetch failed`: the PER may be throttling this IP (CF-054). Lower
   `PER_SOCKETS`, check nothing else on the machine hammers the PER.
+
+## Free-commit sessions (CF-084, ADR 0007)
+
+A table plays ~20 hands per session (MagicBlock commits the first 25 of a
+delegation for free). Then the keeper calls `end_session` (everyone leaves),
+commits once, syncs, pays everyone, and recycles the table (close + reopen).
+`/health` shows `sessionCommits` and `sessions` per table.
+
+- **Session over, table not recycled** (log: `session over: the table needs
+  cf-admin table recycle`): the keeper has no `CARDFLEX_OPERATOR_KEY`, or the
+  key isn't this table's authority. Run `cf-admin --keypair <operator.json>
+  table recycle <config>`.
+- **Recycle stopped half-way** (closed, not reopened): the keeper resumes it
+  on its next tick while it runs; after a restart run `cf-admin table open
+  <config>` with the operator key (it re-creates what's missing).
+- **Players who left a closed table unpaid:** `cf-admin table settle <config>`
+  (permissionless: sync + cash-out of every left seat).
+- **Cost:** each recycle forfeits ~0.0063 SOL of delegation deposit from the
+  operator key; keep it funded from the treasury (rake).

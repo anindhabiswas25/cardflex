@@ -90,13 +90,13 @@ try {
   }
   check("result cards stay visible between hands (until the next deal)", sawIdleWithCards || samples === 0, `${samples} between-hand samples`);
   await P[1].shot(join(process.env.E2E_OUT ?? KEYS, "three-result.png"));
+  // CF-083: Leave goes straight to Boards; the popup follows the keeper's payout.
   for (const p of P) { await p.click("[data-testid=leave]"); await sleep(800); }
   for (const p of P) {
-    await p.waitFor(`!!document.querySelector('[data-testid=cash-out]') || !!document.querySelector('[data-testid=paid]')`, 8 * 60_000, 2000);
-    const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
-    await p.click("[data-testid=cash-out]");
-    await p.waitFor(`!document.querySelector('[data-testid=cash-out]') && (!!document.querySelector('[data-testid=paid]') || !!document.querySelector('[data-testid=buy-in]'))`, 120000);
-    check(`${p.name} cashed out`, true, label);
+    const onBoards = await p.waitFor(`location.pathname === '/tables' && (document.querySelector('[data-testid=exit-pending]') || document.querySelector('[data-testid=exit-summary]')) ? 'popup' : null`, 60000).catch(() => null);
+    const paid = await p.waitFor(`document.querySelector('[data-testid=exit-summary]') ? document.querySelector('[data-testid=exit-paid]')?.innerText : null`, 8 * 60_000, 2000).catch(() => null);
+    check(`${p.name} left to Boards and was paid out`, onBoards === "popup" && !!paid, paid ?? "");
+    await p.click("[data-testid=exit-close]");
   }
 } catch (e) {
   log("ERROR", e.message);

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PHASE, decodeAccount, discriminatorOf, sizeOf, type TableRuntime } from "@card-flex/client-sdk";
-import { VRF_TIMEOUT_SLOTS, decide, type Ctx } from "../src/decide.ts";
+import { PHASE, SESSION_HAND_COMMITS, decodeAccount, discriminatorOf, sizeOf, type TableRuntime } from "@card-flex/client-sdk";
+import { HEARTBEAT_STOP, VRF_TIMEOUT_SLOTS, decide, type Ctx } from "../src/decide.ts";
 
 function runtime(patch: (r: any) => void): TableRuntime {
   const d = new Uint8Array(8 + sizeOf({ defined: { name: "TableRuntime" } }));
@@ -137,4 +137,28 @@ test("CF-079: no deal in the first seconds of a hand, unless a dealt player is l
   assert.equal(decide(r(() => {}), ctx({ nowSecs: 1_003n })).kind, "wait", "3 s after the start");
   assert.equal(decide(r(() => {}), ctx({ nowSecs: 1_006n })).kind, "deal_hand", "window over");
   assert.equal(decide(r((x) => { x.leaving = 0b10; }), ctx({ nowSecs: 1_001n })).kind, "deal_hand", "a leaver: cancel at once (deal_hand cancels)");
+});
+
+test("CF-084: a session ends once its free hand commits are used: everyone leaves, is synced, then the table recycles", () => {
+  const two = (r: any) => { r.occupied = 0b11; r.stacks[0] = 1_000_000n; r.stacks[1] = 1_000_000n; };
+  const used = (n: number) => (r: any) => { r.session_base_seq = 100n; r.commit_seq = 100n + BigInt(n); };
+  const at = (n: number, f: (r: any) => void = () => {}) => runtime((r) => { used(n)(r); f(r); });
+  assert.equal(decide(at(SESSION_HAND_COMMITS - 1, two), ctx()).kind, "start_hand", "budget left: play on");
+  assert.equal(decide(at(SESSION_HAND_COMMITS, two), ctx()).kind, "end_session", "budget used: no new hand, everyone leaves");
+  assert.equal(decide(at(SESSION_HAND_COMMITS, two), ctx({ waitingSeats: [2] })).kind, "end_session", "a waiting buyer joins the next session");
+  const left = (r: any) => { r.departed = 0b11; };
+  assert.deepEqual(decide(at(SESSION_HAND_COMMITS, left), ctx({ canRecycle: true })), { kind: "commit_and_sync", reason: "departed" }, "their stacks reach Solana first");
+  assert.equal(decide(at(SESSION_HAND_COMMITS + 1, left), ctx({ departedSynced: 0b11, canRecycle: true })).kind, "recycle");
+  assert.equal(decide(at(SESSION_HAND_COMMITS + 1, left), ctx({ departedSynced: 0b11 })).kind, "wait", "no operator key: an operator recycles");
+  assert.equal(decide(at(0, two), ctx({ recycling: true })).kind, "recycle", "a half-done recycle resumes first");
+});
+
+test("CF-084: no keeper heartbeat in a session's last commits (the end must fit the free budget)", () => {
+  const due = { lastCommitSecs: 600n };
+  const seated = (n: number) => runtime((r) => { r.occupied = 0b1; r.commit_seq = BigInt(n); });
+  assert.deepEqual(decide(seated(HEARTBEAT_STOP - 1), ctx(due)), { kind: "commit_and_sync", reason: "heartbeat" });
+  assert.equal(decide(seated(HEARTBEAT_STOP), ctx(due)).kind, "wait");
+  const midHand = (n: number) => runtime((r) => { r.occupied = 0b11; r.phase = PHASE.DEALT; r.turn_deadline = 2_000n; r.commit_seq = BigInt(n); r.game.n = 2; r.game.order[0] = 0; r.game.order[1] = 1; });
+  assert.equal(decide(midHand(HEARTBEAT_STOP - 1), ctx(due)).kind, "commit_and_sync");
+  assert.notEqual(decide(midHand(HEARTBEAT_STOP), ctx(due)).kind, "commit_and_sync");
 });

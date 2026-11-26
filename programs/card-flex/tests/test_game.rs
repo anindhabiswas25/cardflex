@@ -159,6 +159,7 @@ fn dealt_table(seats: u8, stacks: [u64; MAX_SEATS], seed: [u8; 32], rake: (u16, 
         paid_commit_hash: [0; 32],
         keeper: Pubkey::default(),
         credited: [0; MAX_SEATS],
+        session_base_seq: 0,
     };
     let mut data = Vec::new();
     rt.try_serialize(&mut data).unwrap();
@@ -627,7 +628,13 @@ fn runtime_byte_offsets() {
             rt.credited[i]
         );
     }
-    assert_eq!(d.len(), 1332);
+    // CF-084: the session baseline after credited.
+    assert_eq!(RUNTIME_SESSION_BASE_OFFSET, 1332);
+    assert_eq!(
+        u64::from_le_bytes(d[1332..1340].try_into().unwrap()),
+        rt.session_base_seq
+    );
+    assert_eq!(d.len(), 1340);
 }
 
 /// CF-064: the state hash ignores commit bookkeeping but sees game state.
@@ -639,6 +646,7 @@ fn runtime_state_hash_ignores_commit_fields() {
     let mut e = d.clone();
     e[858..866].copy_from_slice(&99u64.to_le_bytes());
     e[1212..1252].fill(7);
+    e[1332..1340].fill(9); // CF-084 session_base_seq
     assert_eq!(runtime_state_hash(&e), h, "commit fields don't count");
     t.act(0, Action::Chaal { amount: BOOT }).unwrap();
     let d2 = t.svm.get_account(&t.runtime).unwrap().data;
@@ -653,17 +661,24 @@ fn paid_commit_rule() {
     let stranger = Pubkey::new_unique();
     let h = [1u8; 32];
     rt.last_paid_commit = 1_000;
-    // Mid-hand: only the heartbeat gap (or the authority).
+    // Mid-hand: only the heartbeat gap (or the authority). CF-084: a
+    // stranger's gap is the long safety-net one, not the keeper's.
     assert!(!paid_commit_allowed(
         &rt,
         &h,
-        1_000 + COMMIT_MIN_GAP_SECS - 1,
+        1_000 + COMMIT_MIN_GAP_SECS,
+        &stranger
+    ));
+    assert!(!paid_commit_allowed(
+        &rt,
+        &h,
+        1_000 + STRANGER_COMMIT_GAP_SECS - 1,
         &stranger
     ));
     assert!(paid_commit_allowed(
         &rt,
         &h,
-        1_000 + COMMIT_MIN_GAP_SECS,
+        1_000 + STRANGER_COMMIT_GAP_SECS,
         &stranger
     ));
     assert!(paid_commit_allowed(&rt, &h, 1_001, &rt.authority.clone()));
@@ -740,10 +755,49 @@ fn commit_with_fee_vault_refused_when_not_needed() {
     warp_to(&mut t, start + 10);
     let e = send(&mut t.svm, std::slice::from_ref(&ix), &[&payer]).unwrap_err();
     assert!(e.contains("CommitNotNeeded"), "{e}");
-    // Heartbeat due: the gate passes (LiteSVM then fails inside MagicBlock's program).
+    // CF-084: without the fee vault the same rule applies (every commit
+    // spends the session's free budget, whoever pays).
+    let mut no_vault = ix.clone();
+    no_vault.accounts[3] = AccountMeta::new_readonly(card_flex::id(), false);
+    let e = send(&mut t.svm, std::slice::from_ref(&no_vault), &[&payer]).unwrap_err();
+    assert!(e.contains("CommitNotNeeded"), "{e}");
+    // CF-084: the keeper's heartbeat gap isn't enough for a stranger.
     warp_to(&mut t, start + COMMIT_MIN_GAP_SECS);
-    let e = send(&mut t.svm, &[ix], &[&payer]).unwrap_err();
+    let e = send(&mut t.svm, std::slice::from_ref(&ix), &[&payer]).unwrap_err();
+    assert!(e.contains("CommitNotNeeded"), "{e}");
+    // Safety-net heartbeat due: the gate passes (LiteSVM then fails inside MagicBlock's program).
+    warp_to(&mut t, start + STRANGER_COMMIT_GAP_SECS);
+    let e = send(&mut t.svm, std::slice::from_ref(&ix), &[&payer]).unwrap_err();
     assert!(!e.contains("CommitNotNeeded"), "{e}");
+    assert!(!e.contains("FreeCommitsUsed"), "{e}");
+    // CF-084: with the session's free commits used up (the last one is the
+    // close), a heartbeat is refused even when due.
+    let mut rt = t.runtime();
+    rt.commit_seq = rt.session_base_seq + SESSION_COMMIT_LIMIT;
+    let mut data = Vec::new();
+    rt.try_serialize(&mut data).unwrap();
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
+    let e = send(&mut t.svm, std::slice::from_ref(&ix), &[&payer]).unwrap_err();
+    assert!(e.contains("FreeCommitsUsed"), "{e}");
+    // ...except the named keeper's commit once everyone has left between
+    // hands: it only carries the leavers' final stacks (never block payouts).
+    let mut rt = t.runtime();
+    rt.keeper = payer.pubkey();
+    rt.occupied = 0;
+    rt.phase = phase::IDLE;
+    rt.paid_commit_hash = [0; 32];
+    let mut data = Vec::new();
+    rt.try_serialize(&mut data).unwrap();
+    let mut acc = t.svm.get_account(&t.runtime).unwrap();
+    acc.data = data;
+    t.svm.set_account(t.runtime, acc).unwrap();
+    let e = send(&mut t.svm, &[ix], &[&payer]).unwrap_err();
+    assert!(
+        !e.contains("FreeCommitsUsed") && !e.contains("CommitNotNeeded"),
+        "{e}"
+    );
 }
 
 /// Keeps `HL` in `packages/probes/src/common.mjs` in sync with `HandLog`.

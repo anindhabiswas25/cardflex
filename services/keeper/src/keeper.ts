@@ -4,11 +4,12 @@
 // token grants reads, never signatures).
 import { Connection, Keypair, PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
-  abortLostHand, applyTopUp, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
-  revealHand, sideShowView, sizeOf, startHand, cashOut, decodeLedger, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
+  DELEGATION_PROGRAM_ID, abortLostHand, applyTopUp, confirmByPolling, isProgramError, cancelHand, joinSeat, PHASE, cancelSalts, commitHand, dealHand, decodeRuntime, decodeTableConfig, delegationRecordPda, nextHand, requestShuffle,
+  endSession, sessionCommits, revealHand, sideShowView, sizeOf, startHand, cashOut, decodeLedger, syncHand, tableAddresses, timeoutTurn, type TableRuntime,
 } from "@card-flex/client-sdk";
 import { indexHand } from "@card-flex/api/indexer";
 import type { Store } from "@card-flex/api/store";
+import { recycleTable, openTable } from "@card-flex/admin/recycle";
 import type { Verifier } from "@card-flex/client-sdk";
 import { decide, inProgress, viewerPairs, type Step } from "./decide.ts";
 
@@ -25,6 +26,15 @@ export type KeeperOpts = {
   store?: Store; // index every hand before next_hand (closes the indexer's gap)
   verifier?: Verifier;
   log?: (msg: string) => void;
+  /**
+   * CF-084 (ADR 0007): the table authority key of the tables this keeper may
+   * close and reopen between sessions (a dedicated operator key, never the
+   * program's upgrade authority). Without it a finished session waits for
+   * `cf-admin table recycle`.
+   */
+  operator?: Keypair;
+  /** PER endpoint for the operator's own login (recycling). */
+  perUrl?: string;
 };
 
 /** A runtime read taken by the scheduler (run.ts) with the PER slot at that time. */
@@ -52,6 +62,12 @@ export type TableState = {
   notKeeper?: boolean;
   /** Runtime lamports above its rent, in the PER (pays PER accounts; commits need a margin). */
   headroom?: number;
+  /** CF-084: a close + reopen this keeper started and hasn't finished. */
+  recycling?: boolean;
+  /** CF-084: tables this keeper recycled (for /health). */
+  sessions?: number;
+  /** CF-084: commits used in the current session, last seen (for /health). */
+  sessionCommits?: number;
 };
 
 /** Departed seats whose current sit-down (epoch) was already synced. */
@@ -205,6 +221,7 @@ export class Keeper {
     }
 
     if (snap?.lamports !== undefined) st.headroom = snap.lamports - (this.rentOfRuntime ??= await this.o.base.getMinimumBalanceForRentExemption(RUNTIME_LEN));
+    st.sessionCommits = sessionCommits(rt);
     const stuck = inProgress(rt) && Date.now() - st.progressAt >= (this.o.stuckSecs ?? 120) * 1000;
     const waitingSeats = rt.phase === PHASE.IDLE ? await this.waitingSeats(config, rt, st).catch(() => []) : [];
     const topUpSeats = rt.phase === PHASE.IDLE ? await this.topUpSeats(config, rt, st).catch(() => []) : [];
@@ -214,6 +231,8 @@ export class Keeper {
       // CF-073: only from a fresh config read (waitingSeats refreshes it every 3 s when IDLE).
       ledgers: st.cfg && Date.now() - st.cfg.at <= 10_000 ? st.cfg.seated : undefined,
       topUpSeats,
+      canRecycle: !!this.o.operator && rt.authority.equals(this.o.operator.publicKey),
+      recycling: st.recycling,
     });
     if (step.kind === "wait") return step;
     const payer = this.o.key.publicKey;
@@ -264,6 +283,24 @@ export class Keeper {
           for (const [a, b] of step.pairs) await this.send(this.o.per, [sideShowView({ payer, config, seatA: a, seatB: b, grant: false })], "revoke_view");
           break;
         case "commit_and_sync": await this.commitAndSync(config, st, rt); break;
+        case "end_session":
+          await this.send(this.o.per, [endSession({ payer, config })], step.kind);
+          this.log(`${short} session over after ${rt.hand_no} hands: every player leaves and is paid out, then the table reopens`);
+          break;
+        case "recycle": {
+          const operator = this.o.operator;
+          if (!operator) throw new Error("no operator key");
+          st.recycling = true;
+          const o = { base: this.o.base, perUrl: this.o.perUrl ?? "https://devnet-tee.magicblock.app", authority: operator, config, log: (m: string) => this.log(`${short} ${m}`) };
+          // Resume: if the close already landed, only the reopen is left.
+          const r = await this.o.base.getAccountInfo(tableAddresses(config).runtime);
+          if (r && !r.owner.equals(DELEGATION_PROGRAM_ID)) await openTable(o);
+          else await recycleTable(o);
+          st.recycling = false;
+          st.sessions = (st.sessions ?? 0) + 1;
+          st.lastCommitSecs = BigInt(Math.floor(Date.now() / 1000)); // the close was a commit
+          break;
+        }
         case "finish_hand": {
           // 1. Index the revealed hand before anything overwrites it.
           if (this.o.store && this.o.verifier) {

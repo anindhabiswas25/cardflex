@@ -1,0 +1,86 @@
+{
+  "format": "cf-hand-record/2",
+  "protocol_version": 2,
+  "program_id": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "table": "3B9dhXUUpcYg6J1H891He5W2ce9yjnW8QnEz21oMvzqp",
+  "hand_no": "6",
+  "rules_version": 1,
+  "seats": [
+    {
+      "seat": 2,
+      "wallet": "8byg3TxcAjGR8YmAPQ7ySGaw35U1gfktncB3HdWfYnFW"
+    },
+    {
+      "seat": 4,
+      "wallet": "FgXoAXqPTcctrpkFamjJip39ZWDgemAMoEdKVa5S6Nk7"
+    },
+    {
+      "seat": 0,
+      "wallet": "AVzpYn45gxEtxYyReXA2hTZ4Tve2yJ8FRgxL1E3EtbzR"
+    }
+  ],
+  "salts": [
+    "eaf5ca2380c9fe20cd1e32dce56121427ec5ecd6bb13298a7ef537e7bc4ff11f",
+    "b2ec1facfabc193e1beb121cdacfb3fc0615045ca20719f860c845db478cc668",
+    "6c04582b35b5134f9b93f58debf548d93058b17ae1483d4779d723be01a9ceff"
+  ],
+  "vrf_output": "7590e8c44d3839017b6d067adb4ecf8bf892901de1e06b32d67bd2e84536a0e2",
+  "claimed": {
+    "roster_hash": "cca5f2f1f56b0330c609d6e5afac9eefe1d46528a29b3dfb44511315283e502d",
+    "hand_ctx": "5b06ecce86ca52464f07515671c26d2e60c7f7c275c55bad5452249803a9c762",
+    "salt_commitments": [
+      "26abbe8db8d04ddd7430049063c47024ad8641a00888651e23e26b5d5d81c4a1",
+      "f8020edd96a01fbda1552e9a064f4c105c3ae5577730c1c96a7016515bce99ea",
+      "7632cb6b3fc9e8c6f11e3d173f22c0b3e9c2a589a966de5f7f4e6997359aee88"
+    ],
+    "vrf_caller_seed": "4652fb294766eb516fae9c2f77da96792f60b7456df15ead838627d4182f5652",
+    "merkle_root": "cafe0f67784098552587934ebb2ce53017a620529fad681bddc0e0ff37848f5a"
+  },
+  "hands": [
+    {
+      "seat": 2,
+      "cards": [
+        12,
+        47,
+        29
+      ]
+    },
+    {
+      "seat": 4,
+      "cards": [
+        31,
+        43,
+        44
+      ]
+    },
+    {
+      "seat": 0,
+      "cards": [
+        33,
+        50,
+        21
+      ]
+    }
+  ],
+  "game": {
+    "boot": "25000",
+    "rake_bps": 250,
+    "rake_cap": "10000",
+    "start_stacks": [
+      "3080000",
+      "2570000",
+      "293125"
+    ],
+    "actions": "2446",
+    "end_reason": 1,
+    "winners": [
+      4
+    ],
+    "payouts": [
+      "0",
+      "97500",
+      "0"
+    ],
+    "rake": "2500"
+  }
+}

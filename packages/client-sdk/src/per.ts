@@ -46,11 +46,23 @@ export function jwtExpiry(token: string): number | null {
  */
 export function perConnection(token: string | null, perUrl: string = ENDPOINTS.devnet.per, commitment: Commitment = "confirmed", httpAgent?: ConnectionConfig["httpAgent"]) {
   const q = token ? `?token=${token}` : "";
-  return new Connection(`${perUrl}${q}`, { commitment, wsEndpoint: `${perUrl.replace(/^http/, "ws")}${q}`, ...(httpAgent ? { httpAgent } : {}) });
+  return new Connection(`${perUrl}${q}`, { commitment, wsEndpoint: `${perUrl.replace(/^http/, "ws")}${q}`, ...(httpAgent ? { httpAgent } : {}), ...rpcTimeout() });
+}
+
+/** Longest one RPC request may take (2026-11-25: requests that never answered froze the keeper and a drill). */
+export const RPC_TIMEOUT_MS = 20_000;
+
+/**
+ * Connection options that abort an RPC request after `ms` (web3.js has no
+ * timeout of its own). A middleware, so web3.js keeps its own fetch and any
+ * keep-alive `httpAgent` (CF-061). Spread into `new Connection(url, { … })`.
+ */
+export function rpcTimeout(ms: number = RPC_TIMEOUT_MS): Pick<ConnectionConfig, "fetchMiddleware"> {
+  return { fetchMiddleware: (info, init, fetch) => fetch(info, { ...init, signal: AbortSignal.timeout(ms) } as typeof init) };
 }
 
 /** Base-layer connection (money, table configs, ledgers). */
-export const baseConnection = (url: string = ENDPOINTS.devnet.base, commitment: Commitment = "confirmed") => new Connection(url, commitment);
+export const baseConnection = (url: string = ENDPOINTS.devnet.base, commitment: Commitment = "confirmed") => new Connection(url, { commitment, ...rpcTimeout() });
 
 /**
  * CF-061: confirms a transaction by polling `getSignatureStatuses` over HTTP.

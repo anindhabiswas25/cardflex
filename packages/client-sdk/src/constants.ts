@@ -39,6 +39,18 @@ export const SALT_SECS = 30;
 /** CF-079 (table.rs LEAVE_WINDOW_SECS): no deal, so no boot, sooner than this after a hand starts. */
 export const LEAVE_WINDOW_SECS = 5;
 export const RULES_VERSION = 1;
+/**
+ * CF-084 (ADR 0007, table.rs): MagicBlock commits the first FREE_COMMITS of a
+ * delegation for free. A session plays hands until SESSION_HAND_COMMITS are
+ * used, then `end_session` seats everyone out (one commit) and the table is
+ * closed (one commit) and reopened: a new session.
+ */
+export const FREE_COMMITS = 25;
+export const SESSION_HAND_COMMITS = FREE_COMMITS - 2;
+export const SESSION_COMMIT_LIMIT = FREE_COMMITS - 1;
+/** Commits used in the runtime's current session (delegation). */
+export const sessionCommits = (rt: { commit_seq: bigint; session_base_seq: bigint }) =>
+  rt.commit_seq > rt.session_base_seq ? Number(rt.commit_seq - rt.session_base_seq) : 0;
 
 /** TableRuntime.phase values (programs/card-flex/src/table.rs). */
 export const PHASE = {

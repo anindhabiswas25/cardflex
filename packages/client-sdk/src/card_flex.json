@@ -2019,6 +2019,64 @@
       "args": []
     },
     {
+      "name": "end_session",
+      "docs": [
+        "CF-084 (ADR 0007): ends a session whose hand budget is used: every",
+        "seated player leaves at once (between hands only, so no hand is cut).",
+        "Permissionless like every other liveness step; payout is the usual",
+        "commit + `sync_hand` + `cash_out`, then the table is closed and",
+        "reopened with a fresh free-commit budget."
+      ],
+      "discriminator": [
+        11,
+        244,
+        61,
+        154,
+        212,
+        249,
+        15,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "runtime",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  98,
+                  108,
+                  101,
+                  45,
+                  114,
+                  117,
+                  110,
+                  116,
+                  105,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "runtime.config",
+                "account": "TableRuntime"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "init_global",
       "docs": [
         "Creates the program-wide settings once (ADR 0005). Only the program's",
@@ -5324,6 +5382,21 @@
       "code": 6061,
       "name": "RuntimeNotMigrated",
       "msg": "this table's runtime has the old layout: migrate it before top-ups"
+    },
+    {
+      "code": 6062,
+      "name": "SessionOver",
+      "msg": "this session used its free hand commits: end_session, then the table reopens"
+    },
+    {
+      "code": 6063,
+      "name": "SessionNotOver",
+      "msg": "the session still has free hand commits"
+    },
+    {
+      "code": 6064,
+      "name": "FreeCommitsUsed",
+      "msg": "the session's free commits are used: only closing (or the authority) may commit"
     }
   ],
   "types": [
@@ -6273,6 +6346,17 @@
                 6
               ]
             }
+          },
+          {
+            "name": "session_base_seq",
+            "docs": [
+              "CF-084 (ADR 0007): `commit_seq` when this table last left the PER.",
+              "`commit_seq - session_base_seq` = commits in the current delegation",
+              "(\"session\"); MagicBlock commits the first `FREE_COMMITS` of each",
+              "delegation for free, so a session ends before it would pay.",
+              "Set by `undelegate_table` (and `migrate_runtime`), never in PER play."
+            ],
+            "type": "u64"
           }
         ]
       }

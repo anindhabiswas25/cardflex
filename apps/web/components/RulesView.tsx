@@ -38,6 +38,7 @@ const FAIR = [
   { t: "Only you see your cards", d: "Dealt inside a TEE. The hardware and its operator are trusted.", icon: "♥" },
   { t: "Every hand checkable", d: "Replay the deck and the bets after the hand.", icon: "✓" },
   { t: "Money stays on Solana", d: "In the table vault. Claim it back if the rollup stops.", icon: <Sol size="20px" /> },
+  { t: "Played in sessions", d: "About 20 hands each. Then everyone is paid out and a fresh session starts. Rake pays the network fees.", icon: "↻" },
 ];
 
 function Fan({ ids, size = "md" }: { ids: number[]; size?: "sm" | "md" | "lg" }) {
@@ -218,7 +219,7 @@ const CSS = `
 /* hero: a framed stage like the landing page */
 .rp-hero{position:relative;display:grid;align-items:center;gap:24px;margin-top:22px;padding:44px 28px;border:6px solid #1d3743;border-radius:44px;overflow:hidden}
 @media (min-width:900px){.rp-hero{grid-template-columns:1fr 1fr;padding:56px 64px;border-width:8px;border-radius:64px;min-height:520px}}
-.rp-hero h1{margin-top:16px;font-size:clamp(44px,5.6vw,70px);line-height:1;font-weight:500;letter-spacing:-1px}
+.rp-hero h1{margin-top:16px;font-size:clamp(44px,calc(5.6 * var(--vw)),70px);line-height:1;font-weight:500;letter-spacing:-1px}
 .rp-hero h1 small,.rp-cta h2 small{display:block;margin-bottom:8px;font-size:.42em;letter-spacing:4px;color:#ffd76a;font-weight:500}
 .rp-hero p{margin-top:18px;font-size:17px;color:rgba(255,255,255,.75)}
 .rp-hero-cta{display:flex;align-items:center;gap:22px;margin-top:30px;flex-wrap:wrap}
@@ -235,7 +236,7 @@ const CSS = `
 .rp-fan{position:relative;display:flex;justify-content:center;height:var(--h);--w:96px;--h:141px}
 .rp-fan img{width:var(--w);height:var(--h);margin:0 calc(var(--w) * -.2);transform:rotate(calc(var(--i) * 9deg)) translateY(calc(var(--i) * var(--i) * 4px));transform-origin:50% 90%;filter:drop-shadow(0 10px 16px rgba(0,0,0,.5));transition:transform .45s ${OUT}}
 .rp-rank:hover .rp-fan img,.rp-cta:hover .rp-fan img{transform:rotate(calc(var(--i) * 15deg)) translate(calc(var(--i) * 14px),calc(var(--i) * var(--i) * 6px - 6px))}
-.rp-fan-lg{--w:clamp(104px,17vw,200px);--h:calc(var(--w) * 1.4667)}
+.rp-fan-lg{--w:clamp(104px,calc(17 * var(--vw)),200px);--h:calc(var(--w) * 1.4667)}
 .rp-fan-lg img{margin:0 calc(var(--w) * -.3);transform:rotate(calc(var(--i) * 9deg)) translateY(calc(var(--i) * var(--i) * var(--w) * .042));animation:rp-deal .9s ${OUT} backwards;animation-delay:calc((var(--i) + 1) * .12s)}
 /* same hover as the "Fortune favours the bold" fan, scaled to the bigger cards */
 .rp-hero-art:hover .rp-fan-lg img{transform:rotate(calc(var(--i) * 15deg)) translate(calc(var(--i) * var(--w) * .146),calc(var(--i) * var(--i) * var(--w) * .0625 - var(--w) * .0625))}
@@ -244,7 +245,7 @@ const CSS = `
 /* sections */
 .rp-sec{margin-top:96px;scroll-margin-top:24px}
 .rp-head{display:grid;gap:10px;margin-bottom:34px}
-.rp-head h2{font-size:clamp(34px,4.4vw,52px);line-height:1.05;font-weight:500;letter-spacing:-.5px}
+.rp-head h2{font-size:clamp(34px,calc(4.4 * var(--vw)),52px);line-height:1.05;font-weight:500;letter-spacing:-.5px}
 
 /* rankings */
 .rp-ranks{display:grid;gap:16px}
@@ -278,14 +279,14 @@ const CSS = `
 @media (min-width:860px){.rp-side{grid-template-columns:1fr auto;padding:34px 64px 34px 44px}}
 .rp-side h3{font-size:22px;font-weight:600}
 .rp-side p{margin-top:6px;max-width:340px;font-size:14.5px;line-height:1.5;color:rgba(233,221,255,.7)}
-.rp-vs{display:flex;align-items:center;justify-content:center;gap:clamp(22px,4vw,48px)}
+.rp-vs{display:flex;align-items:center;justify-content:center;gap:clamp(22px,calc(4 * var(--vw)),48px)}
 .rp-vs > b{font-size:20px;font-weight:600;letter-spacing:2px;color:#ffd76a}
 .rp-hand{display:grid;justify-items:center;gap:16px;padding:14px 12px 0}
 .rp-hand span{font-size:12.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 .rp-hand.is-out span{color:rgba(233,221,255,.5)}
 .rp-hand.is-win span{color:#2fe07a}
 .rp-hand.is-out .rp-fan{filter:saturate(.7) brightness(.8)}
-.rp-fan-sm{--w:clamp(54px,11vw,74px);--h:calc(var(--w) * 1.4667)}
+.rp-fan-sm{--w:clamp(54px,calc(11 * var(--vw)),74px);--h:calc(var(--w) * 1.4667)}
 /* a gentle spread that stays inside the hand's own space */
 .rp-hand:hover .rp-fan img{transform:rotate(calc(var(--i) * 13deg)) translate(calc(var(--i) * var(--w) * .1),calc(var(--i) * var(--i) * var(--w) * .05 - var(--w) * .04))}
 
@@ -298,7 +299,8 @@ const CSS = `
 
 /* fairness */
 .rp-fair{display:grid;gap:14px}
-@media (min-width:760px){.rp-fair{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:760px){.rp-fair{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1100px){.rp-fair{grid-template-columns:repeat(4,1fr)}}
 .rp-fair-card{padding:26px 24px;border-radius:26px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015));transition:opacity .7s ${OUT},transform .7s ${OUT}}
 .rp-fair-card > span{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;font-size:20px;color:#ffd76a;border:1.5px solid transparent;background:linear-gradient(160deg,#341257,#1b0733) padding-box,linear-gradient(160deg,#ffe9a3,#c98a12 55%,#6b3d06) border-box}
 .rp-fair-card h3{margin-top:16px;font-size:19px;font-weight:600}
@@ -306,7 +308,60 @@ const CSS = `
 
 /* call to action */
 .rp-cta{display:grid;justify-items:center;gap:22px;margin-top:110px;padding:56px 24px;border-radius:44px;text-align:center;border:6px solid #1d3743;background:radial-gradient(60% 70% at 50% 0%,rgba(196,42,255,.25),transparent 70%)}
-.rp-cta h2{font-size:clamp(40px,5.4vw,66px);line-height:1;font-weight:500}
+.rp-cta h2{font-size:clamp(40px,calc(5.4 * var(--vw)),66px);line-height:1;font-weight:500}
+
+/* phones in landscape (html[data-land], lib/viewport.ts): each part fits one screen,
+   laid out across the width instead of stacked */
+html[data-land] .rp{padding:0 16px 32px}
+html[data-land] .rp-hero{grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;min-height:calc(calc(100 * var(--dvh)) - 64px);padding:18px 30px;border-width:5px;border-radius:34px}
+html[data-land] .rp-hero h1{margin-top:10px;font-size:34px}
+html[data-land] .rp-hero p{margin-top:8px;font-size:14px}
+html[data-land] .rp-hero-cta{margin-top:16px;gap:16px}
+html[data-land] .rp-btn{height:44px;gap:12px;padding:0 20px 0 6px;font-size:13.5px}
+html[data-land] .rp-btn span{width:32px;height:32px}
+html[data-land] .rp-link{font-size:13px}
+html[data-land] .rp-hero-art{min-height:0;padding:0}
+html[data-land] .rp-glow{width:280px;height:210px}
+html[data-land] .rp-fan-lg{--w:min(104px,calc(26 * var(--vh)))}
+html[data-land] .rp-eyebrow{font-size:10px;letter-spacing:2.4px}
+html[data-land] .rp-sec{margin-top:40px;scroll-margin-top:8px}
+html[data-land] .rp-head{gap:4px;margin-bottom:12px}
+html[data-land] .rp-head h2{font-size:26px}
+html[data-land] .rp-ranks{grid-template-columns:repeat(3,1fr);gap:10px}
+html[data-land] .rp-rank{gap:6px;padding:22px 10px 10px;border-radius:18px}
+html[data-land] .rp-no{left:12px;top:8px;font-size:18px;-webkit-text-stroke-width:1px}
+html[data-land] .rp-tag{right:10px;top:8px;padding:2px 8px;font-size:9px}
+html[data-land] .rp-fan{--w:46px;--h:67px}
+html[data-land] .rp-rank h3{font-size:15px}
+html[data-land] .rp-rank p{margin-top:1px;font-size:11.5px}
+html[data-land] .rp-note{margin-top:10px;font-size:12px}
+html[data-land] .rp-steps{grid-template-columns:repeat(5,1fr);gap:8px}
+html[data-land] .rp-step{padding:12px 10px;border-radius:16px}
+html[data-land] .rp-step:not(:last-child)::after{content:"";position:absolute;right:-7px;top:30px;width:6px;height:1px;background:rgba(255,214,102,.45)}
+html[data-land] .rp-step-ico{width:36px;height:36px;border-radius:11px;font-size:16px}
+html[data-land] .rp-backs{transform:scale(.75)}
+html[data-land] .rp-step em{top:10px;right:10px;font-size:11px}
+html[data-land] .rp-step h3{margin-top:8px;font-size:14px}
+html[data-land] .rp-step p{margin-top:3px;font-size:11.5px;line-height:1.35}
+html[data-land] .rp-side{grid-template-columns:1fr auto;gap:16px;margin-top:10px;padding:12px 24px;border-radius:18px}
+html[data-land] .rp-side h3{font-size:17px}
+html[data-land] .rp-side p{font-size:12.5px;line-height:1.4}
+html[data-land] .rp-vs{gap:18px}
+html[data-land] .rp-vs > b{font-size:15px}
+html[data-land] .rp-hand{gap:6px;padding-top:4px}
+html[data-land] .rp-hand span{font-size:10.5px}
+html[data-land] .rp-fan-sm{--w:40px}
+html[data-land] .rp-quick{grid-template-columns:repeat(6,1fr);gap:8px}
+html[data-land] .rp-q{gap:4px;padding:12px 8px;border-radius:16px}
+html[data-land] .rp-q b{font-size:20px}
+html[data-land] .rp-q span{font-size:11px}
+html[data-land] .rp-fair{grid-template-columns:repeat(4,1fr);gap:8px}
+html[data-land] .rp-fair-card{padding:14px 12px;border-radius:18px}
+html[data-land] .rp-fair-card > span{width:34px;height:34px;border-radius:11px;font-size:15px}
+html[data-land] .rp-fair-card h3{margin-top:10px;font-size:14.5px}
+html[data-land] .rp-fair-card p{font-size:11.5px;line-height:1.4}
+html[data-land] .rp-cta{gap:12px;margin-top:40px;padding:22px;border-width:5px;border-radius:32px}
+html[data-land] .rp-cta h2{font-size:32px}
 
 /* scroll reveal */
 .rp-reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ${OUT},transform .7s ${OUT}}

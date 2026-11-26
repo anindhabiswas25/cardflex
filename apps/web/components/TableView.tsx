@@ -108,6 +108,12 @@ export function phaseText(t: T): string {
   switch (rt.phase) {
     case PHASE.IDLE: {
       if (players < 2) return "Waiting for players · 2 needed";
+      // Players out of chips keep their seats and watch; a hand needs 2 who can pay the boot.
+      const able = t.seats.filter((s) => s.wallet && s.status !== "sitting" && s.status !== "broke").length;
+      if (able < 2) {
+        const broke = t.seats.filter((s) => s.status === "broke").map((s) => (s.you ? "You" : `Seat ${s.seat + 1}`));
+        return `Waiting · ${broke.join(" & ")} out of chips (add chips to play) · 2 players with chips needed`;
+      }
       // The keeper pauses NEXT_HAND_SECS after a hand so everyone sees the result.
       const left = Number(rt.last_hand_end) + NEXT_HAND_SECS - Math.floor(Date.now() / 1000);
       return left > 0 && rt.last_hand_end > 0n ? `Next hand in ${left}s` : `Next hand starting…`;
@@ -275,10 +281,10 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 export function StatusBadge({ status }: { status: string }) {
   if (status === "empty" || status === "out") return null;
-  const style = status === "seen" ? "bg-lime-500 text-lime-950" : status === "packed" ? "bg-rose-600 text-white" : status === "sitting" ? "bg-amber-500 text-amber-950" : "bg-violet-500 text-white";
+  const style = status === "seen" ? "bg-lime-500 text-lime-950" : status === "packed" ? "bg-rose-600 text-white" : status === "sitting" ? "bg-amber-500 text-amber-950" : status === "broke" ? "bg-zinc-500 text-white" : "bg-violet-500 text-white";
   return (
     <span className={`absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow ${style}`}>
-      {status === "sitting" ? "joining" : status}
+      {status === "sitting" ? "joining" : status === "broke" ? "no chips" : status}
     </span>
   );
 }

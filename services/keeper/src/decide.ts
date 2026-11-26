@@ -2,7 +2,7 @@
 // permissionless step that moves it forward. Pure, so every phase is tested
 // without a chain. Players' own steps (salts, bets) are never taken for them;
 // the keeper only uses the program's timeouts when players don't act.
-import { LEAVE_WINDOW_SECS, PHASE, SALT_SECS, type TableRuntime } from "@card-flex/client-sdk";
+import { LEAVE_WINDOW_SECS, PHASE, SALT_SECS, SESSION_HAND_COMMITS, sessionCommits, type TableRuntime } from "@card-flex/client-sdk";
 
 /** Must match programs/card-flex/src/table.rs VRF_TIMEOUT_SLOTS. */
 export const VRF_TIMEOUT_SLOTS = 3_000n;
@@ -22,6 +22,8 @@ export type Step =
   | { kind: "finish_hand"; order: number[] } // index, revoke views, commit, sync, next_hand
   | { kind: "revoke_views"; pairs: [number, number][] }
   | { kind: "commit_and_sync"; reason: "heartbeat" | "departed" }
+  | { kind: "end_session" } // CF-084: the session's free hand commits are used: everyone leaves
+  | { kind: "recycle" } // CF-084: close + reopen: a new session with fresh free commits
   | { kind: "wait"; why: string };
 
 export type Ctx = {
@@ -60,7 +62,21 @@ export type Ctx = {
    * the stack (`credited`); applied between hands, before start_hand.
    */
   topUpSeats?: number[];
+  /**
+   * CF-084: this keeper holds the table's authority key (CARDFLEX_OPERATOR_KEY)
+   * and so may close and reopen it between sessions.
+   */
+  canRecycle?: boolean;
+  /** CF-084: a recycle this keeper started didn't finish (resume it first). */
+  recycling?: boolean;
 };
+
+/**
+ * CF-084 (ADR 0007): no keeper heartbeat in a session's last commits, so the
+ * session's end (one commit with every leave, then the close) always fits in
+ * the free budget. The refund timeout (1,800 s) is far longer than a hand.
+ */
+export const HEARTBEAT_STOP = SESSION_HAND_COMMITS - 2;
 
 const IN_PROGRESS: number[] = [PHASE.SALTS_PENDING, PHASE.SALTS_DONE, PHASE.VRF_PENDING, PHASE.SEEDED, PHASE.DEALT, PHASE.HAND_COMPLETE];
 export const inProgress = (rt: TableRuntime) => IN_PROGRESS.includes(rt.phase);
@@ -77,13 +93,14 @@ export function viewerPairs(rt: TableRuntime): [number, number][] {
 }
 
 export function decide(rt: TableRuntime, c: Ctx): Step {
+  if (c.recycling) return { kind: "recycle" };
   if (c.stuck && inProgress(rt)) return { kind: "abort_lost_hand", order: dealt(rt) };
   const step = phaseStep(rt, c);
   // CF-056: heartbeat during hands too. A hand can outlast the refund
   // timeout (pot limit 1,024 boots at up to 25 s per turn); without a sync
   // the table would become refundable mid-hand and anyone could void the
   // hand. A mid-hand sync refreshes the clock but copies no stacks.
-  if (step.kind === "wait" && inProgress(rt) && c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) {
+  if (step.kind === "wait" && inProgress(rt) && sessionCommits(rt) < HEARTBEAT_STOP && c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) {
     return { kind: "commit_and_sync", reason: "heartbeat" };
   }
   return step;
@@ -97,6 +114,15 @@ function phaseStep(rt: TableRuntime, c: Ctx): Step {
         const pairs: [number, number][] = [];
         for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) if (((rt.grants >> a) & 1) && ((rt.grants >> b) & 1)) pairs.push([a, b]);
         return { kind: "revoke_views", pairs: pairs.length ? pairs : bits(rt.grants).map((s) => [s, (s + 1) % 6] as [number, number]) };
+      }
+      // CF-084 (ADR 0007): the session's free hand commits are used. Everyone
+      // leaves (one commit carries all the leaves, then they're paid), then
+      // the table closes and reopens with a fresh budget. Players who bought
+      // in meanwhile are seated in the new session.
+      if (sessionCommits(rt) >= SESSION_HAND_COMMITS) {
+        if (rt.occupied !== 0) return { kind: "end_session" };
+        if ((rt.departed & ~c.departedSynced) !== 0) return { kind: "commit_and_sync", reason: "departed" };
+        return c.canRecycle ? { kind: "recycle" } : { kind: "wait", why: "session over: the table needs `cf-admin table recycle` (no operator key)" };
       }
       // Someone bought in during the last hand: seat them before the next one.
       if (c.waitingSeats?.length) return { kind: "join_waiting", seats: c.waitingSeats };
@@ -115,7 +141,7 @@ function phaseStep(rt: TableRuntime, c: Ctx): Step {
       // emergency_refund without a ledger and restarts the refund clock at
       // the first buy-in.
       const empty = c.ledgers === 0 && rt.occupied === 0;
-      if (!empty && c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) return { kind: "commit_and_sync", reason: "heartbeat" };
+      if (!empty && sessionCommits(rt) < HEARTBEAT_STOP && c.nowSecs >= c.lastCommitSecs + c.heartbeatSecs) return { kind: "commit_and_sync", reason: "heartbeat" };
       if (empty) return { kind: "wait", why: "empty table (no heartbeat needed)" };
       return { kind: "wait", why: eligible.length < 2 ? "fewer than 2 players with a stack" : "table not live" };
     }

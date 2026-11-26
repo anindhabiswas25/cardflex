@@ -109,14 +109,18 @@ try {
   check("verify page says VALID", !!overall && overall.includes("VALID") && !overall.includes("INVALID"), overall?.replace(/\n/g, " ") ?? "");
   await V.shot(join(process.env.E2E_OUT ?? KEYS, "verify.png"));
 
-  // Both leave and cash out.
+  // Both leave (CF-083): Leave goes straight to Boards, where a popup follows the payout
+  // (keeper: commit + sync + cash_out) and turns into the summary with on-chain proof.
   for (const p of [A, B]) { await p.click("[data-testid=leave]"); log(p.name, "leave"); await sleep(1500); }
   for (const p of [A, B]) {
-    await p.waitFor(`!!document.querySelector('[data-testid=cash-out]') || !!document.querySelector('[data-testid=paid]')`, 8 * 60_000, 2000);
-    const label = (await p.text("[data-testid=cash-out]")) ?? (await p.text("[data-testid=paid]"));
-    await p.click("[data-testid=cash-out]");
-    await p.waitFor(`/Take a seat/.test(document.body.innerText) || !document.querySelector('[data-testid=cash-out]')`, 120000);
-    check(`${p.name} cashed out`, true, label);
+    const onBoards = await p.waitFor(`location.pathname === '/tables' ? (document.querySelector('[data-testid=exit-pending]') || document.querySelector('[data-testid=exit-summary]') ? 'popup' : null) : null`, 60000).catch(() => null);
+    check(`${p.name} went straight to Boards with the leave popup`, onBoards === "popup");
+    const paid = await p.waitFor(`document.querySelector('[data-testid=exit-summary]') ? document.querySelector('[data-testid=exit-paid]')?.innerText : null`, 8 * 60_000, 2000).catch(() => null);
+    check(`${p.name} was paid out (summary shows the payout)`, !!paid, paid ?? "");
+    const proof = await p.waitFor(`document.querySelector('[data-testid=exit-tx]')?.innerText ?? null`, 60000, 2000).catch(() => null);
+    check(`${p.name}'s payout proven on Solana (transaction found)`, !!proof, proof ?? "");
+    await p.shot(join(process.env.E2E_OUT ?? KEYS, `leave-summary-${p.name}.png`));
+    await p.click("[data-testid=exit-close]");
   }
   await A.shot(join(process.env.E2E_OUT ?? KEYS, "table-after.png"));
   // Dashboard renders for A.

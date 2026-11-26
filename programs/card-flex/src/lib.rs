@@ -419,6 +419,25 @@ pub mod card_flex {
         Ok(())
     }
 
+    /// CF-084 (ADR 0007): ends a session whose hand budget is used: every
+    /// seated player leaves at once (between hands only, so no hand is cut).
+    /// Permissionless like every other liveness step; payout is the usual
+    /// commit + `sync_hand` + `cash_out`, then the table is closed and
+    /// reopened with a fresh free-commit budget.
+    pub fn end_session(ctx: Context<EndSession>) -> Result<()> {
+        let runtime = &mut ctx.accounts.runtime;
+        require!(runtime.locked, CardFlexError::TableNotLocked);
+        require!(runtime.phase == phase::IDLE, CardFlexError::WrongPhase);
+        require!(
+            runtime.session_commits() >= SESSION_HAND_COMMITS,
+            CardFlexError::SessionNotOver
+        );
+        require!(runtime.occupied != 0, CardFlexError::SeatEmpty);
+        runtime.leaving |= runtime.occupied;
+        apply_leaves(runtime);
+        Ok(())
+    }
+
     /// Pays a seat that has left (ADR 0005 decision 4): its `synced_stack`,
     /// set by `sync_hand` from the committed runtime, to the wallet recorded
     /// at buy-in. Closes the ledger, so it can't be paid twice. Anyone may
@@ -636,21 +655,32 @@ pub mod card_flex {
     /// undelegating. Anyone may call it (keeper heartbeat / end of hand).
     pub fn commit_hand(ctx: Context<CommitHand>) -> Result<()> {
         let fee_vault = checked_fee_vault(&ctx.accounts.magic_fee_vault)?;
-        if fee_vault.is_some() {
-            // CF-064: the table pays this commit, so only when it's needed:
-            // the state changed and the hand is over, or a heartbeat is due.
-            // The table's authority may always commit.
-            let now = Clock::get()?.unix_timestamp;
-            let hash =
-                runtime_state_hash(&ctx.accounts.runtime.to_account_info().try_borrow_data()?);
-            let rt = &mut ctx.accounts.runtime;
-            require!(
-                paid_commit_allowed(rt, &hash, now, ctx.accounts.payer.key),
-                CardFlexError::CommitNotNeeded
-            );
-            rt.last_paid_commit = now;
-            rt.paid_commit_hash = hash;
-        }
+        // CF-084 (ADR 0007): every commit spends the session's free budget,
+        // whoever pays it, so the CF-064 rule (state changed and the hand is
+        // over, or a heartbeat is due; the authority always) now applies with
+        // or without the fee vault.
+        let now = Clock::get()?.unix_timestamp;
+        let hash = runtime_state_hash(&ctx.accounts.runtime.to_account_info().try_borrow_data()?);
+        let payer = ctx.accounts.payer.key();
+        let rt = &mut ctx.accounts.runtime;
+        require!(
+            paid_commit_allowed(rt, &hash, now, &payer),
+            CardFlexError::CommitNotNeeded
+        );
+        // The last free commit is the close (`undelegate_table`); past the
+        // limit only the authority may commit (and then it may be paid), or
+        // the keeper once everyone has left: that commit only carries their
+        // final stacks, so players are never kept from their money.
+        let settling = rt.keeper != Pubkey::default()
+            && payer == rt.keeper
+            && rt.occupied == 0
+            && rt.phase == phase::IDLE;
+        require!(
+            rt.session_commits() < SESSION_COMMIT_LIMIT || payer == rt.authority || settling,
+            CardFlexError::FreeCommitsUsed
+        );
+        rt.last_paid_commit = now;
+        rt.paid_commit_hash = hash;
         ctx.accounts.runtime.commit_seq = ctx
             .accounts
             .runtime
@@ -806,6 +836,15 @@ pub mod card_flex {
         );
         info.resize(new_len)?;
         info.try_borrow_mut_data()?[old_len..].fill(0);
+        // CF-084: the table isn't delegated here, so its next delegation is a
+        // new session: start the free-commit count from the current commit_seq.
+        {
+            let mut d = info.try_borrow_mut_data()?;
+            let seq: [u8; 8] = d[RUNTIME_COMMIT_SEQ_OFFSET..RUNTIME_COMMIT_SEQ_OFFSET + 8]
+                .try_into()
+                .map_err(|_| error!(CardFlexError::BadRuntime))?;
+            d[RUNTIME_SESSION_BASE_OFFSET..RUNTIME_SESSION_BASE_OFFSET + 8].copy_from_slice(&seq);
+        }
         // CF-076: `credited` starts as each current sit-down's deposits (no
         // top-up existed before this layout: `top_up` refuses old runtimes).
         // The table isn't delegated here, so these base ledgers are current.
@@ -1373,6 +1412,12 @@ pub mod card_flex {
         // Security: a reader grant from the last hand must be revoked first,
         // or the old viewer could read this seat's new cards.
         require!(runtime.grants == 0, CardFlexError::GrantActive);
+        // CF-084 (ADR 0007): no hand once the session's free hand commits are
+        // used; the rest are for `end_session` and the close.
+        require!(
+            runtime.session_commits() < SESSION_HAND_COMMITS,
+            CardFlexError::SessionOver
+        );
         // Rules v1 §1: a seat whose stack is below the boot isn't dealt in.
         // A table must be configured (boot set) before any hand.
         let boot = runtime.boot;
@@ -2154,6 +2199,8 @@ pub mod card_flex {
             .commit_seq
             .checked_add(1)
             .ok_or(CardFlexError::Overflow)?;
+        // CF-084: the next delegation starts a new free-commit session.
+        ctx.accounts.runtime.session_base_seq = ctx.accounts.runtime.commit_seq;
         ctx.accounts.runtime.exit(&crate::ID)?;
         let accounts = [
             ctx.accounts.runtime.to_account_info(),
@@ -2765,4 +2812,10 @@ pub enum CardFlexError {
     NothingToApply,
     #[msg("this table's runtime has the old layout: migrate it before top-ups")]
     RuntimeNotMigrated,
+    #[msg("this session used its free hand commits: end_session, then the table reopens")]
+    SessionOver,
+    #[msg("the session still has free hand commits")]
+    SessionNotOver,
+    #[msg("the session's free commits are used: only closing (or the authority) may commit")]
+    FreeCommitsUsed,
 }

@@ -13,6 +13,16 @@ import type { Connection, PublicKey } from "@solana/web3.js";
 import { decodeRuntime, tableAddresses } from "@card-flex/client-sdk";
 import type { Keeper, Snapshot } from "./keeper.ts";
 
+/** Longest a reader-loop PER read may take before it counts as failed. */
+export const READ_DEADLINE_MS = 15_000;
+
+/** Rejects if `p` hasn't settled within `ms` (the request itself keeps running; its result is dropped). */
+export function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
 export type RunOpts = {
   per: Connection;
   /** Tables to drive; called every `scanMs`. */
@@ -71,10 +81,13 @@ export async function runKeeper(keeper: Keeper, o: RunOpts): Promise<void> {
         // worker's step finished must not count as newer than that step.
         const at = Date.now();
         const runtimes = list.map((c) => tableAddresses(c).runtime);
-        const [slot, ...chunks] = await Promise.all([
+        // A request the PER never answers must not freeze every table: the
+        // whole read gets a deadline (2026-11-25: one hung read stalled the
+        // keeper for over 2 h with no error logged).
+        const [slot, ...chunks] = await withDeadline(Promise.all([
           o.per.getSlot(),
           ...Array.from({ length: Math.ceil(runtimes.length / CHUNK) }, (_, i) => o.per.getMultipleAccountsInfo(runtimes.slice(i * CHUNK, (i + 1) * CHUNK))),
-        ]);
+        ]), READ_DEADLINE_MS);
         const infos = chunks.flat();
         list.forEach((c, i) => {
           const a = infos[i];

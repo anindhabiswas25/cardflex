@@ -154,7 +154,7 @@ try {
     for (const [a, b] of pairs) await send(tee, [t.sideShowViewIx(a, b, false, keeper)], [keeper], { skipPreflight: true });
     check(`hand ${h}`, "no live reader grants before the next hand", 0, (await t.readRuntime())[RT.grants]);
     const seqBefore = (await base.getAccountInfo(runtime)).data.readBigUInt64LE(RT.commit_seq);
-    await send(tee, [ix("commit_hand", [w(keeper.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [keeper], { skipPreflight: true });
+    await send(tee, [ix("commit_hand", [w(authority.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
     const landed = await waitFor(async () => ((await base.getAccountInfo(runtime)).data.readBigUInt64LE(RT.commit_seq) > seqBefore ? true : null), 90_000, 500);
     check(`hand ${h}`, "commit lands on the base layer", true, !!landed.value, `${landed.ms} ms`);
     await send(base, [ix("sync_hand", [w(config), r(runtime), r(record), ...ledgers.map((l) => w(l))])], [t.payer]);

@@ -18,6 +18,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GH_ICON, MenuButton, MenuPanel, REPO, WalletMenu, X_ICON } from "./SiteNav";
+import { toView, viewH, viewW } from "@/lib/viewport";
 
 const W = 1280;
 const H = 960;
@@ -138,8 +139,8 @@ export function CardFlexLanding() {
   // scaled (pk / fk) and anchored to the bottom, the text sits at the top.
   useLayoutEffect(() => {
     const fit = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      const vw = viewW();
+      const vh = viewH();
       if (vw / vh < 0.75) {
         const s = vw / PW;
         const h = vh / s;
@@ -311,11 +312,11 @@ export function CardFlexLanding() {
       }
     };
     const onTouchStart = (e: TouchEvent) => {
-      touchY.current = e.touches[0].clientY;
+      touchY.current = toView(e.touches[0].clientX, e.touches[0].clientY).y;
     };
     const onTouchMove = (e: TouchEvent) => e.preventDefault();
     const onTouchEnd = (e: TouchEvent) => {
-      if (!paused.current && touchY.current !== null && touchY.current - e.changedTouches[0].clientY > 40) forward();
+      if (!paused.current && touchY.current !== null && touchY.current - toView(e.changedTouches[0].clientX, e.changedTouches[0].clientY).y > 40) forward();
       touchY.current = null;
     };
     window.addEventListener("wheel", onWheel, { passive: false });
@@ -712,14 +713,14 @@ function Footer({
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
     if (mode === "hidden" || !ref.current || (e.target as HTMLElement).closest("a")) return;
     const max = ref.current.offsetHeight - 104; // open -> peek distance
-    drag.current = { y: e.clientY, start: open ? 0 : max, max, moved: false };
+    drag.current = { y: toView(e.clientX, e.clientY).y, start: open ? 0 : max, max, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
     ref.current.style.transition = "none";
   };
   const move = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || !ref.current) return;
-    const dy = (e.clientY - d.y) / scale;
+    const dy = (toView(e.clientX, e.clientY).y - d.y) / scale;
     if (Math.abs(dy) > 4) d.moved = true;
     ref.current.style.transform = `translateY(${Math.min(d.max, Math.max(0, d.start + dy))}px)`;
   };
@@ -729,7 +730,7 @@ function Footer({
     if (!d || !ref.current) return;
     ref.current.style.transition = "";
     ref.current.style.transform = "";
-    onOpen(d.moved ? d.start + (e.clientY - d.y) / scale < d.max / 2 : !open);
+    onOpen(d.moved ? d.start + (toView(e.clientX, e.clientY).y - d.y) / scale < d.max / 2 : !open);
   };
   const tab = open ? 0 : -1;
   return (

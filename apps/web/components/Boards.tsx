@@ -7,11 +7,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar, avatarIndexes } from "./Avatar";
+import { ExitTracker } from "./ExitTracker";
 import { useLobby } from "./Lobby";
 import { Sol } from "./Sol";
 import { hashIndex, short, sol } from "@/lib/format";
 import { LOBBY, type Board } from "@/lib/lobby";
 import { useWallet } from "@/lib/wallet";
+import { toView, viewW } from "@/lib/viewport";
 
 const BOARDS: { id: Board; level: string; tag: string; accent: string; glow: string }[] = [
   { id: "amethyst", level: "Entry", tag: "Where every legend starts.", accent: "#c98bff", glow: "168,85,247" },
@@ -45,10 +47,10 @@ export function Boards() {
       if (e.key === "ArrowLeft" || e.key === "PageUp") go(-1);
     };
     let x0: number | null = null;
-    const onStart = (e: TouchEvent) => (x0 = e.touches[0].clientX);
+    const onStart = (e: TouchEvent) => (x0 = toView(e.touches[0].clientX, e.touches[0].clientY).x);
     const onEnd = (e: TouchEvent) => {
       if (x0 === null) return;
-      const dx = e.changedTouches[0].clientX - x0;
+      const dx = toView(e.changedTouches[0].clientX, e.changedTouches[0].clientY).x - x0;
       if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
       x0 = null;
     };
@@ -68,7 +70,7 @@ export function Boards() {
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
-    if (window.innerWidth >= 900) el.style.overflow = "hidden";
+    if (viewW() >= 900) el.style.overflow = "hidden";
     return () => {
       el.style.overflow = prev;
     };
@@ -142,7 +144,7 @@ export function Boards() {
                     ),
                   )}
                   <em>
-                    {!t ? (failed ? "Can't reach Solana devnet. Retrying…" : "Reading the table…") : !t.live ? "Table closed" : mine ? "You have a seat here" : full ? "Full · watch the game" : `${seats - taken} seat${seats - taken === 1 ? "" : "s"} open`}
+                    {!t ? (failed ? "Can't reach Solana devnet. Retrying…" : "Reading the table…") : !t.live ? "New session starting…" : mine ? "You have a seat here" : full ? "Full · watch the game" : `${seats - taken} seat${seats - taken === 1 ? "" : "s"} open`}
                   </em>
                 </div>
 
@@ -192,6 +194,7 @@ export function Boards() {
           ›
         </button>
       </nav>
+      <ExitTracker />
       <style>{CSS}</style>
     </div>
   );
@@ -242,14 +245,14 @@ function FeltCards({ board }: { board: Board }) {
 const OUT = "cubic-bezier(.22,1,.36,1)";
 const CSS = `
 .bd{position:fixed;inset:0;z-index:0;overflow:hidden;font-family:var(--font-outfit),system-ui,sans-serif;color:#fff;background:#0b0418}
-.bd-track{display:flex;height:100%;width:${BOARDS.length * 100}vw;transform:translateX(calc(var(--i) * -100vw));transition:transform 1s ${OUT}}
-.bd-slide{position:relative;flex:none;width:100vw;height:100%;overflow:hidden}
+.bd-track{display:flex;height:100%;width:calc(${BOARDS.length * 100} * var(--vw));transform:translateX(calc(var(--i) * -100 * var(--vw)));transition:transform 1s ${OUT}}
+.bd-slide{position:relative;flex:none;width:calc(100 * var(--vw));height:100%;overflow:hidden}
 .bd-hall{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.08);transition:transform 1.4s ${OUT}}
 .bd-slide.is-on .bd-hall{transform:scale(1)}
 .bd-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,2,14,.85) 0%,rgba(6,2,14,.55) 34%,rgba(6,2,14,0) 62%),linear-gradient(0deg,rgba(6,2,14,.45),rgba(6,2,14,0) 26%),linear-gradient(180deg,rgba(6,2,14,.55),rgba(6,2,14,0) 22%)}
 
 /* scene */
-.bd-scene{--sw:min(58vw,980px);position:absolute;right:2vw;bottom:9vh;width:var(--sw);height:min(74vh,720px)}
+.bd-scene{--sw:min(calc(58 * var(--vw)),980px);position:absolute;right:calc(2 * var(--vw));bottom:calc(9 * var(--vh));width:var(--sw);height:min(calc(74 * var(--vh)),720px)}
 .bd-spot{position:absolute;left:50%;top:6%;width:70%;height:70%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(var(--glow),.35),rgba(var(--glow),.08) 60%,transparent)}
 .bd-dealer{position:absolute;left:50%;bottom:30%;height:66%;width:auto;transform:translateX(-50%);filter:drop-shadow(0 20px 40px rgba(0,0,0,.5))}
 /* Amethyst: the whole table image, its dark backdrop faded into the dark hall.
@@ -293,10 +296,10 @@ const CSS = `
 .bd-slide.is-on .bd-info > :nth-child(6){transition-delay:.6s}
 
 /* info */
-.bd-info{position:absolute;left:max(24px,calc((100vw - 72rem) / 2 + 24px));top:50%;transform:translateY(-46%);width:min(440px,40vw);z-index:2}
+.bd-info{position:absolute;left:max(24px,calc((calc(100 * var(--vw)) - 72rem) / 2 + 24px));top:50%;transform:translateY(-46%);width:min(440px,calc(40 * var(--vw)));z-index:2}
 .bd-eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--accent)}
 .bd-eyebrow::before{content:"";width:30px;height:1px;background:linear-gradient(90deg,transparent,var(--accent))}
-.bd-info h1{margin:14px 0 0;font-size:clamp(40px,min(5vw,8vh),72px);line-height:1;font-weight:600;letter-spacing:-1px;text-shadow:0 6px 30px rgba(0,0,0,.6)}
+.bd-info h1{margin:14px 0 0;font-size:clamp(40px,min(calc(5 * var(--vw)),calc(8 * var(--vh))),72px);line-height:1;font-weight:600;letter-spacing:-1px;text-shadow:0 6px 30px rgba(0,0,0,.6)}
 .bd-tag{margin:14px 0 0;font-size:16px;color:rgba(255,255,255,.75)}
 .bd-stats{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:10px;margin-top:26px}
 .bd-stats > div{display:grid;gap:3px;padding:12px 16px;border-radius:18px;border:1px solid rgba(255,255,255,.12);background:rgba(10,4,24,.55);backdrop-filter:blur(8px)}
@@ -331,7 +334,7 @@ const CSS = `
 /* phones: scene on top, card below; the slide scrolls if needed */
 @media (max-width:899px){
   .bd-slide{overflow-y:auto}
-  .bd-scene{--sw:94vw;position:relative;right:auto;bottom:auto;width:94vw;height:56vw;margin:96px auto 0}
+  .bd-scene{--sw:calc(94 * var(--vw));position:relative;right:auto;bottom:auto;width:calc(94 * var(--vw));height:calc(56 * var(--vw));margin:96px auto 0}
   .bd-info{position:relative;left:auto;top:auto;transform:none;width:auto;padding:18px 20px 120px}
   .bd-shade{background:linear-gradient(0deg,rgba(6,2,14,.92) 30%,rgba(6,2,14,.3) 70%,rgba(6,2,14,.5))}
   .bd-stats{grid-template-columns:repeat(3,1fr)}
@@ -339,5 +342,26 @@ const CSS = `
   .bd-tab span{display:none}
   .bd-tab{padding:0 12px}
 }
+/* phones in landscape (html[data-land], lib/viewport.ts): the card on the left, the table on the right, sized to the height */
+html[data-land] .bd-slide{overflow:hidden}
+html[data-land] .bd-shade{background:linear-gradient(90deg,rgba(6,2,14,.88) 0%,rgba(6,2,14,.6) 38%,rgba(6,2,14,0) 66%),linear-gradient(0deg,rgba(6,2,14,.5),rgba(6,2,14,0) 26%)}
+html[data-land] .bd-scene{--sw:min(calc(54 * var(--vw)),calc((calc(100 * var(--dvh)) - 112px) / .6));position:absolute;right:calc(2 * var(--vw));bottom:58px;width:var(--sw);height:calc(var(--sw) * .6);margin:0}
+html[data-land] .bd-info{position:absolute;left:20px;top:calc(50% - 4px);transform:translateY(-50%);width:min(380px,calc(42 * var(--vw)));padding:0}
+html[data-land] .bd-eyebrow{font-size:10px;letter-spacing:2.4px}
+html[data-land] .bd-info h1{margin-top:6px;font-size:30px}
+html[data-land] .bd-tag{margin-top:6px;font-size:13px}
+html[data-land] .bd-stats{margin-top:12px;gap:6px}
+html[data-land] .bd-stats > div{padding:6px 10px;border-radius:12px}
+html[data-land] .bd-stats small{font-size:9px;letter-spacing:1.4px}
+html[data-land] .bd-stats b{font-size:13px}
+html[data-land] .bd-seats{margin-top:10px;gap:4px}
+html[data-land] .bd-seat{width:30px;height:30px;font-size:14px}
+html[data-land] .bd-seats em{font-size:11.5px}
+html[data-land] .bd-cta{margin-top:12px;gap:14px}
+html[data-land] .bd-btn{height:42px;padding:0 20px 0 6px;gap:10px;font-size:14px}
+html[data-land] .bd-btn span{width:30px;height:30px}
+html[data-land] .bd-tabs{bottom:8px;padding:5px;gap:6px}
+html[data-land] .bd-tab{height:34px}
+html[data-land] .bd-arrow{width:34px;height:34px;font-size:17px}
 @media (prefers-reduced-motion:reduce){.bd *{transition:none !important}}
 `;

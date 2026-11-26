@@ -63,7 +63,7 @@ try {
   const keeper = Keypair.generate();
   await send(base, [SystemProgram.transfer({ fromPubkey: t.payer.publicKey, toPubkey: keeper.publicKey, lamports: 20_000_000 })], [t.payer]);
   let t0 = performance.now();
-  await send(tee, [commitIx(keeper)], [keeper], { skipPreflight: true });
+  await send(tee, [commitIx(authority)], [authority], { skipPreflight: true }); // CF-084: on-demand commits are the keeper's or the authority's
   const landed = await waitFor(async () => ((await baseCommitSeq()) >= 1n ? true : null), 90_000, 500);
   report.timings.commit_to_base_ms = ms(t0);
   check("sync", "commit lands on the base layer", true, !!landed.value, `${report.timings.commit_to_base_ms} ms`);
@@ -112,7 +112,7 @@ try {
 
   // ---- PER comes back ----
   log("PER comes back: commit after the refund");
-  await send(tee, [commitIx(keeper)], [keeper], { skipPreflight: true });
+  await send(tee, [commitIx(authority)], [authority], { skipPreflight: true }); // CF-084: on-demand commits are the keeper's or the authority's
   const late = await waitFor(async () => ((await baseCommitSeq()) >= 2n ? true : null), 90_000, 500);
   check("late commit", "late commit lands on the base layer", true, !!late.value);
   check("late commit", "sync of the late commit rejected (no money moves)", true, await rejected(base, [syncIx(true)], [keeper]));

@@ -17,7 +17,12 @@
 //   cf-admin table status <config>
 //   cf-admin table check <config> [--strict]   reconcile the vault (simulated check_vault + the terms)
 //   cf-admin table sweep <config>     rake -> treasury
-//   cf-admin table close <config>     close ephemeral accounts and undelegate
+//   cf-admin table close <config>     close ephemeral accounts and undelegate (one commit)
+//   cf-admin table settle <config>    CF-084: sync the last committed state and pay every seat that
+//                                     left (permissionless; works on a closed table too)
+//   cf-admin table recycle <config>   CF-084: close + open again = a new session with fresh free
+//                                     commits (ADR 0007); the keeper does this itself when it
+//                                     holds the table authority (CARDFLEX_OPERATOR_KEY)
 //   cf-admin table keeper <config> <pubkey|none>   the keeper's own read key (CF-065): a reader of
 //                                     the runtime only, never of cards, salts or the seed
 //   cf-admin table migrate <config>   grow a runtime made by an older program (1,212 / 1,252 bytes) to
@@ -45,8 +50,10 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction, type Transa
 import {
   DELEGATION_PROGRAM_ID, ENDPOINTS, PROGRAM_ID, TABLE_STATUS, decodeGlobal, decodeLedger, decodeRuntime, decodeTableConfig,
   globalPda, perConnection, perLogin, sizeOf, tableAddresses, magicFeeVault, verifyTee,
+  cashOut, delegationRecordPda, syncHand, isProgramError,
 } from "@card-flex/client-sdk";
 import { sendAndConfirm } from "@card-flex/client-sdk";
+import { recycleTable } from "./recycle.ts";
 import { checkVault, closeTablePer, createTable, delegateTable, migrateRuntime, openTablePer, setKeeper, sweepRake, syncGlobalAuthority, updateGlobal } from "./admin.ts";
 import { keeperAlerts, scan, teeAlerts } from "./watch.ts";
 import { parseArgs } from "./args.ts";
@@ -92,7 +99,11 @@ async function readTable(config: PublicKey) {
   const t = tableAddresses(config);
   const [c, r] = await base.getMultipleAccountsInfo([config, t.runtime]);
   if (!c) throw new Error(`no table at ${config.toBase58()}`);
-  return { t, cfg: decodeTableConfig(c.data), rt: r ? decodeRuntime(r.data) : null, live: !!r?.owner.equals(DELEGATION_PROGRAM_ID) };
+  // An older runtime layout (before `migrate_runtime`) doesn't decode; close,
+  // settle and migrate don't need it, so it reads as unknown here.
+  let rt: ReturnType<typeof decodeRuntime> | null = null;
+  try { rt = r ? decodeRuntime(r.data) : null; } catch { console.log(`note: runtime has an older layout (${r?.data.length} bytes); migrate it after closing`); }
+  return { t, cfg: decodeTableConfig(c.data), rt, live: !!r?.owner.equals(DELEGATION_PROGRAM_ID) };
 }
 
 async function main() {
@@ -291,6 +302,32 @@ async function main() {
       if (live) await send(perConnection(dry ? null : (await perLogin(kp, perUrl)).token, perUrl), [ix], kp, "set_keeper (PER)", { skipPreflight: true });
       else await send(base, [ix], kp, "set_keeper");
       console.log(keeper.equals(PublicKey.default) ? "keeper read key cleared" : `keeper ${keeper.toBase58()} can read this table's runtime (start it without CARDFLEX_PER_TOKEN)`);
+      return;
+    }
+    if (cmd === "settle") {
+      const kp = signer();
+      const t = tableAddresses(config);
+      const cfg0 = decodeTableConfig((await base.getAccountInfo(config))!.data);
+      try {
+        await send(base, [syncHand({ config, delegationRecord: delegationRecordPda(t.runtime), seated: cfg0.seated })], kp, "sync_hand");
+      } catch (e) {
+        if (!isProgramError(e, "StaleCommit")) throw e;
+        console.log("already synced (no newer commit)");
+      }
+      const cfg = decodeTableConfig((await base.getAccountInfo(config))!.data);
+      const seats = [0, 1, 2, 3, 4, 5].filter((s) => (cfg.seated >> s) & 1);
+      const infos = await base.getMultipleAccountsInfo(seats.map((s) => t.ledger(s)));
+      for (const [i, a] of infos.entries()) {
+        const l = a && decodeLedger(a.data);
+        if (!l) continue;
+        if (!l.left) { console.log(`seat ${seats[i]}: still seated (not paid)`); continue; }
+        await send(base, [cashOut({ payer: kp.publicKey, config, seat: seats[i], wallet: l.wallet })], kp, `cash_out seat ${seats[i]}: ${lamports(l.synced_stack)} to ${l.wallet.toBase58()}`);
+      }
+      return;
+    }
+    if (cmd === "recycle") {
+      if (dry) return fail("recycle has no --dry-run (it waits for the undelegation between steps)");
+      await recycleTable({ base, perUrl, authority: signer(), config, log: (m) => console.log(m) });
       return;
     }
     if (cmd === "repair") {

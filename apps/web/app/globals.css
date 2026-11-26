@@ -23,6 +23,27 @@
   --font-sans: var(--font-outfit), system-ui, sans-serif;
 }
 
+/* ---- Phones always play in landscape (see lib/viewport.ts) ----
+   An inline script in app/layout.tsx sets on <html>:
+     data-land  on a phone (either way up): the short landscape layout;
+     data-rot   on a phone held upright: the whole app is turned 90° so it
+                still reads as landscape.
+   Viewport units go through --vw/--vh/--dvh, which swap while turned
+   (100vw/100vh alone would still measure the upright screen). */
+:root { --vw: 1vw; --vh: 1vh; --dvh: 1dvh; }
+html[data-rot] { --vw: 1dvh; --vh: 1vw; --dvh: 1vw; }
+html[data-rot],
+html[data-rot] body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+html[data-rot] .cf-rot {
+  position: fixed; top: 0; left: 100vw; width: 100dvh; height: 100vw;
+  transform-origin: 0 0; transform: rotate(90deg); overflow: hidden;
+}
+/* the turned box is the containing block of every position:fixed overlay;
+   it must not scroll itself, so scrolling happens one level down */
+html[data-rot] .cf-rot-in { height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+html[data-rot] .cf-rot .h-dvh { height: 100%; }
+html[data-rot] .cf-rot .min-h-dvh { min-height: 100%; }
+
 html,
 body {
   background: var(--color-night);
@@ -141,7 +162,7 @@ body {
 /* ☰ panel */
 .hc-menu{position:fixed;inset:0;z-index:60;font-family:var(--font-outfit),system-ui,sans-serif}
 .hc-menu-shade{position:absolute;inset:0;border:0;background:radial-gradient(circle at 85% 20%,rgba(120,40,200,.25),transparent 60%),rgba(6,1,16,.62);backdrop-filter:blur(6px);animation:hc-nav-fade .3s both;cursor:default}
-.hc-menu-panel{position:absolute;top:12px;right:12px;bottom:12px;width:min(392px,calc(100vw - 24px));display:flex;flex-direction:column;padding:22px 20px 18px;border-radius:30px;color:#fff;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
+.hc-menu-panel{position:absolute;top:12px;right:12px;bottom:12px;width:min(392px,calc(calc(100 * var(--vw)) - 24px));display:flex;flex-direction:column;padding:22px 20px 18px;border-radius:30px;color:#fff;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
   background:radial-gradient(120% 50% at 50% 0%,rgba(255,196,60,.16),transparent 60%),radial-gradient(80% 40% at 100% 100%,rgba(214,58,249,.18),transparent 70%),linear-gradient(170deg,#2a0b47 0%,#170530 55%,#0d021d 100%);
   box-shadow:0 40px 90px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08);animation:hc-panel .5s cubic-bezier(.2,.8,.2,1) both}
 /* gold-to-violet hairline border */
@@ -206,3 +227,53 @@ body {
 .cf-topbar-links a.is-active{color:#ffe800}
 .cf-topbar-links a.is-active::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#ffe800}
 @media (max-width:420px){.cf-topbar .hc-buy{padding:0 14px;font-size:13px}.cf-topbar .hc-buy em{display:none}}
+
+/* phones in landscape (html[data-land]): a slim top bar leaves the height to the game */
+html[data-land] .cf-topbar{padding:8px 14px 0;gap:8px}
+html[data-land] .cf-topbar-logo img{height:40px}
+html[data-land] .cf-topbar-links{display:none}
+html[data-land] .cf-topbar .hc-buy{height:36px;padding:0 14px;font-size:12.5px;border-radius:12px}
+html[data-land] .cf-topbar .hc-menu-btn{width:36px;height:36px;border-radius:12px}
+
+/* popups taller than a landscape phone scroll instead of being cut off */
+html[data-land] :is(.xs,.xt,.vf-modal){overflow-y:auto;align-items:safe center;padding:10px}
+/* the ☰ menu on a landscape phone: a slim drawer on the right that fits the
+   screen height (small logo row, the pages, both switches in one row, links) */
+html[data-land] .hc-menu-panel{top:8px;right:8px;bottom:auto;max-height:calc(100% - 16px);width:min(312px,calc(100% - 16px));padding:10px 12px 12px;border-radius:22px;overflow-y:auto}
+html[data-land] .hc-menu-x{top:9px;right:10px;width:30px;height:30px}
+html[data-land] .hc-menu-x svg{width:13px;height:13px}
+html[data-land] .hc-menu-brand{display:flex;align-items:center;gap:8px;padding:0 0 6px 4px}
+html[data-land] .hc-menu-brand img{height:32px}
+html[data-land] .hc-menu-halo,html[data-land] .hc-menu-brand p{display:none}
+html[data-land] .hc-menu-nav{gap:1px}
+html[data-land] .hc-menu-row{gap:10px;padding:4px 8px 4px 6px;border-radius:12px}
+html[data-land] .hc-menu-row.is-active::before{top:8px;bottom:8px}
+html[data-land] .hc-menu-ico{width:28px;height:28px;border-radius:9px;font-size:13px}
+html[data-land] .hc-menu-txt b{font-size:13.5px}
+html[data-land] .hc-menu-txt small{display:block;font-size:10.5px}
+html[data-land] .hc-menu-tiles{gap:6px;margin-top:8px}
+html[data-land] .hc-menu-tile{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:12px;font-size:11.5px}
+html[data-land] .hc-menu-tile > span{width:22px;height:22px;border-radius:7px;font-size:11px}
+html[data-land] .hc-menu-tile > b{order:1;margin-right:4px}
+html[data-land] .hc-menu-tile > .hc-toggle{order:2;width:30px;height:18px}
+html[data-land] .hc-toggle::after{width:14px;height:14px}
+html[data-land] .hc-toggle.is-on::after{left:14px}
+html[data-land] .hc-menu-foot{gap:6px;margin-top:0;padding-top:10px}
+html[data-land] .hc-menu-foot a{width:28px;height:28px;border-radius:9px}
+html[data-land] .hc-menu-foot svg{width:13px;height:13px}
+html[data-land] .hc-menu-foot span{font-size:10px}
+/* a blur under the 90° turn can render patchy: a darker shade keeps the page behind quiet */
+html[data-rot] .hc-menu-shade{background:rgba(6,1,16,.8)}
+
+/* "Turn your phone" hint (components/RotateHint.tsx): drawn upright, above the turned app */
+.cf-turn{position:fixed;inset:0;z-index:100;display:grid;place-content:center;justify-items:center;gap:6px;padding:24px;border:0;background:rgba(6,1,16,.82);backdrop-filter:blur(4px);color:#fff;font-family:var(--font-outfit),system-ui,sans-serif;text-align:center;cursor:pointer;animation:cf-turn-in .35s ease both}
+.cf-turn.is-out{animation:cf-turn-out .3s ease forwards}
+.cf-turn b{margin-top:22px;font-size:22px;font-weight:600}
+.cf-turn small{font-size:14px;color:rgba(233,221,255,.7)}
+.cf-turn-phone{position:relative;width:56px;height:96px;border-radius:12px;border:3px solid #ffd76a;box-shadow:0 0 24px rgba(255,214,102,.35);animation:cf-turn-phone 2.2s cubic-bezier(.6,0,.3,1) .3s infinite}
+.cf-turn-phone i{position:absolute;left:50%;bottom:6px;width:14px;height:3px;margin-left:-7px;border-radius:2px;background:#ffd76a}
+@keyframes cf-turn-phone{0%,15%{transform:rotate(0)}45%,80%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
+@keyframes cf-turn-in{from{opacity:0}}
+@keyframes cf-turn-out{to{opacity:0;visibility:hidden}}
+@media (prefers-reduced-motion:reduce){.cf-turn-phone{animation:none;transform:rotate(-90deg)}}
+

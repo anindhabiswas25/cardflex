@@ -17,6 +17,7 @@ import { useWallet } from "@/lib/wallet";
 import { getVerifier } from "@/lib/useTable";
 import { rules } from "@card-flex/client-sdk";
 import { Sol } from "./Sol";
+import { isLand, viewH, viewW } from "@/lib/viewport";
 
 type Loaded = { record: HandRecord; source: string };
 
@@ -336,7 +337,7 @@ function HandPicker() {
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(5);
   useEffect(() => {
-    const fit = () => setPerPage(window.innerWidth < 1000 ? 3 : window.innerHeight < 800 ? 4 : 5);
+    const fit = () => setPerPage(isLand() ? 4 : viewW() < 1000 ? 3 : viewH() < 800 ? 4 : 5);
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
@@ -412,9 +413,9 @@ function Actions({ table }: { table: string }) {
 
 const OUT = "cubic-bezier(.2,.8,.2,1)";
 const CSS = `
-.vf{--cl:clamp(96px,min(10.5vw,17vh),160px);--cr:clamp(128px,min(14.5vw,22vh),224px);position:relative;z-index:1;margin:0 auto;width:100%;max-width:60rem;padding:0 16px 150px;font-family:var(--font-outfit),system-ui,sans-serif;color:#fff}
+.vf{--cl:clamp(96px,min(calc(10.5 * var(--vw)),calc(17 * var(--vh))),160px);--cr:clamp(128px,min(calc(14.5 * var(--vw)),calc(22 * var(--vh))),224px);position:relative;z-index:1;margin:0 auto;width:100%;max-width:60rem;padding:0 16px 150px;font-family:var(--font-outfit),system-ui,sans-serif;color:#fff}
 /* desktop: everything fits one screen (below the 96px top bar), no scrolling */
-@media (min-width:1000px){.vf{display:flex;flex-direction:column;min-height:calc(100dvh - 96px);padding:0 24px 22px}.vf.is-index{justify-content:center;padding-bottom:70px;max-width:min(60rem,calc(100vw - 2 * (var(--cr) + 30px)))}.vf.is-result{max-width:min(76rem,calc(100vw - 2 * (var(--cr) + 30px)))}}
+@media (min-width:1000px){.vf{display:flex;flex-direction:column;min-height:calc(calc(100 * var(--dvh)) - 96px);padding:0 24px 22px}.vf.is-index{justify-content:center;padding-bottom:70px;max-width:min(60rem,calc(calc(100 * var(--vw)) - 2 * (var(--cr) + 30px)))}.vf.is-result{max-width:min(76rem,calc(calc(100 * var(--vw)) - 2 * (var(--cr) + 30px)))}}
 .vf::before{content:"";position:fixed;inset:0;z-index:-2;background:radial-gradient(55% 45% at 50% 0%,rgba(190,70,255,.22),transparent 70%),radial-gradient(40% 35% at 0% 100%,rgba(255,190,60,.10),transparent 70%),radial-gradient(40% 35% at 100% 100%,rgba(255,190,60,.10),transparent 70%),linear-gradient(#140f0e,#120128 70%)}
 .vf h1,.vf h2,.vf p{margin:0}
 .vf code{font-family:ui-monospace,monospace;font-size:.92em;color:#ffd76a}
@@ -433,12 +434,12 @@ const CSS = `
 /* header */
 .vf-hero{display:grid;justify-items:center;gap:14px;margin-top:30px;text-align:center}
 .is-result .vf-hero{gap:8px;margin-top:14px}
-.vf-hero h1{font-size:clamp(38px,min(6.4vw,8vh),72px);line-height:1;font-weight:500;letter-spacing:-1px}
+.vf-hero h1{font-size:clamp(38px,min(calc(6.4 * var(--vw)),calc(8 * var(--vh))),72px);line-height:1;font-weight:500;letter-spacing:-1px}
 .vf-hero h1 small{display:block;margin-bottom:8px;font-size:.4em;letter-spacing:4px;color:#ffd76a;font-weight:500}
 .vf-hero p{font-size:16px;color:rgba(255,255,255,.7)}
 
 /* framed panel, like the landing page's stage */
-.is-result .vf-hero h1{font-size:clamp(32px,min(4vw,5vh),46px);line-height:1.05}
+.is-result .vf-hero h1{font-size:clamp(32px,min(calc(4 * var(--vw)),calc(5 * var(--vh))),46px);line-height:1.05}
 .vf-panel{margin-top:32px;padding:26px;border:6px solid #1d3743;border-radius:40px;background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.01))}
 @media (min-width:640px){.vf-panel{padding:34px 38px;border-width:8px;border-radius:52px}}
 .vf-form{display:grid;gap:14px}
@@ -512,7 +513,7 @@ const CSS = `
 .is-invalid .vf-seal{color:#3a0610;background:radial-gradient(circle at 35% 30%,#ffb3bf,#ff5a6e 60%,#c22b40);box-shadow:0 0 0 6px rgba(255,90,110,.18),0 0 40px rgba(255,90,110,.45)}
 @keyframes vf-pop{from{transform:scale(.4);opacity:0}60%{transform:scale(1.08)}}
 .vf-verdict small{display:block;font-size:12px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:rgba(233,221,255,.6)}
-.vf-verdict strong{display:block;font-size:clamp(36px,4.4vw,48px);line-height:1.05;font-weight:600;letter-spacing:1px}
+.vf-verdict strong{display:block;font-size:clamp(36px,calc(4.4 * var(--vw)),48px);line-height:1.05;font-weight:600;letter-spacing:1px}
 .is-valid strong{color:#5cf09a}
 .is-invalid strong{color:#ff7d8d}
 .vf-verdict-meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
@@ -560,7 +561,7 @@ const CSS = `
 .vf-raw-btn{padding:0;border:0;background:none;cursor:pointer;font:500 13px var(--font-outfit),sans-serif}
 .vf-modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:20px}
 .vf-modal-shade{position:absolute;inset:0;border:0;background:rgba(6,1,16,.7);backdrop-filter:blur(6px);cursor:default;animation:vf-fade .25s both}
-.vf-modal-box{position:relative;width:min(760px,100%);max-height:min(80vh,720px);display:flex;flex-direction:column;padding:20px 22px;border-radius:28px;background:linear-gradient(170deg,#2a0b47,#120128);border:1px solid rgba(255,214,102,.35);box-shadow:0 40px 90px rgba(0,0,0,.6);animation:vf-rise .35s ${OUT} both}
+.vf-modal-box{position:relative;width:min(760px,100%);max-height:min(calc(80 * var(--vh)),720px);display:flex;flex-direction:column;padding:20px 22px;border-radius:28px;background:linear-gradient(170deg,#2a0b47,#120128);border:1px solid rgba(255,214,102,.35);box-shadow:0 40px 90px rgba(0,0,0,.6);animation:vf-rise .35s ${OUT} both}
 .vf-modal-box header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .vf-modal-x{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;cursor:pointer}
 .vf-modal-box pre{margin:0;overflow:auto;padding:16px 22px 16px 16px;border-radius:18px;background:rgba(6,2,16,.6);font-size:11.5px;color:rgba(233,221,255,.8)}
@@ -584,9 +585,93 @@ const CSS = `
 @media (min-width:1000px) and (max-height:760px){.vf-hero{margin-top:10px}.vf-panel{margin-top:20px;padding:22px 30px}.vf-how small{display:none}.vf-how li{padding:12px 16px}}
 @media (min-width:1000px) and (max-height:740px){.is-result .vf-hero .vf-eyebrow{display:none}}
 /* phones: the start page fits one screen too (steps hidden, coins tucked under the form) */
-@media (max-width:999px){.vf.is-index{display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 90px);padding-bottom:130px}.is-index .vf-how{display:none}.is-index .vf-hero{margin-top:8px}.is-index .vf-panel{margin-top:22px;padding:20px}}
+@media (max-width:999px){.vf.is-index{display:flex;flex-direction:column;justify-content:center;min-height:calc(calc(100 * var(--dvh)) - 90px);padding-bottom:130px}.is-index .vf-how{display:none}.is-index .vf-hero{margin-top:8px}.is-index .vf-panel{margin-top:22px;padding:20px}}
 /* short laptop screens (e.g. 1366x768): tighten so the result still fits */
 @media (min-width:1000px) and (max-height:820px){.is-result .vf-hero{margin-top:4px}.vf-grid{margin-top:14px}.vf-checks{gap:4px}.vf-checks li{padding:4px 14px}.vf-head{margin-bottom:10px}.vf-sec{margin-top:16px}}
 @keyframes vf-rise{from{opacity:0;transform:translateY(18px)}}
+/* phones in landscape (html[data-land], lib/viewport.ts): one screen, no scrolling.
+   Start page: title on the left, the hand picker on the right. Result: a one-line
+   title, verdict + hand + buttons on the left, the checks (one line each) on the right. */
+html[data-land] .vf{max-width:none;height:calc(calc(100 * var(--dvh)) - 52px);min-height:0;display:flex;flex-direction:column;padding:0 16px 6px;overflow-y:auto;scrollbar-width:none}
+html[data-land] .vf-coin{display:none}
+html[data-land] .vf.is-index{display:grid;grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr);align-items:center;column-gap:22px;max-width:none;min-height:0;padding-bottom:6px}
+html[data-land] .is-index .vf-hero{margin:0;justify-items:start;text-align:left;gap:8px}
+html[data-land] .is-index .vf-hero .vf-eyebrow::after{display:none}
+html[data-land] .is-index .vf-hero h1{font-size:34px}
+html[data-land] .vf-hero p{font-size:13px}
+html[data-land] .is-index .vf-panel{margin:0;padding:12px 16px;border-width:5px;border-radius:28px;max-height:100%;overflow-y:auto;scrollbar-width:none}
+html[data-land] .vf-pick{gap:7px}
+html[data-land] .vf-tabs{gap:6px}
+html[data-land] .vf-tabs button{height:30px;padding:0 12px;font-size:12px}
+html[data-land] .vf-pick-note{padding:6px 2px;font-size:12px}
+html[data-land] .vf-pick-list{gap:5px}
+html[data-land] .vf-pick-list a{grid-template-columns:auto 1fr auto;row-gap:0;gap:10px;padding:6px 12px;border-radius:12px}
+html[data-land] .vf-pick-list b{font-size:13px}
+html[data-land] .vf-pick-list span{grid-column:auto;grid-row:auto;white-space:nowrap;font-size:11.5px}
+html[data-land] .vf-pick-list em{font-size:11px}
+html[data-land] .vf-pager{gap:10px;font-size:11.5px}
+html[data-land] .vf-pager button{width:28px;height:28px;font-size:15px}
+html[data-land] .vf-toggles{margin-top:8px;gap:4px 18px}
+html[data-land] .vf-toggle{font-size:12px}
+html[data-land] .vf-toggles + .vf-form{margin-top:8px}
+html[data-land] .vf-form{grid-template-columns:1fr 84px auto;align-items:end;gap:8px}
+html[data-land] .vf-form label{gap:4px}
+html[data-land] .vf-form label span{font-size:9.5px}
+html[data-land] .vf input,html[data-land] .vf textarea{padding:8px 12px;border-radius:12px;font-size:13px}
+html[data-land] .vf-paste{gap:8px;margin-top:8px}
+html[data-land] .vf-paste textarea{height:64px}
+html[data-land] .vf-btn{height:38px;gap:10px;padding:0 18px 0 5px;font-size:13px}
+html[data-land] .vf-btn span{width:28px;height:28px;font-size:11px}
+html[data-land] .vf-btn-ghost{padding:0 16px}
+html[data-land] .vf-how{grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+html[data-land] .vf-how li{padding:10px 12px;border-radius:16px}
+html[data-land] .vf-how b{margin-top:6px;font-size:14px}
+html[data-land] .vf-how small{display:none}
+html[data-land] .vf-ico{width:32px;height:32px;border-radius:10px;font-size:14px}
+html[data-land] .vf-loading{margin-top:18px;font-size:13px}
+html[data-land] .vf-msg{margin-top:12px;padding:10px 14px;font-size:13px}
+html[data-land] .is-result .vf-hero{grid-auto-flow:column;align-items:baseline;justify-content:center;gap:12px;margin-top:0}
+html[data-land] .is-result .vf-hero .vf-eyebrow{display:none}
+html[data-land] .is-result .vf-hero h1{font-size:22px}
+html[data-land] .vf-grid{flex:none;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;margin-top:6px;align-items:start}
+html[data-land] .vf-grid > .vf-sec{margin-top:0}
+html[data-land] .vf-verdict{grid-template-columns:auto auto 1fr;gap:12px;padding:7px 12px;border-radius:18px}
+html[data-land] .vf-seal{width:36px;height:36px;font-size:17px}
+html[data-land] .is-valid .vf-seal{box-shadow:0 0 0 4px rgba(47,224,122,.18),0 0 20px rgba(47,224,122,.45)}
+html[data-land] .is-invalid .vf-seal{box-shadow:0 0 0 4px rgba(255,90,110,.18),0 0 20px rgba(255,90,110,.45)}
+html[data-land] .vf-verdict small{font-size:9px;letter-spacing:1.6px}
+html[data-land] .vf-verdict strong{font-size:21px}
+html[data-land] .vf-verdict-meta{grid-column:auto;flex-direction:row;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px}
+html[data-land] .vf-verdict-meta span{padding:2px 8px;font-size:10px}
+html[data-land] .vf-sec{margin-top:8px}
+html[data-land] .vf-head{margin-bottom:5px;gap:6px}
+html[data-land] .vf-eyebrow{font-size:10px;letter-spacing:2px;gap:6px}
+html[data-land] .vf-eyebrow::before{width:18px}
+html[data-land] .vf-chips{gap:4px}
+html[data-land] .vf-chips span{padding:2px 8px;font-size:10.5px}
+html[data-land] .vf-seats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-top:2px}
+html[data-land] .vf-seat{flex:1 1 0;min-width:70px;max-width:124px;gap:0;padding:20px 4px 5px;border-radius:14px}
+html[data-land] .vf-seat:hover{transform:none}
+html[data-land] .vf-crown{top:4px;padding:1px 7px;font-size:8.5px}
+html[data-land] .vf-seat .vf-crown{font-size:8.5px}
+html[data-land] .vf-fan{--w:28px;height:42px;margin-bottom:3px}
+html[data-land] .vf-seat b{font-size:11.5px}
+html[data-land] .vf-seat span{font-size:9.5px}
+html[data-land] .vf-seat em{font-size:11.5px}
+html[data-land] .vf-col .vf-actions{margin-top:8px;gap:16px}
+html[data-land] .vf-actions .vf-btn{height:36px}
+html[data-land] .vf-actions .vf-btn span{width:26px;height:26px}
+html[data-land] .vf-link{font-size:12.5px}
+html[data-land] .vf-rec-btns{gap:10px}
+html[data-land] .vf-raw-btn{font-size:11.5px}
+html[data-land] .vf-checks{gap:3px}
+html[data-land] .vf-checks li{gap:8px;padding:2px 10px;border-radius:10px}
+html[data-land] .vf-checks li > div{display:flex;align-items:baseline;gap:8px}
+html[data-land] .vf-checks b{flex:none;font-size:12px}
+html[data-land] .vf-checks small{min-width:0;margin:0;font-size:10px}
+html[data-land] .vf-dot{width:17px;height:17px;font-size:9.5px}
+html[data-land] .vf-checks em{font-size:9.5px}
+html[data-land] .vf-modal{padding:10px}
+html[data-land] .vf-modal-box{max-height:100%;padding:12px 14px;border-radius:20px}
 @media (prefers-reduced-motion:reduce){.vf *{animation:none !important;transition:none !important}}
 `;

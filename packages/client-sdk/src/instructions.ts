@@ -105,6 +105,11 @@ export function leaveSeat(p: { signer: PublicKey; config: PublicKey; seat: numbe
   return buildIx("leave_seat", { signer: p.signer, runtime: tableAddresses(p.config).runtime }, { seat: p.seat });
 }
 
+/** PER, permissionless (CF-084): once the session's hand commits are used, every seated player leaves between hands. */
+export function endSession(p: { payer: PublicKey; config: PublicKey }) {
+  return buildIx("end_session", { payer: p.payer, runtime: tableAddresses(p.config).runtime }, {});
+}
+
 /** Base: pays a left ledger to its recorded wallet (anyone may submit). */
 export function cashOut(p: { payer: PublicKey; config: PublicKey; seat: number; wallet: PublicKey }) {
   const t = tableAddresses(p.config);

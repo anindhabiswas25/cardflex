@@ -5,7 +5,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { createHash } from "node:crypto";
 import {
   abortLostHand, act, buyIn, buildIx, cashOut, decodeAccount, discriminatorOf, handLogActions, idl, instructionNames, joinSeat, sizeOf,
-  ledgerPda, runtimePda, seatHandPda, tableAddresses, globalPda, PROGRAM_ID,
+  ledgerPda, runtimePda, seatHandPda, sessionCommits, tableAddresses, globalPda, PROGRAM_ID,
 } from "../src/index.ts";
 
 const root = new URL("../../../", import.meta.url);
@@ -29,7 +29,7 @@ test("discriminators follow Anchor's sha256 rule", () => {
 
 test("account sizes equal the program's (8-byte discriminator + struct)", () => {
   // From the Rust layout pins (tests/test_game.rs, test_recovery.rs).
-  assert.equal(8 + sizeOf({ defined: { name: "TableRuntime" } }), 1332); // bump at 1211, CF-064 commit fields, CF-065 keeper, CF-076 credited
+  assert.equal(8 + sizeOf({ defined: { name: "TableRuntime" } }), 1340); // bump at 1211, CF-064 commit fields, CF-065 keeper, CF-076 credited, CF-084 session_base_seq
   assert.equal(8 + sizeOf({ defined: { name: "HandLog" } }), 953); // ACTION_LOG_OFFSET
 });
 
@@ -39,8 +39,10 @@ function put(buf: Uint8Array, off: number, value: bigint, bytes: number) {
 }
 
 test("TableRuntime decoder agrees with the byte offsets the Rust tests pin", () => {
-  const d = new Uint8Array(1332);
+  const d = new Uint8Array(1340);
   d.set(discriminatorOf("TableRuntime"), 0);
+  put(d, 858, 140n, 8); // commit_seq
+  put(d, 1332, 120n, 8); // CF-084 session_base_seq
   put(d, 458, 77n, 8); // hand_no
   d[469] = 5; // phase DEALT
   put(d, 810 + 8 * 2, 123_456n, 8); // stacks[2]
@@ -68,6 +70,8 @@ test("TableRuntime decoder agrees with the byte offsets the Rust tests pin", () 
   assert.equal(rt.button, 4);
   assert.equal(rt.seat_epoch[5], 2);
   assert.equal(rt.departed, 0b10);
+  assert.equal(rt.session_base_seq, 120n);
+  assert.equal(sessionCommits(rt), 20, "CF-084: commits this session");
   assert.throws(() => decodeAccount("SeatLedger", d), /not a SeatLedger/);
 });
 

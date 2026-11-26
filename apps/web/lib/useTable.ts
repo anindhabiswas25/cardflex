@@ -7,7 +7,7 @@
 // - Money steps (buy-in, cash-out, refund) are signed by the wallet.
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import {
-  ACTION, PHASE, TABLE_STATUS, act as actIx, buyIn as buyInIx, topUp as topUpIx, cashOut as cashOutIx, claimRefund as claimRefundIx, decodeLedger, emergencyRefund as emergencyRefundIx,
+  ACTION, PHASE, SESSION_HAND_COMMITS, TABLE_STATUS, sessionCommits, act as actIx, buyIn as buyInIx, topUp as topUpIx, cashOut as cashOutIx, claimRefund as claimRefundIx, decodeLedger, emergencyRefund as emergencyRefundIx,
   decodeRuntime, decodeSeatHand, dealPositions, handRecordFromHandLog, joinSeat, leaveSeat, loadVerifier, newSalt, rotateSession, rules,
   submitSalt, tableAddresses, type SeatLedger, type TableRuntime, type Verifier,
 } from "@card-flex/client-sdk";
@@ -15,9 +15,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { base, loadTable, sendWithSession, sendWithWallet, sessionConnection, walletConnection, type TableSnapshot } from "./chain";
 import { CATEGORY_LABEL, errorText, sol } from "./format";
 import { dropSession, loadSession, saveSession, type StoredSession } from "./session";
+import { dropExit, exitFor, saveExit, type PendingExit } from "./exits";
 import { useWallet } from "./wallet";
 
-export type SeatStatus = "empty" | "sitting" | "blind" | "seen" | "packed" | "out";
+/** "broke": seated, but the stack is below the boot: not dealt in, watching until a top-up (still their seat). */
+export type SeatStatus = "empty" | "sitting" | "blind" | "seen" | "packed" | "out" | "broke";
 export type SeatView = {
   seat: number;
   wallet: string | null;
@@ -47,6 +49,19 @@ export const getVerifier = () => (verifierPromise ??= loadVerifier(fetch("/cf_ve
 
 const bit = (m: number, s: number) => ((m >> s) & 1) === 1;
 
+/** Rules v1 refusals in player words (docs/spec/teen-patti-rules-v1.md §8). There is no all-in in v1. */
+const WHY: Partial<Record<string, string>> = {
+  NotYourTurn: "Wait for your turn",
+  NotActive: "You're out of this hand",
+  HandOver: "The hand is over",
+  SideShowPending: "Waiting for a Side Show answer",
+  InsufficientStack: "Not enough chips for this bet (rules v1 have no all-in): Pack, or add chips between hands",
+  MustSee: "You've played blind 4 times: See your cards first",
+  BadAmount: "Above the table's bet limit (128 boots)",
+  CannotShow: "Show needs exactly 2 players left, and a blind player can't Show a player who has seen",
+  CannotSideShow: "Side Show needs you seen, 3+ players, and the previous player seen",
+};
+
 export function useTable(configStr: string) {
   const { wallet, refreshBalance } = useWallet();
   const config = useMemo(() => { try { return new PublicKey(configStr); } catch { return null; } }, [configStr]);
@@ -74,6 +89,16 @@ export function useTable(configStr: string) {
   const prevRt = useRef<TableRuntime | null>(null);
   const saltSent = useRef<string>("");
   const joinTried = useRef<string>("");
+  /** A sit-down this browser left (lib/exits): never shown as "joining" again, never re-seated. */
+  const [leftRec, setLeftRec] = useState<PendingExit | null>(null);
+  useEffect(() => {
+    if (!config || !me) return setLeftRec(null);
+    const load = () => setLeftRec(exitFor(config.toBase58(), me));
+    load();
+    window.addEventListener("cf:exits", load);
+    return () => window.removeEventListener("cf:exits", load);
+  }, [config, me]);
+  const leftHere = !!ledger && !!leftRec && leftRec.seat === ledger.seat && leftRec.epoch === ledger.epoch;
 
   // ---- clock ----
   useEffect(() => {
@@ -115,12 +140,13 @@ export function useTable(configStr: string) {
     const rtNow = live ?? snap?.rt ?? null;
     if (ledger) {
       const s = ledger.seat;
-      const out = ledger.left || (!!rtNow && (bit(rtNow.leaving, s) || (bit(rtNow.departed, s) && rtNow.seat_epoch[s] === ledger.epoch)));
+      const out = ledger.left || leftHere || (!!rtNow && (bit(rtNow.leaving, s) || (bit(rtNow.departed, s) && rtNow.seat_epoch[s] === ledger.epoch)));
       // What the vault will pay: the final stack plus any deposit not in it (CF-076/082: held top-up).
       const held = rtNow && rtNow.credited && ledger.buy_in > rtNow.credited[s] ? ledger.buy_in - rtNow.credited[s] : 0n;
-      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : rtNow ? rtNow.stacks[s] + held : ledger.synced_stack, deposited: ledger.buy_in } : null;
+      const fromRt = rtNow && rtNow.seat_epoch[s] === ledger.epoch && (bit(rtNow.departed, s) || bit(rtNow.leaving, s)) ? rtNow.stacks[s] + held : null;
+      exiting.current = out ? { seat: s, stack: ledger.left ? ledger.synced_stack : fromRt ?? (leftHere ? BigInt(leftRec!.stack) : ledger.synced_stack), deposited: ledger.buy_in } : null;
     }
-  }, [ledger, live, snap]);
+  }, [ledger, live, snap, leftHere]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const p = prevLedger.current;
     prevLedger.current = ledger;
@@ -128,7 +154,7 @@ export function useTable(configStr: string) {
       setPaid(exiting.current.stack);
       if (config && me) setExit({ seat: exiting.current.seat, deposited: exiting.current.deposited, paid: exiting.current.stack, ledger: tableAddresses(config).ledger(exiting.current.seat).toBase58(), vault: tableAddresses(config).vault.toBase58(), wallet: me });
       exiting.current = null;
-      if (config && me) dropSession(config.toBase58(), me);
+      if (config && me) { dropSession(config.toBase58(), me); dropExit(config.toBase58(), me); }
       setSession(null);
     }
   }, [ledger]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -232,12 +258,29 @@ export function useTable(configStr: string) {
 
   // ---- a bought-in player who isn't seated yet: seat myself between hands (the keeper does it too) ----
   useEffect(() => {
-    if (!per || !session || !config || liveOk !== false || !live || live.phase !== PHASE.IDLE) return;
+    // Never re-seat a sit-down this browser left: PER may still list it on the base copy for a while.
+    if (!per || !session || !config || liveOk !== false || !live || live.phase !== PHASE.IDLE || leftHere) return;
+    if (ledger && (ledger.left || (bit(live.departed, ledger.seat) && live.seat_epoch[ledger.seat] === ledger.epoch))) return;
     const tag = `${session.key.publicKey.toBase58()}:${live.hand_no}`;
     if (joinTried.current === tag) return;
     joinTried.current = tag;
     sendWithSession(per, session.key, [joinSeat({ payer: session.key.publicKey, config, seat: session.seat, live: true })]).catch(() => {});
-  }, [per, session, config, liveOk, live?.phase, live?.hand_no]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [per, session, config, liveOk, live?.phase, live?.hand_no, leftHere]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- CF-084: the session ended (end_session seated everyone out): follow the payout from Boards ----
+  useEffect(() => {
+    if (!config || !wallet || !ledger || !live) return;
+    // Read storage, not state: on a reload the record may not be in state yet.
+    const known = exitFor(config.toBase58(), wallet.publicKey.toBase58());
+    if (known && known.seat === ledger.seat && known.epoch === ledger.epoch) return;
+    const s = ledger.seat;
+    if (!bit(live.departed, s) || live.seat_epoch[s] !== ledger.epoch || bit(live.occupied, s)) return;
+    const held = live.credited && ledger.buy_in > live.credited[s] ? ledger.buy_in - live.credited[s] : 0n;
+    saveExit({
+      config: config.toBase58(), wallet: wallet.publicKey.toBase58(), name: "", seat: s, epoch: ledger.epoch,
+      deposited: ledger.buy_in.toString(), stack: (live.stacks[s] + held).toString(), at: Date.now(), reason: "session",
+    });
+  }, [config, wallet, ledger, live?.departed, live?.occupied, leftRec]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- what happened: a short log from state changes ----
   useEffect(() => {
@@ -313,6 +356,9 @@ export function useTable(configStr: string) {
       const you = walletAddr !== null && walletAddr === me;
       let status: SeatStatus = !walletAddr ? "empty" : !occupied ? "sitting" : gs ? (!gs.active ? "packed" : gs.seen ? "seen" : "blind") : inHand && dealtSeats.includes(s) ? "blind" : "out";
       if (occupied && !inHand && !gs) status = "out";
+      // Out of chips: keeps the seat and watches; the next hand deals the others; a top-up brings them back.
+      const stackNow = gs ? gs.stack : rt ? rt.stacks[s] : 0n;
+      if (status === "out" && occupied && rt && rt.boot > 0n && stackNow < rt.boot) status = "broke";
       const fromResult = result && rt && (result.handNo === rt.hand_no || !gameLive) ? result.shown[s] : undefined;
       const showCards = fromResult ?? (you && myHand && rt && myHand.handNo === rt.hand_no ? myHand.cards : null) ?? peeks[s] ?? null;
       const resultHere = result && rt && (result.handNo === rt.hand_no || rt.phase === PHASE.IDLE);
@@ -340,6 +386,21 @@ export function useTable(configStr: string) {
     if (!engine || mySeat === null || !seated) return null;
     try { return rules.legalActions(engine, mySeat); } catch { return null; }
   }, [engine, mySeat, seated]);
+  /** Why an action is off right now (rules v1 error code in words), or null if it's allowed. */
+  const why = useMemo(() => {
+    if (!engine || mySeat === null || !seated) return null;
+    const check = (a: rules.Action): string | null => {
+      try { engine.clone().apply(mySeat, a); return null; } catch (e) { return WHY[(e as rules.RulesError).code] ?? String((e as Error).message); }
+    };
+    const m = engine.minBet(mySeat);
+    return {
+      chaal: check({ kind: "chaal", amount: m }),
+      chaalDouble: check({ kind: "chaal", amount: 2n * m }),
+      show: check({ kind: "show" }),
+      sideShow: check({ kind: "sideShow" }),
+      pack: check({ kind: "pack" }),
+    };
+  }, [engine, mySeat, seated]);
   const turnLeft = rt && rt.phase === PHASE.DEALT ? Math.max(0, Number(rt.turn_deadline) - now) : 0;
 
   // ---- mode ----
@@ -351,19 +412,24 @@ export function useTable(configStr: string) {
     // The rollup stalled: no sync for the whole refund timeout (ADR 0004).
     if (ledger && snap.live && BigInt(Math.floor(now)) >= BigInt(snap.cfg.last_sync_time) + BigInt(snap.cfg.refund_timeout_secs)) return "stalled";
     if (ledger && rt && bit(rt.departed, ledger.seat) && rt.seat_epoch[ledger.seat] === ledger.epoch) return "cashout";
+    // CF-084: seated out by end_session: the last live read shows it before the base layer does.
+    if (ledger && live && bit(live.departed, ledger.seat) && live.seat_epoch[ledger.seat] === ledger.epoch) return "cashout";
+    // Left from this browser: the base copy can still list the seat until the keeper syncs it.
+    if (leftHere) return "cashout";
     if (seated && rt && bit(rt.leaving, mySeat!)) return "leaving";
     if (seated) return "seated";
     if (ledger && !session) return "resume";
     if (ledger && session && liveOk === false) return "joining";
     if (ledger && session) return "joining";
     return "spectator";
-  }, [snap, ledger, rt, seated, mySeat, session, liveOk, Math.floor(now / 30)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [snap, ledger, rt, live, seated, mySeat, session, liveOk, leftHere, Math.floor(now / 30)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- actions ----
-  const run = useCallback(async (label: string, f: () => Promise<unknown>) => {
+  /** Runs a step with a busy label; resolves true if it succeeded (errors go to `error`). */
+  const run = useCallback(async (label: string, f: () => Promise<unknown>): Promise<boolean> => {
     setBusy(label);
     setError(null);
-    try { await f(); } catch (e) { setError(errorText(e)); } finally { setBusy(null); refreshBase(); refreshBalance(); }
+    try { await f(); return true; } catch (e) { setError(errorText(e)); return false; } finally { setBusy(null); refreshBase(); refreshBalance(); }
   }, [refreshBase, refreshBalance]);
 
   const buyIn = useCallback((seat: number, amount: bigint) => run("Buying in", async () => {
@@ -403,10 +469,29 @@ export function useTable(configStr: string) {
     respond: (accept: boolean) => send(accept ? "Accepting" : "Refusing", ACTION.SIDE_SHOW_RESPOND, accept ? 1n : 0n),
   }), [send, legal]);
 
-  const leave = useCallback(() => run("Leaving", async () => {
-    if (!per || !session || !config) throw new Error("Not seated.");
-    await sendWithSession(per, session.key, [leaveSeat({ signer: session.key.publicKey, config, seat: session.seat })]);
-  }), [run, per, session, config]);
+  /**
+   * Leave now. On my turn mid-hand, pack first (otherwise the hand waits for
+   * my turn to time out). Then leave_seat, and remember the sit-down so the
+   * Boards page can follow the payout. Resolves true once leave_seat landed.
+   */
+  const leave = useCallback((tableName = "") => run("Leaving", async () => {
+    if (!per || !session || !config || !wallet) throw new Error("Not seated.");
+    const s = session.seat;
+    if (live && live.phase === PHASE.DEALT && legal?.pack && toAct === s) {
+      await sendWithSession(per, session.key, [actIx({
+        session: session.key.publicKey, config, action: ACTION.PACK, amount: 0n, expectedSeq: live.action_seq, dealingOrder: live.game.order.slice(0, live.game.n),
+      })]).catch(() => {}); // the turn may just have timed out: leaving still works
+    }
+    await sendWithSession(per, session.key, [leaveSeat({ signer: session.key.publicKey, config, seat: s })]);
+    if (ledger) {
+      const held = live?.credited && ledger.buy_in > live.credited[s] ? ledger.buy_in - live.credited[s] : 0n;
+      const stack = live && live.seat_epoch[s] === ledger.epoch ? live.stacks[s] + held : ledger.synced_stack;
+      saveExit({
+        config: config.toBase58(), wallet: wallet.publicKey.toBase58(), name: tableName, seat: s, epoch: ledger.epoch,
+        deposited: ledger.buy_in.toString(), stack: stack.toString(), at: Date.now(), reason: "left",
+      });
+    }
+  }), [run, per, session, config, wallet, live, legal, toAct, ledger]);
 
   const cashOut = useCallback(() => run("Cashing out", async () => {
     if (!wallet || !config || !ledger) throw new Error("Nothing to cash out.");
@@ -420,6 +505,7 @@ export function useTable(configStr: string) {
     setPaid(ledger.synced_stack);
     setExit({ seat: ledger.seat, deposited: ledger.buy_in, paid: ledger.synced_stack, ledger: tableAddresses(config).ledger(ledger.seat).toBase58(), vault: tableAddresses(config).vault.toBase58(), wallet: wallet.publicKey.toBase58() });
     dropSession(config.toBase58(), wallet.publicKey.toBase58());
+    dropExit(config.toBase58(), wallet.publicKey.toBase58());
     setSession(null);
   }), [run, wallet, config, ledger]);
 
@@ -431,6 +517,7 @@ export function useTable(configStr: string) {
     setPaid(ledger.synced_stack);
     setExit({ seat: ledger.seat, deposited: ledger.buy_in, paid: ledger.synced_stack, ledger: tableAddresses(config).ledger(ledger.seat).toBase58(), vault: tableAddresses(config).vault.toBase58(), wallet: wallet.publicKey.toBase58() });
     dropSession(config.toBase58(), wallet.publicKey.toBase58());
+    dropExit(config.toBase58(), wallet.publicKey.toBase58());
     setSession(null);
   }), [run, wallet, config, ledger]);
 
@@ -471,7 +558,9 @@ export function useTable(configStr: string) {
   return {
     config, snap, rt, mode, seats, mySeat, seated, ledger, session, paid, clearPaid: () => setPaid(null),
     topUp, topUpPending, topUpRange, exit, clearExit: () => setExit(null),
-    toAct, legal, turnLeft, inHand, gameLive, result, events, busy, error, clearError: () => setError(null),
+    toAct, legal, why, turnLeft, leftRec,
+    /** CF-084: hands this session can still start (null = unknown). */
+    sessionHandsLeft: rt ? Math.max(0, SESSION_HAND_COMMITS - sessionCommits(rt)) : null, inHand, gameLive, result, events, busy, error, clearError: () => setError(null),
     myCards: (myHand && rt && myHand.handNo === rt.hand_no ? myHand.cards : null) ?? (mySeat !== null && result && !gameLive ? result.shown[mySeat] ?? null : null),
     buyIn, actions, leave, cashOut, claimRefund, resume, refresh: refreshBase,
   };

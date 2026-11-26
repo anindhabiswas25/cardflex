@@ -30,6 +30,7 @@
     "test:keeper": "pnpm --filter @card-flex/keeper test && pnpm --filter @card-flex/keeper typecheck",
     "keeper": "pnpm --filter @card-flex/keeper start",
     "keeper-drill": "pnpm --filter @card-flex/keeper drill",
+    "session-drill": "pnpm --filter @card-flex/keeper session-drill",
     "lost-drill": "pnpm --filter @card-flex/keeper lost-drill",
     "load-test": "pnpm --filter @card-flex/keeper load",
     "multiuser": "pnpm --filter @card-flex/keeper multiuser",

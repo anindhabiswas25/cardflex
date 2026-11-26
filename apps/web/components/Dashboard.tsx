@@ -10,6 +10,7 @@ import { metaFor } from "@/lib/lobby";
 import { useWallet } from "@/lib/wallet";
 import { WalletMenu } from "./SiteNav";
 import { Sol } from "./Sol";
+import { viewW } from "@/lib/viewport";
 
 type Seat = SeatLedger & { address: import("@solana/web3.js").PublicKey; snap: TableSnapshot | null; state: "playing" | "joining" | "leaving" | "syncing" | "cashout" | "refund" | "stalled" | "closed" };
 const bit = (m: number, s: number) => ((m >> s) & 1) === 1;
@@ -44,7 +45,7 @@ export function Dashboard() {
     const ul = listRef.current;
     if (!ul) return;
     const fit = () => {
-      if (window.innerWidth < 1000) return setPerPage(6);
+      if (viewW() < 1000) return setPerPage(6);
       const row = (ul.querySelector("li") as HTMLElement | null)?.offsetHeight ?? 50;
       setPerPage(Math.max(2, Math.floor((ul.clientHeight + 6) / (row + 6))));
     };
@@ -303,9 +304,9 @@ const CSS = `
 
 /* header */
 .db-hero{position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:10px}
-.db-hero h1{margin-top:8px;font-size:clamp(38px,min(5vw,7vh),60px);line-height:1;font-weight:500;letter-spacing:-1px}
+.db-hero h1{margin-top:8px;font-size:clamp(38px,min(calc(5 * var(--vw)),calc(7 * var(--vh))),60px);line-height:1;font-weight:500;letter-spacing:-1px}
 .db-hero h1 small{display:block;margin-bottom:6px;font-size:.4em;letter-spacing:4px;color:#ffd76a;font-weight:500}
-.db-hero-coins{width:clamp(110px,min(12vw,17vh),180px);height:auto;filter:drop-shadow(0 16px 26px rgba(0,0,0,.55));animation:db-rise .8s ${OUT} .15s both}
+.db-hero-coins{width:clamp(110px,min(calc(12 * var(--vw)),calc(17 * var(--vh))),180px);height:auto;filter:drop-shadow(0 16px 26px rgba(0,0,0,.55));animation:db-rise .8s ${OUT} .15s both}
 @media (max-width:640px){.db-hero-coins{display:none}}
 
 /* stats */
@@ -314,7 +315,7 @@ const CSS = `
 .db-stat{position:relative;display:grid;gap:3px;padding:16px 18px 14px;border-radius:26px;border:1px solid rgba(255,214,102,.18);background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015));animation:db-rise .6s ${OUT} both}
 .db-ico{position:absolute;right:16px;top:16px;display:grid;place-items:center;width:40px;height:40px;border-radius:13px;font-size:17px;color:#ffd76a;border:1.5px solid transparent;background:linear-gradient(160deg,#341257,#1b0733) padding-box,linear-gradient(160deg,#ffe9a3,#c98a12 55%,#6b3d06) border-box}
 .db-stat small{font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:rgba(233,221,255,.55)}
-.db-stat b{margin-top:4px;font-size:clamp(22px,2.3vw,29px);font-weight:600;line-height:1.1}
+.db-stat b{margin-top:4px;font-size:clamp(22px,calc(2.3 * var(--vw)),29px);font-weight:600;line-height:1.1}
 .db-stat em{font-style:normal;font-size:12.5px;color:rgba(233,221,255,.55)}
 .db-stat.is-up b{color:#5cf09a}
 .db-stat.is-down b{color:#ff7d8d}
@@ -323,7 +324,7 @@ const CSS = `
 /* panels */
 .db-grid{display:grid;gap:18px;margin-top:18px;padding-bottom:40px}
 @media (min-width:1000px){
-  .db{display:flex;flex-direction:column;height:calc(100dvh - 106px)}
+  .db{display:flex;flex-direction:column;height:calc(calc(100 * var(--dvh)) - 106px)}
   .db-grid{flex:1;min-height:0;grid-template-columns:1.7fr 1fr;align-items:stretch;padding-bottom:18px}
   .db-hands{display:flex;flex-direction:column;min-height:0}
   .db-hands ul{flex:1;min-height:0;overflow:hidden;align-content:start}

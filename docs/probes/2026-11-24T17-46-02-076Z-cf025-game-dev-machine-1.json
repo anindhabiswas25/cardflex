@@ -1,0 +1,2069 @@
+{
+  "probe": "CF-025-game",
+  "version": 1,
+  "region": "dev-machine-1",
+  "started_at": "2026-11-24T17:46:02.076Z",
+  "program": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "hands": [
+    {
+      "hand": 0,
+      "actions": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          5,
+          2
+        ]
+      ],
+      "refused": 14,
+      "dealing_order": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "button": 5,
+      "hand_no": "0",
+      "end_reason": 0,
+      "winners": [
+        2
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         8a94fb439127a4131a36b78cbeeaf5074bc9b69e0e844fdca67bb13c7290f559",
+        "Game context:             VALID         1ec4205a87ac69dc6dc7f6fc80b55a018ccd8789a99fefd8a90b048854b09489",
+        "Salt commitments:         VALID         6 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 9ee51a80e9c50f27369d1f66f480e729bcbb3dfc00c52a4901668e481e4c76f5",
+        "Shuffle reconstruction:   VALID         seed 4c2b9b5efa420454a8b1f0bd353440d59c51bd23ff9acff4321605cb85bb6122",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         d3167d449d804218ecda2596ef5285455ee0fc624350d824c10cf884738f18ba",
+        "Dealing map:              VALID         6 shown hands match the deal",
+        "Game result:              VALID         16 actions replayed; seat(s) [2] win by last player standing; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 1,
+      "actions": [
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "refused": 4,
+      "dealing_order": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        0
+      ],
+      "button": 0,
+      "hand_no": "1",
+      "end_reason": 0,
+      "winners": [
+        4
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         39694216a468d739effb8944b4668a57ab96163ba837c6944cad89ebfe24a768",
+        "Game context:             VALID         8ded2980ae8210689abc404ef51782e2dc45b35b20cfaa3b45501855a326eb03",
+        "Salt commitments:         VALID         6 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 9be20b87bd0e113ced3395347652e0d28f22212935f9e8a0898c1b48913cb7e1",
+        "Shuffle reconstruction:   VALID         seed 95c083d4bca247cf6ba290443879eae1538acad159723e5bfe9f58aa690fa723",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         83edf9b395977af9c5b3754fbbbe3d88ce36ab5b683a005c0a45272f0552c408",
+        "Dealing map:              VALID         6 shown hands match the deal",
+        "Game result:              VALID         15 actions replayed; seat(s) [4] win by last player standing; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 2,
+      "actions": [
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "refused": 13,
+      "dealing_order": [
+        2,
+        3,
+        4,
+        5,
+        0,
+        1
+      ],
+      "button": 1,
+      "hand_no": "2",
+      "end_reason": 1,
+      "winners": [
+        2
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         41e95fe50d907d844d4c9b1c36898567ea686e9112973150b12dcfb7b0eb61a6",
+        "Game context:             VALID         07f6566e7b8042dfc510216add7449eb807acb215f7a959acb36c782180226fe",
+        "Salt commitments:         VALID         6 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 0faf9805fb22bb227a56d275bac7b7952872fc2053e95adc23d74e09ce5e06ce",
+        "Shuffle reconstruction:   VALID         seed 6d591da532702d67010b05a6264c3a57f0ed5f1134cfdc7673759bc48c30bffa",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         81789a4f265463161ecc79262e4cf545dd1de03a208b351d08b887ffccb9c661",
+        "Dealing map:              VALID         6 shown hands match the deal",
+        "Game result:              VALID         14 actions replayed; seat(s) [2] win by show; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 3,
+      "actions": [
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "refused": 22,
+      "dealing_order": [
+        3,
+        4,
+        5,
+        0,
+        1,
+        2
+      ],
+      "button": 2,
+      "hand_no": "3",
+      "end_reason": 0,
+      "winners": [
+        4
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         7e479d09b6e5240d1a2f8667411d64894c55c4ed05778a710847f5a839d8a731",
+        "Game context:             VALID         9ace1bc046d671493daea00ca0d7ce1e1ef5a3f2a68245d5d8474f6fbe23d5bd",
+        "Salt commitments:         VALID         6 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 5bc7950825bfc3a013b9c1d84ecea5634d89f7b09cf1a445dd9de66c4e39e821",
+        "Shuffle reconstruction:   VALID         seed d3c9daca0eca4b13a7444ea5b8d0662a46c9cdd87fa5418c2dc56dc4796cab64",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         4d07fb7b59be0345bf3241f151e73d0a0c2cada4983aab087f2c7b2bb5376750",
+        "Dealing map:              VALID         6 shown hands match the deal",
+        "Game result:              VALID         15 actions replayed; seat(s) [4] win by last player standing; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 4,
+      "actions": [
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "refused": 5,
+      "dealing_order": [
+        4,
+        0,
+        2,
+        3
+      ],
+      "button": 3,
+      "hand_no": "4",
+      "side_show_grants": 1,
+      "end_reason": 0,
+      "winners": [
+        4
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         a4890bb9fb966122828e2787fc424bdb9f9cec4462c10ad4569af2258bf4b4a7",
+        "Game context:             VALID         bc5fa4628a7e6c6c9338ffbcea86ef6b6c6e49ecac0aaacb3c3a0eba7a8fdd66",
+        "Salt commitments:         VALID         4 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 01e1b459552c44a09f02677a83df22ebb06803b7813fd85a8375849ccbc4ee30",
+        "Shuffle reconstruction:   VALID         seed 4b71fdb195b52bc6b86a303b5cbeb37965fae5fddd05d4e66ab83a9b596f917a",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         17f654ae27b27be2e4f487ab02be5592bc30272795b0fa76c16f121df92cbb67",
+        "Dealing map:              VALID         4 shown hands match the deal",
+        "Game result:              VALID         12 actions replayed; seat(s) [4] win by last player standing; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": [
+        [
+          2,
+          4
+        ]
+      ]
+    },
+    {
+      "hand": 5,
+      "actions": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "refused": 8,
+      "dealing_order": [
+        0,
+        2,
+        3,
+        4
+      ],
+      "button": 4,
+      "hand_no": "5",
+      "end_reason": 0,
+      "winners": [
+        0
+      ],
+      "rake": "6875",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         7e9595f478fdcf4b1511cc1394d026b17f142bbca945b4af4c03a94023acad07",
+        "Game context:             VALID         7ad39e232237ffe09c8548b5eb43949835c7cb1a5a4bf4eb8ac4ea990afbf73f",
+        "Salt commitments:         VALID         4 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 69ddf943f6ac4e480774f0505c9b80b7c4fe0955e513787ba5aa31078c623906",
+        "Shuffle reconstruction:   VALID         seed fa73c51d79c256b736b6d9fcd3c2ce930322fe99137d7f43a36e1e99d55e93c2",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         fb911aeaf998c1fcb1b6f6c04e86913df29c6f10fd1ba370abb734f777264f02",
+        "Dealing map:              VALID         4 shown hands match the deal",
+        "Game result:              VALID         8 actions replayed; seat(s) [0] win by last player standing; rake 6875",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 6,
+      "actions": [
+        [
+          2,
+          2
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "refused": 2,
+      "dealing_order": [
+        2,
+        4,
+        0
+      ],
+      "button": 0,
+      "hand_no": "6",
+      "end_reason": 1,
+      "winners": [
+        4
+      ],
+      "rake": "2500",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         cca5f2f1f56b0330c609d6e5afac9eefe1d46528a29b3dfb44511315283e502d",
+        "Game context:             VALID         5b06ecce86ca52464f07515671c26d2e60c7f7c275c55bad5452249803a9c762",
+        "Salt commitments:         VALID         3 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 4652fb294766eb516fae9c2f77da96792f60b7456df15ead838627d4182f5652",
+        "Shuffle reconstruction:   VALID         seed 10cdff601af35f07d87086863a2a3c0bda2fd3b4d180ab08276340eaec69e525",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         cafe0f67784098552587934ebb2ce53017a620529fad681bddc0e0ff37848f5a",
+        "Dealing map:              VALID         3 shown hands match the deal",
+        "Game result:              VALID         2 actions replayed; seat(s) [4] win by show; rake 2500",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 7,
+      "actions": [
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "refused": 3,
+      "dealing_order": [
+        4,
+        0,
+        2
+      ],
+      "button": 2,
+      "hand_no": "7",
+      "end_reason": 0,
+      "winners": [
+        4
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         57b5024b6249580ca4c2b24124b34cbcc2c3c33fa5af6ca60348c09d84a424cb",
+        "Game context:             VALID         6e2d402af20d13018de7fb559b187cd7361c3457bae6acd1caff8894a0f6e8f4",
+        "Salt commitments:         VALID         3 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 37cfcca0e2dbba86610ae42a8b4a5a38d79f903436dead0bf8ba9769bbf4dede",
+        "Shuffle reconstruction:   VALID         seed 31569d36e6412d98ea61a614b98f3c028aed893ccc4b8e48cbe10fd2d27e976b",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         441c199e1c2dc2e833f4e1eb24fe70381798bbadff5914cea0f1c0a91319ac3b",
+        "Dealing map:              VALID         3 shown hands match the deal",
+        "Game result:              VALID         14 actions replayed; seat(s) [4] win by last player standing; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 8,
+      "actions": [
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "refused": 5,
+      "dealing_order": [
+        0,
+        2,
+        4
+      ],
+      "button": 4,
+      "hand_no": "8",
+      "end_reason": 1,
+      "winners": [
+        4
+      ],
+      "rake": "4375",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         b7168c85fa76f954dc3542e5e1fe96eb56f60b7d89bea7e2bded31397c61511d",
+        "Game context:             VALID         71c7fe840307ca2b61449a35735943416ae57a5370948a49897059de6636ee56",
+        "Salt commitments:         VALID         3 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 788ecc1d85a0fe7727fa5f1e1cc1a84eca149ff0661de447287a2af704bfb735",
+        "Shuffle reconstruction:   VALID         seed 31899b268e74545fde992587ed05edbde71bddacd14fb344f83590e4b9fe32e4",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         45e30f713159a1c65b8d63c847613066d222c39f8872f29b66137f0e218325db",
+        "Dealing map:              VALID         3 shown hands match the deal",
+        "Game result:              VALID         3 actions replayed; seat(s) [4] win by show; rake 4375",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 9,
+      "actions": [
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "refused": 2,
+      "dealing_order": [
+        2,
+        4
+      ],
+      "button": 0,
+      "hand_no": "9",
+      "end_reason": 0,
+      "winners": [
+        4
+      ],
+      "rake": "10000",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         4c7e99fcd0c01c31ddd357f1303cca7340b8632d316e8134c3d57980043c0df9",
+        "Game context:             VALID         71e2f3f3514d4d27d51c509ed712d04351d91d7428b9318698cfab58f6efb427",
+        "Salt commitments:         VALID         2 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 22719d7655fb4fad93771461b238073e56cb0a3e2a83c23240a51bf84dc1dad5",
+        "Shuffle reconstruction:   VALID         seed 355a4958f17546423246178da892b95611fc374205c52c2fc95ac70c71eb9a6e",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         eef08863c7d7843fb6d5bcd8c8f251a652af752804714d22a29046df5cf7d671",
+        "Dealing map:              VALID         2 shown hands match the deal",
+        "Game result:              VALID         8 actions replayed; seat(s) [4] win by last player standing; rake 10000",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    },
+    {
+      "hand": 10,
+      "actions": [
+        [
+          4,
+          2
+        ]
+      ],
+      "refused": 0,
+      "dealing_order": [
+        4,
+        2
+      ],
+      "button": 2,
+      "hand_no": "10",
+      "end_reason": 0,
+      "winners": [
+        2
+      ],
+      "rake": "1250",
+      "verifier": [
+        "Protocol version:         VALID         cf-hand-record/2 v2 (verifier supports cf-hand-record/2 v2)",
+        "Roster hash:              VALID         521688de3e51cc429905f6df307bb9d3fd4f4bb1575bd3899ce7847bacbb5f7b",
+        "Game context:             VALID         59042c6caa2d2a6a0e672e3dc1f4f5e5771e2997b9db0a256cff70046bfb5417",
+        "Salt commitments:         VALID         2 salts match their commitments",
+        "Randomness binding:       VALID         VRF caller seed 48f6abafe9ad24bd2074b255fc06b0ed4363c8d2d1d3be4b179145ca81ad68fd",
+        "Shuffle reconstruction:   VALID         seed 507c188b882fed902847837a02351401d7c292ddfa0e4075bedc106e91a39dd5",
+        "Deck uniqueness:          VALID         52 distinct cards",
+        "Merkle root:              VALID         82992710e12a235c20fa567ac4aa5d8325df4b58cce79065db8877d514729c58",
+        "Dealing map:              VALID         2 shown hands match the deal",
+        "Game result:              VALID         1 actions replayed; seat(s) [2] win by last player standing; rake 1250",
+        "Overall:                  VALID"
+      ],
+      "side_show_pairs": []
+    }
+  ],
+  "checks": [
+    {
+      "group": "hand 0",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "boots collected into the pot",
+      "expected": "150000",
+      "actual": "150000",
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "every dealt player reads its own hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand0.json"
+    },
+    {
+      "group": "hand 0",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "1628.1 ms"
+    },
+    {
+      "group": "hand 0",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "975000",
+        "125000",
+        "3365000",
+        "375000",
+        "975000",
+        "175000"
+      ],
+      "actual": [
+        "975000",
+        "125000",
+        "3365000",
+        "375000",
+        "975000",
+        "175000"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 0",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "1",
+        0
+      ],
+      "actual": [
+        0,
+        "1",
+        0
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "boots collected into the pot",
+      "expected": "150000",
+      "actual": "150000",
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "every dealt player reads its own hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand1.json"
+    },
+    {
+      "group": "hand 1",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "882.3 ms"
+    },
+    {
+      "group": "hand 1",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "950000",
+        "50000",
+        "2740000",
+        "250000",
+        "1840000",
+        "150000"
+      ],
+      "actual": [
+        "950000",
+        "50000",
+        "2740000",
+        "250000",
+        "1840000",
+        "150000"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 1",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "2",
+        1
+      ],
+      "actual": [
+        0,
+        "2",
+        1
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "boots collected into the pot",
+      "expected": "150000",
+      "actual": "150000",
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "every dealt player reads its own hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand2.json"
+    },
+    {
+      "group": "hand 2",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "768.5 ms"
+    },
+    {
+      "group": "hand 2",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "625000",
+        "25000",
+        "3305000",
+        "175000",
+        "1815000",
+        "25000"
+      ],
+      "actual": [
+        "625000",
+        "25000",
+        "3305000",
+        "175000",
+        "1815000",
+        "25000"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 2",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "3",
+        2
+      ],
+      "actual": [
+        0,
+        "3",
+        2
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "boots collected into the pot",
+      "expected": "150000",
+      "actual": "150000",
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "every dealt player reads its own hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand3.json"
+    },
+    {
+      "group": "hand 3",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "784.1 ms"
+    },
+    {
+      "group": "hand 3",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "350000",
+        "0",
+        "3280000",
+        "100000",
+        "2230000",
+        "0"
+      ],
+      "actual": [
+        "350000",
+        "0",
+        "3280000",
+        "100000",
+        "2230000",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 3",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "4",
+        3
+      ],
+      "actual": [
+        0,
+        "4",
+        3
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "boots collected into the pot",
+      "expected": "100000",
+      "actual": "100000",
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "every dealt player reads its own hand",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "Side Show 4<->2: both read each other's hand",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand4.json"
+    },
+    {
+      "group": "hand 4",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "3541.8 ms"
+    },
+    {
+      "group": "hand 4",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "125000",
+        "0",
+        "3155000",
+        "75000",
+        "2595000",
+        "0"
+      ],
+      "actual": [
+        "125000",
+        "0",
+        "3155000",
+        "75000",
+        "2595000",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 4",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "5",
+        4
+      ],
+      "actual": [
+        0,
+        "5",
+        4
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "boots collected into the pot",
+      "expected": "100000",
+      "actual": "100000",
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "every dealt player reads its own hand",
+      "expected": 4,
+      "actual": 4,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand5.json"
+    },
+    {
+      "group": "hand 5",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "726.3 ms"
+    },
+    {
+      "group": "hand 5",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "293125",
+        "0",
+        "3080000",
+        "0",
+        "2570000",
+        "0"
+      ],
+      "actual": [
+        "293125",
+        "0",
+        "3080000",
+        "0",
+        "2570000",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 5",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "6",
+        0
+      ],
+      "actual": [
+        0,
+        "6",
+        0
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "boots collected into the pot",
+      "expected": "75000",
+      "actual": "75000",
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "every dealt player reads its own hand",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand6.json"
+    },
+    {
+      "group": "hand 6",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "1366.8 ms"
+    },
+    {
+      "group": "hand 6",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "268125",
+        "0",
+        "3055000",
+        "0",
+        "2617500",
+        "0"
+      ],
+      "actual": [
+        "268125",
+        "0",
+        "3055000",
+        "0",
+        "2617500",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 6",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "7",
+        2
+      ],
+      "actual": [
+        0,
+        "7",
+        2
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "boots collected into the pot",
+      "expected": "75000",
+      "actual": "75000",
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "every dealt player reads its own hand",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand7.json"
+    },
+    {
+      "group": "hand 7",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "766.5 ms"
+    },
+    {
+      "group": "hand 7",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "43125",
+        "0",
+        "2730000",
+        "0",
+        "3157500",
+        "0"
+      ],
+      "actual": [
+        "43125",
+        "0",
+        "2730000",
+        "0",
+        "3157500",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 7",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "8",
+        4
+      ],
+      "actual": [
+        0,
+        "8",
+        4
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "boots collected into the pot",
+      "expected": "75000",
+      "actual": "75000",
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "every dealt player reads its own hand",
+      "expected": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand8.json"
+    },
+    {
+      "group": "hand 8",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "723.6 ms"
+    },
+    {
+      "group": "hand 8",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "18125",
+        "0",
+        "2655000",
+        "0",
+        "3253125",
+        "0"
+      ],
+      "actual": [
+        "18125",
+        "0",
+        "2655000",
+        "0",
+        "3253125",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 8",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "9",
+        0
+      ],
+      "actual": [
+        0,
+        "9",
+        0
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "boots collected into the pot",
+      "expected": "50000",
+      "actual": "50000",
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "every dealt player reads its own hand",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand9.json"
+    },
+    {
+      "group": "hand 9",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "commit lands on the base layer",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "1307.5 ms"
+    },
+    {
+      "group": "hand 9",
+      "name": "synced ledgers equal the settled stacks",
+      "expected": [
+        "18125",
+        "0",
+        "2080000",
+        "0",
+        "3818125",
+        "0"
+      ],
+      "actual": [
+        "18125",
+        "0",
+        "2080000",
+        "0",
+        "3818125",
+        "0"
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 9",
+      "name": "next_hand: IDLE, hand_no + 1, button moved to first dealt seat",
+      "expected": [
+        0,
+        "10",
+        2
+      ],
+      "actual": [
+        0,
+        "10",
+        2
+      ],
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "VRF callback arrives",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "dealt",
+      "expected": 5,
+      "actual": 5,
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "boots collected into the pot",
+      "expected": "50000",
+      "actual": "50000",
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "every dealt player reads its own hand",
+      "expected": 2,
+      "actual": 2,
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "only the game ended the hand",
+      "expected": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "stacks + rake = all buy-ins (conservation)",
+      "expected": "6000000",
+      "actual": "6000000",
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "HandLog revealed and public",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "cf-verify: hand VALID (exit 0)",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": "2026-11-24T17-46-02-076Z-game-hand10.json"
+    },
+    {
+      "group": "hand 10",
+      "name": "cf-verify replayed the game result",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "group": "hand 10",
+      "name": "no live reader grants before the next hand",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    }
+  ],
+  "timings": {
+    "hand0_deal_ms": 4768.3,
+    "hand0_total_ms": 32309.6,
+    "hand1_deal_ms": 8028.4,
+    "hand1_total_ms": 26211,
+    "hand2_deal_ms": 12859.9,
+    "hand2_total_ms": 34145.9,
+    "hand3_deal_ms": 7368.8,
+    "hand3_total_ms": 38230.4,
+    "hand4_deal_ms": 6887.4,
+    "hand4_total_ms": 34576.8,
+    "hand5_deal_ms": 7166.7,
+    "hand5_total_ms": 21795.8,
+    "hand6_deal_ms": 6573.2,
+    "hand6_total_ms": 14033,
+    "hand7_deal_ms": 7075.9,
+    "hand7_total_ms": 25335.5,
+    "hand8_deal_ms": 6523.5,
+    "hand8_total_ms": 16143.5,
+    "hand9_deal_ms": 6029.5,
+    "hand9_total_ms": 18132.2,
+    "hand10_deal_ms": 10350.6
+  },
+  "rng_seed": "6686326274160006643",
+  "error": "Error: tx 4pcfVVZfDtASomgtVrxkFmbt1PgxDXUTRib9ZAssFfUSvrN73pwyBsxyUF4a3x4YrjKjeoNUBeVBCjX6avyDsMgS failed: {\"InstructionError\":[0,{\"Custom\":2684354560}]}\n    at send (file:///home/asus/Project/cardflex/packages/probes/src/common.mjs:79:38)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/asus/Project/cardflex/packages/probes/src/game.mjs:157:5",
+  "teardown_ok": true,
+  "auth_transient_failures": [],
+  "finished_at": "2026-11-24T17:51:39.845Z"
+}

@@ -19,7 +19,7 @@ export const TABLE_FAILING = 5;
 export const COMMIT_COST = 2_000_000;
 export const HEADROOM_MIN = 5 * COMMIT_COST;
 
-export type TableHealth = { table: string; hands: number; failures: number; progressAgeSecs: number; lastCommitSecs: number };
+export type TableHealth = { table: string; hands: number; failures: number; progressAgeSecs: number; lastCommitSecs: number; sessionCommits?: number; sessions?: number };
 export type Health = { ok: boolean; reasons: string[]; uptimeSecs: number; tables: number; lastReadAgeSecs: number | null; perTable: TableHealth[] };
 
 export function health(tables: Map<string, TableState>, run: RunStatus, now: number = Date.now()): Health {
@@ -30,7 +30,7 @@ export function health(tables: Map<string, TableState>, run: RunStatus, now: num
   }
   const perTable: TableHealth[] = [];
   for (const [table, st] of tables) {
-    perTable.push({ table, hands: st.hands, failures: st.failures, progressAgeSecs: Math.round((now - st.progressAt) / 1000), lastCommitSecs: Number(st.lastCommitSecs) });
+    perTable.push({ table, hands: st.hands, failures: st.failures, progressAgeSecs: Math.round((now - st.progressAt) / 1000), lastCommitSecs: Number(st.lastCommitSecs), sessionCommits: st.sessionCommits, sessions: st.sessions });
     if (st.failures >= TABLE_FAILING) reasons.push(`${table.slice(0, 8)}: ${st.failures} failed steps in a row`);
     if (st.headroom !== undefined && st.headroom < HEADROOM_MIN) reasons.push(`${table.slice(0, 8)}: runtime has only ${st.headroom} lamports above rent; each commit costs ~${COMMIT_COST} after the free ones and it can't be topped up while live (close it at a quiet moment, refund players or reopen with a reserve)`);
     if (st.notKeeper) reasons.push(`${table.slice(0, 8)}: table hasn't named this keeper (cf-admin table keeper); hands sync only every 240 s`);

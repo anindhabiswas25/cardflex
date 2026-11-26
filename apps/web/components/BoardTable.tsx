@@ -3,6 +3,7 @@
 // rim, and your actions are split either side of your character. All game logic
 // comes from useTable via TableView; only the look is new.
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PHASE, rules } from "@card-flex/client-sdk";
 import { Avatar } from "./Avatar";
@@ -73,6 +74,19 @@ type Props = {
 export function BoardTable(p: Props) {
   const { board, t, name, tableId, tee, n, anchor, avatars, pot, potKey, me, showMeBottom, myTurn, progress } = p;
   const rt = t.rt;
+  const router = useRouter();
+  // Leaving is instant: leave_seat, then the Boards page, where a popup follows the payout.
+  const leaveNow = async () => {
+    if (await t.leave(name)) router.push("/tables");
+  };
+  const w = t.why;
+  // CF-084: a finished session seats everyone out: go to Boards, where the popup follows the payout.
+  const sessionEnded = t.leftRec?.reason === "session";
+  useEffect(() => {
+    if (sessionEnded) router.push("/tables");
+  }, [sessionEnded]); // eslint-disable-line react-hooks/exhaustive-deps
+  const left = t.sessionHandsLeft;
+  const tip = (on: boolean, r: string | null | undefined, ok: string) => (!myTurn ? "Wait for your turn" : on ? ok : r ?? "Not allowed now");
   const spotOf = (seat: number) => LAYOUT[n]?.[(seat - anchor + n) % n] ?? 0;
   const back = `/cards/back-${board}.webp`;
   const busy = !!t.busy;
@@ -173,6 +187,13 @@ export function BoardTable(p: Props) {
           {r === null ? "◌ checking TEE" : r.ok ? "🛡 TEE verified" : "⚠ TEE unverified"}
         </button>
         {t.seated && <span className="tb-pill is-ok">● seated</span>}
+        {/* CF-084 (ADR 0007): sessions of MagicBlock's free commits */}
+        {t.seated && left !== null && left <= 5 && (
+          <span className="tb-pill is-warn" data-testid="session-left" title="This table plays in sessions of about 20 hands (MagicBlock's free commits). At the end everyone is paid out and a fresh session starts.">
+            {left === 0 ? "Session over · paying everyone out" : left === 1 ? "Last hand of this session" : `Session ends in ${left} hands`}
+          </span>
+        )}
+        {t.snap && !t.snap.live && t.snap.cfg.status === 1 && <span className="tb-pill is-warn">New session starting…</span>}
       </div>
 
       {/* ---------- the scene ---------- */}
@@ -313,7 +334,7 @@ export function BoardTable(p: Props) {
                   <button className="tb-act" disabled={!l?.see || busy} onClick={t.actions.see}>
                     See cards
                   </button>
-                  <button className="tb-act" disabled={!myTurn || !l?.sideShow || busy} onClick={t.actions.sideShow}>
+                  <button className="tb-act" disabled={!myTurn || !l?.sideShow || busy} onClick={t.actions.sideShow} title={tip(!!l?.sideShow, w?.sideShow, "Compare cards with the previous player")}>
                     Side Show
                   </button>
                   <button className="tb-act is-pack" disabled={!myTurn || !l?.pack || busy} onClick={t.actions.pack}>
@@ -352,13 +373,13 @@ export function BoardTable(p: Props) {
               </span>
               {seatedLike && handActive && !respond && (
                 <div className="tb-acts">
-                  <button className="tb-act is-chaal" disabled={!myTurn || !l?.chaal || busy} onClick={() => t.actions.chaal(false)} data-testid="chaal">
+                  <button className="tb-act is-chaal" disabled={!myTurn || !l?.chaal || busy} onClick={() => t.actions.chaal(false)} data-testid="chaal" title={tip(!!l?.chaal, w?.chaal, "Bet the current stake")}>
                     {me.status === "seen" ? "Chaal" : "Blind"} <small><Sol /> {sol(one)}</small>
                   </button>
-                  <button className="tb-act" disabled={!myTurn || !l?.chaalDouble || busy} onClick={() => t.actions.chaal(true)}>
+                  <button className="tb-act" disabled={!myTurn || !l?.chaalDouble || busy} onClick={() => t.actions.chaal(true)} title={tip(!!l?.chaalDouble, w?.chaalDouble, "Bet twice the stake")}>
                     ×2 <small><Sol /> {sol(two)}</small>
                   </button>
-                  <button className="tb-act" disabled={!myTurn || !l?.show || busy} onClick={t.actions.show} title="Show needs exactly two players">
+                  <button className="tb-act" disabled={!myTurn || !l?.show || busy} onClick={t.actions.show} title={tip(!!l?.show, w?.show, "Both hands are shown; the better one wins")}>
                     Show
                   </button>
                 </div>
@@ -375,12 +396,22 @@ export function BoardTable(p: Props) {
             {me.category && (me.status === "seen" || t.result) && <span> · {me.category}</span>}
             {myTurn && <em> · your turn {Math.ceil(t.turnLeft)}s</em>}
           </p>
+          {seatedLike && handActive && myTurn && w && (w.chaal || w.show) && (
+            <p className="tb-note" data-testid="why-off">
+              {w.chaal ? <>Chaal off: {w.chaal}.</> : null} {w.show && !/Wait/.test(w.show) ? <>Show off: {w.show}.</> : null}
+            </p>
+          )}
+          {seatedLike && me.status === "broke" && (
+            <p className="tb-note" data-testid="out-of-chips">
+              You&apos;re out of chips: you keep your seat and watch. Add chips to play the next hand, or leave.
+            </p>
+          )}
           {seatedLike && respond && <p className="tb-note">Seat {g!.ss_requester + 1} asks you for a Side Show. The lower hand packs.</p>}
           <div className="tb-me-foot">
             {t.mode === "leaving" ? (
-              <span className="tb-pill">You&apos;ll leave after this hand, then cash out</span>
+              <button className="tb-leave" onClick={() => router.push("/tables")}>You&apos;re leaving after this hand · go to Boards →</button>
             ) : t.mode === "seated" ? (
-              <button className="tb-leave" disabled={busy} onClick={t.leave} data-testid="leave">
+              <button className="tb-leave" disabled={busy} onClick={leaveNow} data-testid="leave" title={handActive ? "Packs your cards on your turn and leaves; your stack is paid to your wallet" : "Leave now; your stack is paid to your wallet"}>
                 Leave table
               </button>
             ) : null}
@@ -489,7 +520,7 @@ export function BoardTable(p: Props) {
             </p>
             <div className="tb-lock-row">
               {t.mode === "seated" && (
-                <button className="tb-topup-go" disabled={busy} onClick={() => { setNavBlocked(false); void t.leave(); }} data-testid="nav-lock-leave">
+                <button className="tb-topup-go" disabled={busy} onClick={() => { setNavBlocked(false); void leaveNow(); }} data-testid="nav-lock-leave">
                   Leave table
                 </button>
               )}
@@ -580,9 +611,10 @@ a.tb-pill,button.tb-pill{cursor:pointer}
 .tb-pill.tb-name{color:#fff !important;font-weight:600;border-color:rgba(var(--glow),.5)}
 .tb .is-ok{color:#5cf09a !important}
 .tb .is-bad{color:#ff8a98 !important}
+.tb .is-warn{color:#ffd76a !important;border-color:rgba(255,214,102,.45)}
 
 /* scene: dealer behind the table; everything else is placed in % of it */
-.tb-scene{--sw:min(58vw,calc((100dvh - 345px) / .735));position:absolute;left:50%;top:132px;width:var(--sw);height:calc(var(--sw) * .735);transform:translateX(-50%);z-index:2}
+.tb-scene{--sw:min(calc(58 * var(--vw)),calc((calc(100 * var(--dvh)) - 345px) / .735));position:absolute;left:50%;top:132px;width:var(--sw);height:calc(var(--sw) * .735);transform:translateX(-50%);z-index:2}
 .tb-spot{position:absolute;left:50%;top:0;width:60%;height:70%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(var(--glow),.4),rgba(var(--glow),.1) 60%,transparent)}
 .tb-dealer{position:absolute;left:50%;bottom:30%;height:66%;width:auto;transform:translateX(-50%);filter:drop-shadow(0 20px 40px rgba(0,0,0,.5))}
 .tb-table{position:absolute;height:auto}
@@ -667,7 +699,7 @@ a.tb-pill,button.tb-pill{cursor:pointer}
 .tb-result a{font-size:13px;font-weight:600;color:#ffd76a !important}
 
 /* you */
-.tb-me{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:6;display:grid;justify-items:center;width:min(1100px,96vw)}
+.tb-me{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:6;display:grid;justify-items:center;width:min(1100px,calc(96 * var(--vw)))}
 .tb-me-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:18px;width:100%}
 .tb-side{display:grid;gap:10px}
 .tb-left{justify-items:end}
@@ -710,9 +742,9 @@ a.tb-pill,button.tb-pill{cursor:pointer}
 .tb-status{margin:0;min-height:18px;font-size:13px;color:#c8f7a0}
 
 /* spectator / other panels: a card on the left, like the boards page */
-.tb-panel{position:absolute;left:max(24px,calc((100vw - 80rem) / 2 + 24px));top:50%;transform:translateY(-42%);z-index:7;width:min(330px,24vw)}
+.tb-panel{position:absolute;left:max(24px,calc((calc(100 * var(--vw)) - 80rem) / 2 + 24px));top:50%;transform:translateY(-42%);z-index:7;width:min(330px,calc(24 * var(--vw)))}
 /* a side card is showing: move the table right to make room */
-@media (min-width:900px){.tb.has-panel .tb-scene{--sw:min(52vw,calc((100dvh - 345px) / .735));left:calc(50% + min(170px,12vw))}}
+@media (min-width:900px){.tb.has-panel .tb-scene{--sw:min(calc(52 * var(--vw)),calc((calc(100 * var(--dvh)) - 345px) / .735));left:calc(50% + min(170px,calc(12 * var(--vw))))}}
 /* take-a-seat popup */
 .tb-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px}
 .tb-modal-shade{position:absolute;inset:0;border:0;background:rgba(6,1,16,.6);backdrop-filter:blur(5px);cursor:default;animation:tb-fade .3s both}
@@ -751,13 +783,56 @@ a.tb-pill,button.tb-pill{cursor:pointer}
 
 /* phones */
 @media (max-width:899px){
-  .tb-scene{--sw:96vw;top:150px}
-  .tb-panel{left:50%;top:auto;bottom:40px;transform:translateX(-50%);width:min(380px,92vw)}
+  .tb-scene{--sw:calc(96 * var(--vw));top:150px}
+  .tb-panel{left:50%;top:auto;bottom:40px;transform:translateX(-50%);width:min(380px,calc(92 * var(--vw)))}
   .tb-me-row{grid-template-columns:1fr;justify-items:center}
   .tb-side{justify-items:center}
   .tb-acts{flex-wrap:wrap;justify-content:center}
   .tb-act{height:40px;padding:0 12px;font-size:12.5px}
-  .tb-strip{top:84px;width:96vw}
+  .tb-strip{top:84px;width:calc(96 * var(--vw))}
   .tb-strip .tb-pill:nth-child(n+4):not([data-testid]){display:none}
 }
+
+/* phones in landscape (html[data-land], lib/viewport.ts): the table fills the
+   height; your bet buttons stand in two columns at the screen's sides and your
+   seat sits in a slim row under the table */
+html[data-land] .tb-strip{top:12px;width:auto;max-width:calc(100% - 420px);flex-wrap:nowrap;gap:6px;overflow:hidden}
+html[data-land] .tb-pill{height:28px;padding:0 10px;font-size:11.5px}
+html[data-land] .tb-strip .tb-pill:nth-child(n+3):not([data-testid]){display:none}
+html[data-land] .tb-scene,html[data-land] .tb.has-panel .tb-scene{--sw:min(calc(56 * var(--vw)),calc((calc(100 * var(--dvh)) - 104px) / .735));left:50%;top:46px}
+html[data-land] .tb-seat{transform:translate(-50%,-50%) scale(.78)}
+html[data-land] .tb-pot-amt{height:30px;font-size:13px;padding:0 10px 0 4px}
+html[data-land] .tb-pot-amt img{width:30px}
+html[data-land] .tb-pot small{font-size:9px;letter-spacing:1.2px}
+html[data-land] .tb-phase{padding:6px 12px;font-size:12px}
+html[data-land] .tb-result{top:26%;padding:8px 14px;gap:3px;border-radius:16px}
+html[data-land] .tb-result b{font-size:15px}
+html[data-land] .tb-result.is-mine b{font-size:17px}
+html[data-land] .tb-result span{font-size:11px}
+html[data-land] .tb-meter{top:calc(100% + 3px);padding:2px 8px}
+html[data-land] .tb-toast{top:50px}
+html[data-land] .tb-toast.is-bad{top:90px}
+html[data-land] .tb-foot{display:none}
+html[data-land] .tb-me{left:0;right:0;bottom:6px;transform:none;width:auto;display:grid;grid-template-columns:auto auto;justify-content:center;align-items:center;column-gap:10px;pointer-events:none}
+html[data-land] .tb-me > *{grid-column:2;pointer-events:auto}
+html[data-land] .tb-me > .tb-me-row{grid-column:1;grid-row:1 / span 4;display:block;width:auto;pointer-events:none}
+html[data-land] .tb-me-av{zoom:.55;pointer-events:auto}
+html[data-land] .tb-me-name{margin:0;font-size:13px}
+html[data-land] .tb-note{margin:0;max-width:300px;font-size:11px}
+html[data-land] .tb-me-foot{margin-top:3px;gap:8px}
+html[data-land] .tb-leave{height:26px;padding:0 12px;font-size:11.5px}
+html[data-land] .tb-side{position:absolute;bottom:6px;gap:6px;pointer-events:auto}
+html[data-land] .tb-left{left:12px;justify-items:stretch}
+html[data-land] .tb-right{right:12px;justify-items:stretch}
+html[data-land] .tb-acts{flex-direction:column;flex-wrap:nowrap;gap:6px}
+html[data-land] .tb-act{justify-content:center;height:34px;padding:0 12px;border-radius:11px;font-size:12px}
+html[data-land] .tb-act small{font-size:10.5px}
+html[data-land] .tb-chip{justify-content:center;height:28px;padding:0 10px;border-radius:10px;font-size:11.5px}
+html[data-land] .tb-topup-pop{bottom:calc(100% + 6px);width:250px;padding:10px 12px;gap:6px}
+html[data-land] .tb-spectate{bottom:8px;gap:8px;padding:5px 5px 5px 12px}
+html[data-land] .tb-hint{font-size:11.5px}
+html[data-land] .tb-join{height:32px;padding:0 14px;font-size:12.5px}
+html[data-land] .tb-panel{left:12px;top:52px;bottom:8px;transform:none;width:min(300px,34%);overflow-y:auto;scrollbar-width:none}
+html[data-land] .tb.has-panel .tb-scene{left:calc(50% + 15%)}
+html[data-land] .tb-modal{overflow-y:auto;align-items:safe center;padding:10px}
 `;

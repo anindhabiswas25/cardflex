@@ -32,8 +32,11 @@ test("open/close cover every seat (empty seats too) and the dealer", () => {
   }
   for (const ix of open) assert.equal(ix.keys[3].pubkey.toBase58(), permissionPda(ix.keys[2].pubkey).toBase58(), "permission PDA of the target");
   const close = closeTablePer(admin, config, 6);
-  assert.deepEqual(Buffer.from(close.at(-3)!.data), Buffer.concat([disc("close_ephemeral"), Buffer.from([0])]), "dealer: seat = None");
-  assert.deepEqual(Buffer.from(close.at(-2)!.data), disc("commit_hand"), "commit before undelegating (so the final state syncs)");
+  assert.deepEqual(Buffer.from(close.at(-2)!.data), Buffer.concat([disc("close_ephemeral"), Buffer.from([0])]), "dealer: seat = None");
+  // CF-084 (ADR 0007): no commit_hand before undelegating: undelegate_table commits and
+  // bumps commit_seq itself (CF-050), so a close spends one free commit, not two.
+  assert.ok(!close.some((ix) => Buffer.from(ix.data).subarray(0, 8).equals(disc("commit_hand"))), "one commit per close");
+  assert.deepEqual(Buffer.from(close.at(-1)!.data).subarray(0, 8), disc("undelegate_table"));
   assert.deepEqual(Buffer.from(close[0].data), Buffer.concat([disc("close_ephemeral"), Buffer.from([1, 0])]), "seat hand 0: Some(0)");
   assert.equal(close.at(-1)!.keys[0].pubkey.toBase58(), admin.toBase58());
 });

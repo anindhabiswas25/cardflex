@@ -104,7 +104,7 @@ try {
     const seq0 = await baseSeq();
     const keeper = authority;
     const tc = performance.now();
-    await send(tee, [ix("commit_hand", [w(keeper.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [keeper], { skipPreflight: true });
+    await send(tee, [ix("commit_hand", [w(authority.publicKey, true), w(runtime), w(handLog), r(NO_FEE_VAULT), r(MAGIC_PROGRAM_ID), w(MAGIC_CONTEXT_ID)])], [authority], { skipPreflight: true });
     const committed = await waitFor(async () => ((await baseSeq()) > seq0 ? true : null), 180_000, 1000);
     check("after restart: commit_hand reaches the base layer", true, !!committed.value, `${Math.round(performance.now() - tc)} ms`);
     // Tidy up.

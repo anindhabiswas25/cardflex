@@ -34,7 +34,7 @@ async function findPayout(e: Exit): Promise<Proof | null> {
   return null;
 }
 
-export function ExitSummary({ e, tableName, onClose }: { e: Exit; tableName: string; onClose: () => void }) {
+export function ExitSummary({ e, tableName, onClose, again, sessionEnded }: { e: Exit; tableName: string; onClose: () => void; again?: string; sessionEnded?: boolean }) {
   const [proof, setProof] = useState<Proof | null | undefined>(undefined);
   useEffect(() => {
     let off = false;
@@ -62,7 +62,7 @@ export function ExitSummary({ e, tableName, onClose }: { e: Exit; tableName: str
     <div className="xs" role="dialog" aria-modal aria-label="Your session at this table" data-testid="exit-summary">
       <button type="button" className="xs-shade" aria-label="Close" onClick={onClose} />
       <div className="xs-box">
-        <span className="xs-eyebrow">You left · {tableName} · seat {e.seat + 1}</span>
+        <span className="xs-eyebrow">{sessionEnded ? "Session ended" : "You left"} · {tableName} · seat {e.seat + 1}</span>
         <h2 className={won ? "is-won" : even ? "" : "is-lost"}>
           {won ? "You won" : even ? "You broke even" : "You lost"} <Sol size=".9em" /> {sol(won ? net : -net)}
         </h2>
@@ -99,6 +99,7 @@ export function ExitSummary({ e, tableName, onClose }: { e: Exit; tableName: str
 
         <div className="xs-actions">
           <Link href="/dashboard" className="xs-ghost">Every hand you played →</Link>
+          {again && <Link href={again} className="xs-ghost" onClick={onClose} data-testid="play-again">Play again →</Link>}
           <button type="button" className="xs-ok" onClick={onClose} data-testid="exit-close">Done</button>
         </div>
       </div>

@@ -129,6 +129,9 @@ importers:
 
   services/keeper:
     dependencies:
+      '@card-flex/admin':
+        specifier: workspace:*
+        version: link:../admin
       '@card-flex/api':
         specifier: workspace:*
         version: link:../api

@@ -1,0 +1,134 @@
+{
+  "format": "cf-hand-record/2",
+  "protocol_version": 2,
+  "program_id": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "table": "8USYa9UHZT5KawTpjfe5eozq66xX6iWnJ2HjB6sKgZEh",
+  "hand_no": "2",
+  "rules_version": 1,
+  "seats": [
+    {
+      "seat": 2,
+      "wallet": "HTP5s35Qt6RhnmxNQLKVAvdznzy8QXMt4suRHoTnU41q"
+    },
+    {
+      "seat": 3,
+      "wallet": "GWLbp8NjRLo7CuheuTF7zD79VUe8d9kYVBoA88P3KjD9"
+    },
+    {
+      "seat": 4,
+      "wallet": "2TVYGQEFYst55BReDDFZWPpNNHvJ7VWxoPRUXtBigGSV"
+    },
+    {
+      "seat": 5,
+      "wallet": "2FGWgLi7JSSs7RRx2k53Yy1FR5ccTfwQunSxiJ9Bi4jw"
+    },
+    {
+      "seat": 0,
+      "wallet": "C43c4vby3tK3b4HxAwztkeM7asquKMxz7VGRRJkLy4yD"
+    },
+    {
+      "seat": 1,
+      "wallet": "8p4dJQMdz7r9YtSqysTD867eokgLg3zcibWVgcQAjGRF"
+    }
+  ],
+  "salts": [
+    "f6f567b2d8e61ae5dfcf3405f4edbb4404f00dde4a58b6c4fd478a694fd1267b",
+    "d7f85c0478eb93931340c6ce81455c963e8310731aa646b9d30f808193cc612d",
+    "e269151284b62cd5357047ada04520475033adea1a91556dce3fe79bd252c95a",
+    "a0015fe87d0db50719523760852652ef79c79f1abec0f12d12b2bc8c2759f7b0",
+    "f440b84d7376071f0611438717b79a4ed35aa7398044569807729b56248cb680",
+    "ac1cd4b634441383c89d72801f55c5702c75d3b36e3836b602ef7de18f2e9a42"
+  ],
+  "vrf_output": "61406754c862d3681bb263bae466f809e0408990560a6a00dfb1ce010133f58f",
+  "claimed": {
+    "roster_hash": "1bd52d8ffd1ebdcbb25dc80138977ffd6e0e048524a3618032300faf4e02b5a3",
+    "hand_ctx": "4c479e0a3beeeee567baba7ec0bc930e5caaafb4c4b6edf3195c10df97a3287d",
+    "salt_commitments": [
+      "c80a1a1eb23c9a013c67237693739d6374f94a46b03ac53891f0cb2e03e195e9",
+      "5c3ef06cc00b1b2bc60d7c119039beee1316ef46dda9da6613cd7cac8348b763",
+      "21dcd9cbc42a92f119ced8ad166372daa74d4ed0b54958c02d9fd0aec8c50aec",
+      "f5c656d0fc414c77665e059a95d6d72c9e11eb6643bbfa61b374e82df1bf7317",
+      "21d2afbf57209e45d5fbb1eca264afb689b186ce87cb0614199c3cc111d73b87",
+      "114bc529151dc9fa54fc6b4732b2d616790580ec84135660dbca37472ba29a3d"
+    ],
+    "vrf_caller_seed": "aa855a72cbdd0b170ceafd724ef8819cf3e993af8861185e4e054ffc519e070f",
+    "merkle_root": "2da4e830259f972c982490157fb53368a9c20686a544d64b1745c6735aa7445e"
+  },
+  "hands": [
+    {
+      "seat": 2,
+      "cards": [
+        34,
+        38,
+        24
+      ]
+    },
+    {
+      "seat": 3,
+      "cards": [
+        19,
+        31,
+        20
+      ]
+    },
+    {
+      "seat": 4,
+      "cards": [
+        6,
+        50,
+        29
+      ]
+    },
+    {
+      "seat": 5,
+      "cards": [
+        44,
+        13,
+        0
+      ]
+    },
+    {
+      "seat": 0,
+      "cards": [
+        40,
+        17,
+        23
+      ]
+    },
+    {
+      "seat": 1,
+      "cards": [
+        43,
+        45,
+        21
+      ]
+    }
+  ],
+  "game": {
+    "boot": "25000",
+    "rake_bps": 250,
+    "rake_cap": "10000",
+    "start_stacks": [
+      "925000",
+      "1142500",
+      "2040000",
+      "375000",
+      "900000",
+      "600000"
+    ],
+    "actions": "243440435202124352000214435202480b54",
+    "end_reason": 0,
+    "winners": [
+      4
+    ],
+    "payouts": [
+      "0",
+      "0",
+      "2290000",
+      "0",
+      "0",
+      "0"
+    ],
+    "rake": "10000"
+  }
+}

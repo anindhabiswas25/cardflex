@@ -1,0 +1,99 @@
+{
+  "ticket": "CF-066",
+  "region": "dev-machine-1",
+  "at": "2026-11-24T23:59:05.137Z",
+  "tables": 1,
+  "usersPerTable": 6,
+  "users": 6,
+  "handsTarget": 4,
+  "setupSecs": 32.082,
+  "runSecs": 335.139,
+  "handsCompleted": 4,
+  "actionConfirmMs": {
+    "n": 115,
+    "p50": 237,
+    "p95": 709,
+    "max": 6428
+  },
+  "saltConfirmMs": {
+    "n": 15,
+    "p50": 423,
+    "p95": 531,
+    "max": 531
+  },
+  "saltsToDealtMs": {
+    "n": 4,
+    "p50": 6287,
+    "p95": 6374,
+    "max": 6374
+  },
+  "ownHandVisibleMs": {
+    "n": 15,
+    "p50": 234,
+    "p95": 286,
+    "max": 286
+  },
+  "privacy": {
+    "ownOk": 15,
+    "ownMissing": 0,
+    "neighbourLeaks": 0,
+    "neighbourTries": 15
+  },
+  "endReasons": {
+    "last_player": 2,
+    "show": 2
+  },
+  "failures": {
+    "cash-out": 1
+  },
+  "keeperHealth": {
+    "ok": false,
+    "reasons": [
+      "62HnJjwi: runtime has only 8576 lamports above rent; each commit costs ~2000000 after the free ones and it can't be topped up while live (close it at a quiet moment, refund players or reopen with a reserve)"
+    ]
+  },
+  "checks": [
+    {
+      "name": "stranger's commit right after the keeper's is refused (CF-064)",
+      "ok": true
+    },
+    {
+      "name": "62HnJjwi: 4+ hands played",
+      "ok": true,
+      "note": "4"
+    },
+    {
+      "name": "62HnJjwi: player who bought in mid-hand was dealt into a later hand",
+      "ok": true,
+      "note": "bought in #1, dealt #2"
+    },
+    {
+      "name": "62HnJjwi: leaver synced and cashed out",
+      "ok": true
+    },
+    {
+      "name": "62HnJjwi: vault reconciles exactly (check_vault strict)",
+      "ok": true
+    },
+    {
+      "name": "every finished hand indexed and VALID",
+      "ok": true,
+      "note": "4 hands"
+    },
+    {
+      "name": "every dealt player read its own hand",
+      "ok": true,
+      "note": "15 reads, 0 missing"
+    },
+    {
+      "name": "no player read a neighbour's hand",
+      "ok": true,
+      "note": "15 tries"
+    },
+    {
+      "name": "keeper health ok at the end",
+      "ok": false,
+      "note": "62HnJjwi: runtime has only 8576 lamports above rent; each commit costs ~2000000 after the free ones and it can't be topped up while live (close it at a quiet moment, refund players or reopen with a reserve)"
+    }
+  ]
+}

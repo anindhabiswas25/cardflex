@@ -13,7 +13,8 @@ use {
         AccountDeserialize, InstructionData, Space, ToAccountMetas,
     },
     card_flex::table::{
-        ephemeral_budget, TableConfig, TableRuntime, LEDGER_SEED, RUNTIME_SEED, TABLE_SEED,
+        ephemeral_budget, TableConfig, TableRuntime, LEDGER_SEED, RUNTIME_SEED,
+        SESSION_HAND_COMMITS, TABLE_SEED,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -820,5 +821,104 @@ fn migrate_refuses_unknown_layouts() {
     assert_eq!(
         t.svm.get_account(&t.runtime).unwrap().lamports,
         lamports + rent_diff
+    );
+}
+
+fn end_session_ix(t: &Table, payer: Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        card_flex::id(),
+        &card_flex::instruction::EndSession {}.data(),
+        card_flex::accounts::EndSession {
+            payer,
+            runtime: t.runtime,
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// CF-084 (ADR 0007): a session plays SESSION_HAND_COMMITS commits' worth of
+/// hands; then start_hand refuses and anyone may end the session, which
+/// seats every player out between hands (paid out as usual).
+#[test]
+fn free_commit_session_ends_and_seats_everyone_out() {
+    use card_flex::table::phase;
+    let (mut t, ok) = create(6);
+    assert!(ok);
+    let wallets: Vec<Keypair> = (0..3).map(|_| funded(&mut t.svm)).collect();
+    for (s, w) in wallets.iter().enumerate() {
+        assert!(join(&mut t, w, s as u8, Pubkey::new_unique()));
+    }
+    // A later session: the baseline is where the last delegation ended.
+    patch_runtime(&mut t, |rt| {
+        rt.locked = true;
+        rt.session_base_seq = 100;
+        rt.commit_seq = 100 + SESSION_HAND_COMMITS - 1;
+    });
+    let stranger = funded(&mut t.svm);
+    // Budget left: no early end.
+    let e = {
+        let ix = end_session_ix(&t, stranger.pubkey());
+        send_signed(&mut t, ix, &[&stranger])
+    }
+    .unwrap_err();
+    assert!(e.contains("SessionNotOver"), "{e}");
+    // Budget used: no new hand...
+    patch_runtime(&mut t, |rt| rt.commit_seq = 100 + SESSION_HAND_COMMITS);
+    assert_eq!(runtime(&t).session_commits(), SESSION_HAND_COMMITS);
+    let a = t.authority.insecure_clone();
+    let e = {
+        let ix = start_hand_ix(&t);
+        send_signed(&mut t, ix, &[&a])
+    }
+    .unwrap_err();
+    assert!(e.contains("SessionOver"), "{e}");
+    // ...and not mid-hand.
+    patch_runtime(&mut t, |rt| rt.phase = phase::DEALT);
+    let e = {
+        let ix = end_session_ix(&t, stranger.pubkey());
+        send_signed(&mut t, ix, &[&stranger])
+    }
+    .unwrap_err();
+    assert!(e.contains("WrongPhase"), "{e}");
+    patch_runtime(&mut t, |rt| rt.phase = phase::IDLE);
+    // Anyone ends it: every seat departs with its stack kept for payout.
+    let before = runtime(&t);
+    {
+        let ix = end_session_ix(&t, stranger.pubkey());
+        send_signed(&mut t, ix, &[&stranger])
+    }
+    .unwrap();
+    let after = runtime(&t);
+    assert_eq!(after.occupied, 0);
+    assert_eq!(after.departed, 0b111);
+    assert_eq!(after.leaving, 0);
+    assert_eq!(after.stacks, before.stacks);
+    assert_eq!(after.seat_epoch, before.seat_epoch);
+    // Nobody left to seat out.
+    let e = {
+        let ix = end_session_ix(&t, stranger.pubkey());
+        send_signed(&mut t, ix, &[&stranger])
+    }
+    .unwrap_err();
+    assert!(e.contains("SeatEmpty"), "{e}");
+    // A fresh session (baseline moved by the close) deals again.
+    patch_runtime(&mut t, |rt| rt.session_base_seq = rt.commit_seq);
+    assert_eq!(runtime(&t).session_commits(), 0);
+}
+
+/// CF-084: migrating a CF-076 runtime starts a new session at its commit_seq.
+#[test]
+fn migrate_from_cf076_starts_a_session_at_commit_seq() {
+    let (mut t, ok) = create(6);
+    assert!(ok);
+    patch_runtime(&mut t, |rt| rt.commit_seq = 137);
+    shrink_runtime(&mut t, 1_332);
+    let p = funded(&mut t.svm);
+    let ix = migrate_ix(&t, p.pubkey());
+    assert!(send(&mut t.svm, ix, &p));
+    let rt = runtime(&t);
+    assert_eq!(
+        (rt.commit_seq, rt.session_base_seq, rt.session_commits()),
+        (137, 137, 0)
     );
 }

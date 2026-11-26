@@ -368,6 +368,19 @@ pub struct TableRuntime {
     /// difference not applied yet on top of the stack, so a deposit is never
     /// lost or counted twice.
     pub credited: [u64; MAX_SEATS],
+    /// CF-084 (ADR 0007): `commit_seq` when this table last left the PER.
+    /// `commit_seq - session_base_seq` = commits in the current delegation
+    /// ("session"); MagicBlock commits the first `FREE_COMMITS` of each
+    /// delegation for free, so a session ends before it would pay.
+    /// Set by `undelegate_table` (and `migrate_runtime`), never in PER play.
+    pub session_base_seq: u64,
+}
+
+impl TableRuntime {
+    /// CF-084: commits made in the current delegation (ADR 0007).
+    pub fn session_commits(&self) -> u64 {
+        self.commit_seq.saturating_sub(self.session_base_seq)
+    }
 }
 
 /// CF-067: earlier `TableRuntime` sizes that are a prefix of the current
@@ -375,7 +388,25 @@ pub struct TableRuntime {
 /// (1,212 bytes) and CF-064 before CF-065 (1,252). Older layouts (1,190)
 /// moved `bump`, so they can't be migrated; their money leaves by refund.
 /// CF-076: 1,284 (CF-065 `keeper`, before `credited`).
-pub const MIGRATABLE_RUNTIME_LENS: [usize; 3] = [1_212, 1_252, 1_284];
+/// CF-084: 1,332 (CF-076 `credited`, before `session_base_seq`).
+pub const MIGRATABLE_RUNTIME_LENS: [usize; 4] = [1_212, 1_252, 1_284, 1_332];
+/// CF-084: byte offset of `TableRuntime.session_base_seq` (after `credited`).
+pub const RUNTIME_SESSION_BASE_OFFSET: usize = 1_332;
+
+/// CF-084 (ADR 0007): commits per delegation MagicBlock doesn't charge for
+/// (fees-and-commit-economics: no live fee for commits 1-25).
+pub const FREE_COMMITS: u64 = 25;
+/// CF-084: `start_hand` refuses once a session has used this many commits.
+/// The last two free ones are for the session's end: one commit that carries
+/// every player's leave (`end_session`), then `undelegate_table`.
+pub const SESSION_HAND_COMMITS: u64 = FREE_COMMITS - 2;
+/// CF-084: past this, only the table authority may commit (the 25th free one
+/// is the close). Keeps the keeper and strangers inside the free budget.
+pub const SESSION_COMMIT_LIMIT: u64 = FREE_COMMITS - 1;
+/// CF-084: anyone who isn't the keeper or the authority may commit only this
+/// long after the last commit: the refund-safety net (refund timeout 1,800 s
+/// on production tables) without letting strangers burn the free budget.
+pub const STRANGER_COMMIT_GAP_SECS: i64 = 1_200;
 /// CF-076: byte offset of `TableRuntime.credited` (after the CF-065 keeper).
 pub const RUNTIME_CREDITED_OFFSET: usize = 1_284;
 
@@ -395,21 +426,29 @@ pub fn runtime_state_hash(data: &[u8]) -> [u8; 32] {
     solana_sha256_hasher::hashv(&[
         &data[8..RUNTIME_COMMIT_SEQ_OFFSET],
         &data[RUNTIME_COMMIT_SEQ_OFFSET + 8..RUNTIME_PAID_COMMIT_OFFSET],
-        &data[RUNTIME_PAID_COMMIT_END..8 + TableRuntime::INIT_SPACE],
+        // CF-084: `session_base_seq` is commit bookkeeping too.
+        &data[RUNTIME_PAID_COMMIT_END..RUNTIME_SESSION_BASE_OFFSET],
     ])
     .to_bytes()
 }
 
-/// CF-064: may the runtime pay for a commit now? Yes if a heartbeat is due
-/// (anyone), if the table's registered keeper asks after the state changed
-/// between hands (end of hand, join, leave), or if the authority asks.
+/// CF-064: may the runtime pay for a commit now? Yes if a heartbeat is due,
+/// if the table's registered keeper asks after the state changed between
+/// hands (end of hand, join, leave), or if the authority asks. CF-084: the
+/// heartbeat is due after `COMMIT_MIN_GAP_SECS` for the keeper, but only after
+/// `STRANGER_COMMIT_GAP_SECS` for anyone else (free-commit budget, ADR 0007).
 /// The "changed" shortcut is the keeper's only: a seated player can change
 /// state for free (e.g. `rotate_session`) and would otherwise make the table
 /// pay one commit per change (security review of CF-064).
 pub fn paid_commit_allowed(rt: &TableRuntime, hash: &[u8; 32], now: i64, payer: &Pubkey) -> bool {
     let is_keeper = rt.keeper != Pubkey::default() && *payer == rt.keeper;
     let changed = is_keeper && rt.phase == phase::IDLE && *hash != rt.paid_commit_hash;
-    let due = now >= rt.last_paid_commit.saturating_add(COMMIT_MIN_GAP_SECS);
+    let gap = if is_keeper {
+        COMMIT_MIN_GAP_SECS
+    } else {
+        STRANGER_COMMIT_GAP_SECS
+    };
+    let due = now >= rt.last_paid_commit.saturating_add(gap);
     changed || due || *payer == rt.authority
 }
 
@@ -951,6 +990,15 @@ pub struct SweepRake<'info> {
 #[derive(Accounts)]
 pub struct LeaveSeat<'info> {
     pub signer: Signer<'info>,
+    #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
+    pub runtime: Box<Account<'info, TableRuntime>>,
+}
+
+/// CF-084 `end_session`: anyone, between hands, once the session's hand
+/// budget is used: every seated player leaves (paid out as usual).
+#[derive(Accounts)]
+pub struct EndSession<'info> {
+    pub payer: Signer<'info>,
     #[account(mut, seeds = [RUNTIME_SEED, runtime.config.as_ref()], bump = runtime.bump)]
     pub runtime: Box<Account<'info, TableRuntime>>,
 }

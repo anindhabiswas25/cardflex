@@ -1,0 +1,86 @@
+{
+  "format": "cf-hand-record/2",
+  "protocol_version": 2,
+  "program_id": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "table": "3B9dhXUUpcYg6J1H891He5W2ce9yjnW8QnEz21oMvzqp",
+  "hand_no": "7",
+  "rules_version": 1,
+  "seats": [
+    {
+      "seat": 4,
+      "wallet": "FgXoAXqPTcctrpkFamjJip39ZWDgemAMoEdKVa5S6Nk7"
+    },
+    {
+      "seat": 0,
+      "wallet": "AVzpYn45gxEtxYyReXA2hTZ4Tve2yJ8FRgxL1E3EtbzR"
+    },
+    {
+      "seat": 2,
+      "wallet": "8byg3TxcAjGR8YmAPQ7ySGaw35U1gfktncB3HdWfYnFW"
+    }
+  ],
+  "salts": [
+    "fbd7cd5a5dd230529c7d254e69954921e47110042a56026d5a1b4b94736b9f2a",
+    "2068cebdfd5980b1553fe8f38dd68323336f14c0e5f3d428a8b7a6e199bd9b0f",
+    "eb4b01bc618ac58d060aee497487c3283b5cf2be45eaaebf25558864310c0639"
+  ],
+  "vrf_output": "139242de9f0da0c33541ecfee6de3b1e71ca3888f11fd25fffaa3b73e547b6a1",
+  "claimed": {
+    "roster_hash": "57b5024b6249580ca4c2b24124b34cbcc2c3c33fa5af6ca60348c09d84a424cb",
+    "hand_ctx": "6e2d402af20d13018de7fb559b187cd7361c3457bae6acd1caff8894a0f6e8f4",
+    "salt_commitments": [
+      "f387e47df575faf49c0d7e2477f3415bd988540afdc84da6f6aac99402b7777e",
+      "821871ff64853fa9fdda9e2e38394b5294f950dfda6e3e7248fdb185b3b3e978",
+      "b29e8337f80c2691c89dae5d36eaf43af866e53e4cfe43e00ffd05b89a024982"
+    ],
+    "vrf_caller_seed": "37cfcca0e2dbba86610ae42a8b4a5a38d79f903436dead0bf8ba9769bbf4dede",
+    "merkle_root": "441c199e1c2dc2e833f4e1eb24fe70381798bbadff5914cea0f1c0a91319ac3b"
+  },
+  "hands": [
+    {
+      "seat": 4,
+      "cards": [
+        43,
+        48,
+        41
+      ]
+    },
+    {
+      "seat": 0,
+      "cards": [
+        10,
+        14,
+        33
+      ]
+    },
+    {
+      "seat": 2,
+      "cards": [
+        47,
+        42,
+        45
+      ]
+    }
+  ],
+  "game": {
+    "boot": "25000",
+    "rake_bps": 250,
+    "rake_cap": "10000",
+    "start_stacks": [
+      "2617500",
+      "268125",
+      "3055000"
+    ],
+    "actions": "43000220224202280a4204224324",
+    "end_reason": 0,
+    "winners": [
+      4
+    ],
+    "payouts": [
+      "815000",
+      "0",
+      "0"
+    ],
+    "rake": "10000"
+  }
+}

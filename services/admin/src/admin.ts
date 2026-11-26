@@ -4,7 +4,7 @@ import { PublicKey, SystemProgram, type TransactionInstruction } from "@solana/w
 import {
   delegateBufferPdaFromDelegatedAccountAndOwnerProgram, delegationMetadataPdaFromDelegatedAccount, delegationRecordPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { MAGIC_PROGRAMS, MAX_SEATS, PERMISSION_PROGRAM_ID, PROGRAM_ID, TEE_VALIDATOR, buildIx, commitHand, globalPda, permissionPda, programDataPda, tableAddresses, tablePda, vaultPda } from "@card-flex/client-sdk";
+import { MAGIC_PROGRAMS, MAX_SEATS, PERMISSION_PROGRAM_ID, PROGRAM_ID, TEE_VALIDATOR, buildIx, globalPda, permissionPda, programDataPda, tableAddresses, tablePda, vaultPda } from "@card-flex/client-sdk";
 
 export function updateGlobal(authority: PublicKey, p: { treasury: PublicKey; maxRakeBps: number; paused: boolean }) {
   return buildIx("update_global", { authority, global: globalPda() }, { treasury: p.treasury, max_rake_bps: p.maxRakeBps, paused: p.paused });
@@ -79,8 +79,9 @@ export function closeTablePer(authority: PublicKey, config: PublicKey, maxSeats:
   }
   ixs.push(per("close_ephemeral", authority, t.runtime, t.dealer, { seat: null }));
   // CF-057: pass magicFeeVault() so the runtime pays; without it a table that
-  // already had 10 commits can't be committed or closed.
-  ixs.push(commitHand({ payer: authority, config, feeVault }));
+  // already had 10 commits can't be closed. CF-084: no commit_hand first:
+  // undelegate_table commits (and bumps commit_seq, CF-050) itself, so a
+  // close spends one free commit of the session, not two (ADR 0007).
   ixs.push(buildIx("undelegate_table", { authority, runtime: t.runtime, hand_log: t.handLog, magic_fee_vault: feeVault ?? null }));
   return ixs;
 }

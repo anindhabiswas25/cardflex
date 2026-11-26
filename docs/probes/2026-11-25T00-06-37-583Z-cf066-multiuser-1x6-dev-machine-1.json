@@ -1,0 +1,99 @@
+{
+  "ticket": "CF-066",
+  "region": "dev-machine-1",
+  "at": "2026-11-25T00:06:37.583Z",
+  "tables": 1,
+  "usersPerTable": 6,
+  "users": 6,
+  "handsTarget": 4,
+  "setupSecs": 44.972,
+  "runSecs": 341.552,
+  "handsCompleted": 4,
+  "actionConfirmMs": {
+    "n": 115,
+    "p50": 252,
+    "p95": 828,
+    "max": 3056
+  },
+  "saltConfirmMs": {
+    "n": 15,
+    "p50": 401,
+    "p95": 499,
+    "max": 499
+  },
+  "saltsToDealtMs": {
+    "n": 4,
+    "p50": 6271,
+    "p95": 6842,
+    "max": 6842
+  },
+  "ownHandVisibleMs": {
+    "n": 15,
+    "p50": 251,
+    "p95": 674,
+    "max": 674
+  },
+  "privacy": {
+    "ownOk": 15,
+    "ownMissing": 0,
+    "neighbourLeaks": 0,
+    "neighbourTries": 15
+  },
+  "endReasons": {
+    "last_player": 2,
+    "show": 2
+  },
+  "failures": {},
+  "keeperHealth": {
+    "ok": true,
+    "reasons": []
+  },
+  "checks": [
+    {
+      "name": "9HVRWGgr: leaver paid exactly its synced stack",
+      "ok": true,
+      "note": "925000 lamports by itself"
+    },
+    {
+      "name": "stranger's commit right after the keeper's is refused (CF-064)",
+      "ok": true
+    },
+    {
+      "name": "9HVRWGgr: 4+ hands played",
+      "ok": true,
+      "note": "4"
+    },
+    {
+      "name": "9HVRWGgr: player who bought in mid-hand was dealt into a later hand",
+      "ok": true,
+      "note": "bought in #1, dealt #2"
+    },
+    {
+      "name": "9HVRWGgr: leaver synced and cashed out",
+      "ok": true
+    },
+    {
+      "name": "9HVRWGgr: vault reconciles exactly (check_vault strict)",
+      "ok": true
+    },
+    {
+      "name": "every finished hand indexed and VALID",
+      "ok": true,
+      "note": "4 hands"
+    },
+    {
+      "name": "every dealt player read its own hand",
+      "ok": true,
+      "note": "15 reads, 0 missing"
+    },
+    {
+      "name": "no player read a neighbour's hand",
+      "ok": true,
+      "note": "15 tries"
+    },
+    {
+      "name": "keeper health ok at the end",
+      "ok": true
+    }
+  ]
+}

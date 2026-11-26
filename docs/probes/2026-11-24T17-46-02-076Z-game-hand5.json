@@ -1,0 +1,102 @@
+{
+  "format": "cf-hand-record/2",
+  "protocol_version": 2,
+  "program_id": "4XUaBSuszDH8zUs3gMGgiBC7nckLnmhgubsXXvDL3vdL",
+  "table": "3B9dhXUUpcYg6J1H891He5W2ce9yjnW8QnEz21oMvzqp",
+  "hand_no": "5",
+  "rules_version": 1,
+  "seats": [
+    {
+      "seat": 0,
+      "wallet": "AVzpYn45gxEtxYyReXA2hTZ4Tve2yJ8FRgxL1E3EtbzR"
+    },
+    {
+      "seat": 2,
+      "wallet": "8byg3TxcAjGR8YmAPQ7ySGaw35U1gfktncB3HdWfYnFW"
+    },
+    {
+      "seat": 3,
+      "wallet": "3CTGibLPbQQejGLkYqyUond4UcWtfghZWL6PENGEvvLZ"
+    },
+    {
+      "seat": 4,
+      "wallet": "FgXoAXqPTcctrpkFamjJip39ZWDgemAMoEdKVa5S6Nk7"
+    }
+  ],
+  "salts": [
+    "eca0af0ea267f55fd48e5b60c119ab54e25370d879c76bd8ce0b0433e68d6d99",
+    "a507b1b01e5f3296eb26519f4e7b7b7eb731244076e3c8717eda8d2e807c9e17",
+    "d3825b9a7bf5573473b07db074393cf77422261b44878c013a1cddba6ae831ef",
+    "3bb37e108c6d3b98f9ee7960b86e85f806ae5d0378ac539272145ae770ea322b"
+  ],
+  "vrf_output": "b343d357059281c4c3924e7d09d6de762318eb15ecd3dd21bb6e5e6c8d4f60b5",
+  "claimed": {
+    "roster_hash": "7e9595f478fdcf4b1511cc1394d026b17f142bbca945b4af4c03a94023acad07",
+    "hand_ctx": "7ad39e232237ffe09c8548b5eb43949835c7cb1a5a4bf4eb8ac4ea990afbf73f",
+    "salt_commitments": [
+      "e5d09129e23a443844699276710c309bb7e0b9265d36bb7e33449268a11370a0",
+      "e569b4a76a619de592b5ca5370302a4109e9e3726a5a5c714b0786200909f724",
+      "a2f8dfe07440188c30a37a95a026cdd03c8387b9af60a5e9455d9f9c9dc45161",
+      "066b0f443991eda755f9a7ba84a8d539f694adfcf59f78e9ffcfdbf0bfe6f56a"
+    ],
+    "vrf_caller_seed": "69ddf943f6ac4e480774f0505c9b80b7c4fe0955e513787ba5aa31078c623906",
+    "merkle_root": "fb911aeaf998c1fcb1b6f6c04e86913df29c6f10fd1ba370abb734f777264f02"
+  },
+  "hands": [
+    {
+      "seat": 0,
+      "cards": [
+        3,
+        44,
+        40
+      ]
+    },
+    {
+      "seat": 2,
+      "cards": [
+        50,
+        46,
+        48
+      ]
+    },
+    {
+      "seat": 3,
+      "cards": [
+        15,
+        18,
+        9
+      ]
+    },
+    {
+      "seat": 4,
+      "cards": [
+        36,
+        19,
+        51
+      ]
+    }
+  ],
+  "game": {
+    "boot": "25000",
+    "rake_bps": 250,
+    "rake_cap": "10000",
+    "start_stacks": [
+      "125000",
+      "3155000",
+      "75000",
+      "2595000"
+    ],
+    "actions": "0223324402202434",
+    "end_reason": 0,
+    "winners": [
+      0
+    ],
+    "payouts": [
+      "268125",
+      "0",
+      "0",
+      "0"
+    ],
+    "rake": "6875"
+  }
+}

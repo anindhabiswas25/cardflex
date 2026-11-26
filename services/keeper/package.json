@@ -16,9 +16,11 @@
     "join-drill": "node test/join-drill.ts",
     "multiuser": "node test/multiuser.ts",
     "migrate-drill": "node test/migrate-drill.ts",
-    "refund-old": "node test/refund-old.ts"
+    "refund-old": "node test/refund-old.ts",
+    "session-drill": "node test/session-drill.ts"
   },
   "dependencies": {
+    "@card-flex/admin": "workspace:*",
     "@card-flex/api": "workspace:*",
     "@card-flex/client-sdk": "workspace:*",
     "@solana/web3.js": "1.98.0"
