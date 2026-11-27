@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/media/logo.jpg" alt="Card Flex" width="260">
+<img src="docs/media/logo.jpg" alt="Card Flex" width="200">
 
 ## Private cards. Fair shuffle. Every hand provable.
 
