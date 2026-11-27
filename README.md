@@ -17,7 +17,8 @@ A three-card game on Solana. Each hand is shuffled, dealt and played by a Solana
 </div>
 
 <p align="center">
-  <img src="docs/media/hero.jpg" alt="The Card Flex lobby: Amethyst Hall, the entry table" width="900">
+  <img width="2880" height="1567" alt="Screenshot from 2026-11-27 17-49-36" src="https://github.com/user-attachments/assets/fefa0399-61a4-4d34-81a7-b2d284aa26bf" />
+
 </p>
 
 | Buy in | Play | Verify | Cash out |
